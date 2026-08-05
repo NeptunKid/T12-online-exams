@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+cloudflare/*.json
+data/*.json
+data/*.sqlite
+data/*.sqlite-*
+backups/
+logs/
+*.log
+node_modules/
+.DS_Store
+

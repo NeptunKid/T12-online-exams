@@ -1,0 +1,13 @@
+{
+  "name": "exam-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "在线考试提交追踪与后台阅卷系统",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

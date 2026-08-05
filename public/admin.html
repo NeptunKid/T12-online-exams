@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理员阅卷后台</title>
+  <link rel="stylesheet" href="/styles.css?v=20260804-3">
+</head>
+<body>
+  <div id="loginPage" class="start-layout">
+    <main class="panel login-card">
+      <h1>管理员阅卷后台</h1>
+      <p class="brand-sub">请使用已授予阅卷权限的钉钉账号登录。</p>
+      <div class="btn-row" style="margin-top:22px">
+        <a class="btn primary" id="dingtalkAdminLogin" href="/auth/dingtalk/login?returnTo=/admin">使用钉钉登录</a>
+      </div>
+      <div id="loginMsg" class="notice error hidden"></div>
+    </main>
+  </div>
+
+  <div id="adminPage" class="hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-title">管理员阅卷后台</div>
+          <div class="brand-sub">多人多次考试记录</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn secondary" id="refreshBtn" type="button">刷新</button>
+          <button class="btn danger" id="logoutBtn" type="button">退出登录</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell admin-layout">
+      <aside class="panel admin-card">
+        <div class="toolbar">
+          <div class="stats">
+            <div class="stat"><span class="meta-label">总提交</span><strong id="statTotal">0</strong></div>
+            <div class="stat"><span class="meta-label">待批阅</span><strong id="statPending">0</strong></div>
+            <div class="stat"><span class="meta-label">已批阅</span><strong id="statGraded">0</strong></div>
+          </div>
+          <input id="searchInput" placeholder="搜索考生姓名">
+          <select id="statusFilter">
+            <option value="all">全部状态</option>
+            <option value="pending">待批阅</option>
+            <option value="graded">已批阅</option>
+          </select>
+        </div>
+        <div id="submissionList" class="submission-list"></div>
+      </aside>
+
+      <section class="panel admin-card" id="detailPanel">
+        <div class="empty-state">
+          <div>
+            <h2>请选择一份答卷</h2>
+            <p>左侧列表会显示所有考生的每一次提交。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin.js?v=20260804-3"></script>
+</body>
+</html>
