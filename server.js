@@ -165,8 +165,12 @@ function currentUser(req) {
     unionId: session.unionId,
     name: session.name,
     avatarUrl: session.avatarUrl,
-    role: GRADER_UNION_IDS.has(session.unionId) ? "grader" : "student"
+    role: roleForUnionId(session.unionId)
   };
+}
+
+function roleForUnionId(unionId, graderIds = GRADER_UNION_IDS) {
+  return graderIds.has(unionId) ? "grader" : "student";
 }
 
 function isDingtalkReady() {
@@ -703,7 +707,19 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`考试后台追踪系统已启动: http://${HOST}:${PORT}`);
-  console.log(`管理员后台: http://${HOST}:${PORT}/admin`);
-});
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    console.log(`考试后台追踪系统已启动: http://${HOST}:${PORT}`);
+    console.log(`管理员后台: http://${HOST}:${PORT}/admin`);
+  });
+}
+
+module.exports = {
+  examData,
+  sameAnswer,
+  gradeObjective,
+  reviewObjectiveScores,
+  validReturnTo,
+  getAttemptInfo,
+  roleForUnionId
+};

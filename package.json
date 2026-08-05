@@ -5,7 +5,11 @@
   "description": "在线考试提交追踪与后台阅卷系统",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js",
+    "check:secrets": "node scripts/check-secrets.js",
+    "check": "npm run check:syntax && npm test && npm run check:secrets"
   },
   "engines": {
     "node": ">=18"
