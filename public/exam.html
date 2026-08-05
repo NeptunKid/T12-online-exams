@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在线考试</title>
+  <link rel="stylesheet" href="/styles.css?v=20260804-3">
+</head>
+<body>
+  <div id="loginPage" class="start-layout">
+    <main class="panel start-panel">
+      <h1>我的学习与考核</h1>
+      <p class="brand-sub" id="loginSub">请使用钉钉账号登录后查看学习项目与考试记录。</p>
+      <div id="loginActions" class="btn-row">
+        <a class="btn primary" id="dingtalkLogin" href="/auth/dingtalk/login?returnTo=/">使用钉钉登录</a>
+      </div>
+      <div id="startMessage" class="notice error hidden"></div>
+    </main>
+  </div>
+
+  <div id="dashboardPage" class="hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-title">我的学习与考核</div>
+          <div class="brand-sub" id="dashboardUser"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn secondary" id="dashboardRefreshBtn" type="button">刷新</button>
+          <button class="btn danger" id="studentLogoutBtn" type="button">退出登录</button>
+        </div>
+      </div>
+    </header>
+    <main class="shell dashboard-shell">
+      <section class="dashboard-heading">
+        <h1>待学习与待考核</h1>
+        <p class="brand-sub">请选择项目开始学习或参加考核。</p>
+      </section>
+      <section id="examCatalog" class="exam-catalog"></section>
+      <section class="dashboard-heading history-heading">
+        <h2>我的考试记录</h2>
+        <p class="brand-sub">可查看每次提交的状态、成绩和阅卷反馈。</p>
+      </section>
+      <section id="historyList" class="history-list"></section>
+    </main>
+  </div>
+
+  <div id="studentDetailPage" class="hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-title">考试结果</div>
+          <div class="brand-sub" id="studentDetailSub"></div>
+        </div>
+        <button class="btn secondary" id="backToDashboardBtn" type="button">返回我的记录</button>
+      </div>
+    </header>
+    <main class="shell"><section id="studentDetail" class="student-detail"></section></main>
+  </div>
+
+  <div id="examPage" class="hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-title" id="examTitle">在线考试</div>
+          <div class="brand-sub" id="studentMeta"></div>
+        </div>
+        <div class="timer" id="timer">--:--</div>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="panel progress-panel">
+        <div class="progress-head">
+          <span id="progressText">已答 0 / 0</span>
+          <span id="autosaveText">答卷提交后会进入后台待批阅</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </section>
+
+      <form id="examForm"></form>
+
+      <div class="sticky-submit">
+        <div class="panel submit-panel">
+          <div>
+            <strong id="submitSummary">请完成答题后交卷</strong>
+            <div class="brand-sub">客观题自动评分，问答题由阅卷人后台评分。</div>
+          </div>
+          <button class="btn primary" id="submitBtn" type="button">提交试卷</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="resultPage" class="start-layout hidden">
+    <main class="panel result-panel">
+      <h1>等待阅卷中</h1>
+      <p id="resultText">答卷已提交，最终成绩将在阅卷完成后确认。</p>
+      <div class="result-label">客观题得分</div>
+      <div class="result-score" id="resultScore">--</div>
+      <div class="btn-row" style="justify-content:center;margin-top:18px">
+        <button class="btn secondary" id="resultBackBtn" type="button">返回我的记录</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="/exam.js?v=20260804-3"></script>
+</body>
+</html>
