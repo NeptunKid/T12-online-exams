@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.secrets/
 cloudflare/*.json
 data/*.json
 data/*.sqlite
@@ -10,4 +11,3 @@ logs/
 *.log
 node_modules/
 .DS_Store
-
