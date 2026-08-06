@@ -16,8 +16,8 @@ FEISHU_APP_ID=
 FEISHU_APP_SECRET=
 FEISHU_REDIRECT_URI=https://exam.t12group.com/auth/feishu/callback
 FEISHU_DOCUMENT_ID=
-DB_CLIENT=postgres
-DB_URL=
+DB_CLIENT=sqlite
+DB_PATH=data/exam.sqlite
 ```
 
 真实凭证只允许出现在本地 `.env`、部署 Secret 或 GitHub Actions Secret。不要写入 README、测试样例、日志或开发总结。
@@ -32,4 +32,4 @@ FEISHU_APP_SECRET
 FEISHU_DOCUMENT_ID
 ```
 
-回调地址和数据库连接等非秘密配置可使用 Actions Variables 或部署环境变量。
+回调地址和数据库连接等非秘密配置可使用 Actions Variables 或部署环境变量。第一版数据库使用云端主机内的 SQLite WAL 文件；数据库文件和备份不得提交到 Git。
