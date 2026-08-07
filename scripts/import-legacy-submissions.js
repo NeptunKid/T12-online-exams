@@ -205,4 +205,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildImportSql, main, parseArgs, readExamData, summarize, validateAndNormalize };
+module.exports = { buildImportSql, main, parseArgs, readExamData, readJson, summarize, validateAndNormalize };
