@@ -37,20 +37,17 @@ EOF
 runuser -u postgres -- psql -v ON_ERROR_STOP=1 \
   -v db_user="${DB_USER}" \
   -v db_password="${DB_PASSWORD}" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'db_user') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password');
-  ELSE
-    EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password');
-  END IF;
-END
-$$;
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'db_user') \gexec
+SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password') \gexec
 SQL
 
-if ! runuser -u postgres -- psql -Atc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" | grep -qx 1; then
-  runuser -u postgres -- createdb -O "${DB_USER}" "${DB_NAME}"
-fi
+runuser -u postgres -- psql -v ON_ERROR_STOP=1 \
+  -v db_name="${DB_NAME}" \
+  -v db_user="${DB_USER}" <<'SQL'
+SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_user')
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db_name') \gexec
+SQL
 
 systemctl restart postgresql
 unset DB_PASSWORD

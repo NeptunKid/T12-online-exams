@@ -5,18 +5,18 @@
 
 ## 决策
 
-第一版采用阿里云轻量应用服务器香港地域，部署单实例 Node.js 服务、SQLite WAL 和 Caddy：
+第一版采用阿里云轻量应用服务器东京地域，部署单实例 Node.js 服务、PostgreSQL 和 Caddy：
 
 ```text
-用户 -> Cloudflare DNS/代理 -> Caddy (HTTPS) -> Node.js -> SQLite WAL
-                                             -> 备份任务 -> 对象存储
+用户 -> Cloudflare DNS/代理 -> Caddy (HTTPS) -> Node.js -> PostgreSQL
+                                                   -> pg_dump 备份 -> 对象存储
 ```
 
 不再使用本地设备或 Cloudflare Tunnel 作为生产入口。
 
 ## 基线规格
 
-- 地域：香港。
+- 地域：东京。
 - 系统：Ubuntu 24.04 LTS 64-bit。
 - 规格：至少 2 vCPU、4 GB RAM、60 GB SSD 和 1 TB 月流量。
 - 公网入口：仅 80/443；SSH 仅使用阿里云 Workbench 或限定管理来源。
@@ -25,7 +25,7 @@
 
 ## 风险与回滚
 
-香港地域通常无需 ICP 备案，但中国大陆访问质量必须在手机蜂窝网络、家庭宽带和公司网络上实际验证。新入口上线前保留旧入口；异常时将 DNS/代理切回旧服务，数据库备份不删除。
+东京地域通常无需 ICP 备案，但中国大陆访问质量必须在手机蜂窝网络、家庭宽带和公司网络上实际验证。新入口上线前保留旧入口；异常时将 DNS/代理切回旧服务，数据库备份不删除。
 
 ## 修订：2026-08-06 PostgreSQL 服务
 

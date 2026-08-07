@@ -29,3 +29,7 @@ npm run check：通过
 
 风险：脚本执行需要服务器具备 apt 网络访问；PostgreSQL 版本以 Ubuntu 软件源实际版本为准。  
 回滚：卸载 PostgreSQL 或删除脚本创建的数据库/账户；执行前应确认没有业务数据写入。
+
+## 2026-08-06 修订
+
+首次执行发现 PostgreSQL `DO $$` 块不能直接解析 psql 变量 `:'db_user'`。脚本已改为使用 `\\gexec` 生成并执行角色、密码和数据库语句；Ubuntu 24.04 当前安装的 PostgreSQL 16 可直接使用。实际云服务器地域已确认按东京记录。
