@@ -173,4 +173,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { checksum, listMigrations, main };
+module.exports = { checksum, listMigrations, loadEnvFile, databaseEnvironment, runPsql, main };
