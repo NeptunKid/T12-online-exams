@@ -37,4 +37,4 @@ FEISHU_APP_SECRET
 FEISHU_DOCUMENT_ID
 ```
 
-回调地址和数据库连接等非秘密配置可使用 Actions Variables 或部署环境变量。第一版在云端主机内运行 PostgreSQL 17，数据库只监听本机回环地址；`DB_PASSWORD` 只能放在部署环境变量或 `.env`，备份不得提交到 Git。
+回调地址和数据库连接等非秘密配置可使用 Actions Variables 或部署环境变量。当前测试服务器在云端主机内运行 PostgreSQL 16，数据库只监听本机回环地址；`DB_PASSWORD` 只能放在部署环境变量或 `.env`，备份不得提交到 Git。
