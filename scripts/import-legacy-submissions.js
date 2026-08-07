@@ -142,6 +142,8 @@ function buildImportSql(normalized) {
     statements.push(`INSERT INTO users (id, name, employee_no, department, status) VALUES (${sqlLiteral(userId)}, ${sqlLiteral(row.studentName || "历史答卷用户")}, ${sqlLiteral(row.studentNo || null)}, ${sqlLiteral(row.department || null)}, ${sqlLiteral(unmatched ? "legacy_unmatched" : "active")}) ON CONFLICT (id) DO NOTHING;`);
     statements.push(`INSERT INTO user_identities (id, user_id, provider, provider_subject, union_id) VALUES (${sqlLiteral(stableId("legacy_identity", identityKey))}, ${sqlLiteral(userId)}, 'legacy', ${sqlLiteral(`legacy:${identityKey}`)}, ${sqlLiteral(row.dingtalkUnionId || null)}) ON CONFLICT (id) DO NOTHING;`);
     statements.push(`INSERT INTO user_roles (user_id, role_code) VALUES (${sqlLiteral(userId)}, 'student') ON CONFLICT (user_id, role_code) DO NOTHING;`);
+    const assignmentId = `legacy_assignment_${crypto.createHash("md5").update(`${examId}:user:${userId}`).digest("hex")}`;
+    statements.push(`INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id) VALUES (${sqlLiteral(assignmentId)}, ${sqlLiteral(examId)}, 'user', ${sqlLiteral(userId)}) ON CONFLICT (id) DO NOTHING;`);
   }
 
   for (const row of rows) {

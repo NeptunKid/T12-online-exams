@@ -446,7 +446,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool) });
+      return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool, user.unionId) });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
     }
@@ -459,7 +459,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      const exam = await getPublishedExam(pool, decodeURIComponent(examMatch[1]));
+      const exam = await getPublishedExam(pool, decodeURIComponent(examMatch[1]), user.unionId);
       if (!exam) return json(res, 404, { error: "未找到已发布考试" });
       return json(res, 200, { source: "postgres", exam });
     } catch (_) {

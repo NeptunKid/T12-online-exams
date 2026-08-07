@@ -14,16 +14,17 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
     }
   };
 
-  const exams = await listPublishedExams(pool);
+  const exams = await listPublishedExams(pool, "u1");
   assert.deepEqual(exams[0], { id: "exam-1", title: "测试考试", status: "published", duration: 600, totalScore: 100, passScore: 60, version: 1 });
-  const exam = await getPublishedExam(pool, "exam-1");
+  const exam = await getPublishedExam(pool, "exam-1", "u1");
   assert.equal(exam.questions[0].score, 100);
   assert.equal(Object.hasOwn(exam.questions[0], "answer"), false);
   assert.equal(Object.hasOwn(exam.questions[0], "explanation"), false);
   assert.equal(queries.some((sql) => sql.includes("answer_json") || sql.includes("explanation")), false);
+  assert.equal(queries.every((sql) => sql.includes("exam_assignments")), true);
 });
 
 test("考试 repository 未找到考试时返回 null", async () => {
   const pool = { query: async () => ({ rows: [] }) };
-  assert.equal(await getPublishedExam(pool, "missing"), null);
+  assert.equal(await getPublishedExam(pool, "missing", "u1"), null);
 });

@@ -36,6 +36,8 @@ test("旧答卷校验保留 ID、状态和题目快照", () => {
   assert.match(sql, /legacy-1/);
   assert.match(sql, /snapshot_json/);
   assert.match(sql, /ON CONFLICT \(id\) DO NOTHING/);
+  assert.match(sql, /INSERT INTO exam_assignments/);
+  assert.match(sql, /legacy_assignment_/);
 });
 
 test("考试标题不一致时拒绝静默迁移", () => {
