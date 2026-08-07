@@ -18,7 +18,8 @@
 
 - 地域：东京。
 - 系统：Ubuntu 24.04 LTS 64-bit。
-- 规格：至少 2 vCPU、4 GB RAM、60 GB SSD 和 1 TB 月流量。
+- 当前测试规格：2 vCPU、1 GiB RAM、30 GiB 系统盘，仅支持 1～2 名内部员工测试。
+- 正式扩大使用前的建议规格：至少 2 vCPU、4 GB RAM、60 GB SSD 和 1 TB 月流量。
 - 公网入口：仅 80/443；SSH 仅使用阿里云 Workbench 或限定管理来源。
 - 数据库端口：不开放公网访问。
 - Cloudflare：使用 DNS/代理和 Full (strict) TLS，源站证书由 Caddy 管理。
@@ -32,8 +33,8 @@
 原 SQLite WAL 部署描述已被本修订取代，当前拓扑为：
 
 ```text
-用户 -> Cloudflare DNS/代理 -> Caddy (HTTPS) -> Node.js -> PostgreSQL 17
+用户 -> Cloudflare DNS/代理 -> Caddy (HTTPS) -> Node.js -> PostgreSQL 16
                                                    -> pg_dump 备份 -> 对象存储
 ```
 
-PostgreSQL 与 Node.js 同机运行，监听 `127.0.0.1:5432`；安全组不开放 5432。轻量服务器规格仍保持至少 2 vCPU、4 GB RAM、60 GB SSD，以保留数据库缓存和备份空间。
+PostgreSQL 与 Node.js 同机运行，监听 `127.0.0.1:5432`；安全组不开放 5432。当前服务器仅用作小规模测试；正式扩大使用前应升级到至少 2 vCPU、4 GB RAM、60 GB SSD，以保留数据库缓存和备份空间。
