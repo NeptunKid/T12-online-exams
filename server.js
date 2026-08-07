@@ -2,6 +2,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
+const { getPublishedExam, listPublishedExams } = require("./src/db/exam-repository");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -37,6 +39,7 @@ const SESSIONS = new Map();
 const SESSION_COOKIE = "exam_dingtalk_session";
 const OAUTH_STATE_TTL = 10 * 60 * 1000;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
+let POSTGRES_POOL = null;
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
@@ -175,6 +178,12 @@ function roleForUnionId(unionId, graderIds = GRADER_UNION_IDS) {
 
 function isDingtalkReady() {
   return Boolean(DINGTALK_CLIENT_ID && DINGTALK_CLIENT_SECRET && DINGTALK_REDIRECT_URI);
+}
+
+function getPostgresPool() {
+  if (!isPostgresConfigured()) return null;
+  if (!POSTGRES_POOL) POSTGRES_POOL = createPostgresPool();
+  return POSTGRES_POOL;
 }
 
 function validReturnTo(value) {
@@ -429,6 +438,33 @@ async function handleApi(req, res, pathname) {
     if (session) SESSIONS.delete(session.token);
     setSessionCookie(res, "", 0);
     return json(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && pathname === "/api/exams") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
+    try {
+      return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool) });
+    } catch (_) {
+      return json(res, 503, { error: "考试数据库暂不可用" });
+    }
+  }
+
+  const examMatch = pathname.match(/^\/api\/exams\/([^/]+)$/);
+  if (req.method === "GET" && examMatch) {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
+    try {
+      const exam = await getPublishedExam(pool, decodeURIComponent(examMatch[1]));
+      if (!exam) return json(res, 404, { error: "未找到已发布考试" });
+      return json(res, 200, { source: "postgres", exam });
+    } catch (_) {
+      return json(res, 503, { error: "考试数据库暂不可用" });
+    }
   }
 
   if (req.method === "GET" && pathname === "/api/student/dashboard") {
