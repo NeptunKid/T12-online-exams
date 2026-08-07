@@ -7,11 +7,12 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test tests/*.test.js",
-    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check scripts/migrate.js",
+    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check scripts/migrate.js && node --check scripts/import-legacy-submissions.js",
     "check:secrets": "node scripts/check-secrets.js",
     "check": "npm run check:syntax && npm test && npm run check:secrets",
     "migrate": "node scripts/migrate.js",
-    "migrate:plan": "node scripts/migrate.js --plan"
+    "migrate:plan": "node scripts/migrate.js --plan",
+    "import:legacy": "node scripts/import-legacy-submissions.js"
   },
   "engines": {
     "node": ">=18"
