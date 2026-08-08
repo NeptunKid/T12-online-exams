@@ -7,7 +7,8 @@ const {
   reviewObjectiveScores,
   validReturnTo,
   getAttemptInfo,
-  roleForUnionId
+  roleForUnionId,
+  healthStatus
 } = require("../server");
 
 test("答案比较不受多选顺序影响", () => {
@@ -54,6 +55,10 @@ test("阅卷角色和普通考生角色分离", () => {
   const graders = new Set(["grader-1"]);
   assert.equal(roleForUnionId("grader-1", graders), "grader");
   assert.equal(roleForUnionId("student-1", graders), "student");
+});
+
+test("健康检查不暴露配置或凭证", () => {
+  assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
 });
 
 test("补考状态兼容旧答卷", () => {

@@ -6,7 +6,7 @@ const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 
 function loadEnvFile() {
-  const envPath = path.join(__dirname, ".env");
+  const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
   if (!fs.existsSync(envPath)) return;
 
   for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
@@ -256,6 +256,21 @@ function requireGrader(req, res) {
     return null;
   }
   return user;
+}
+
+function healthStatus() {
+  return { status: "ok", service: "t12-online-exams" };
+}
+
+async function readinessStatus() {
+  const pool = getPostgresPool();
+  if (!pool) return { status: "not_ready", reason: "database_not_configured" };
+  try {
+    await pool.query("SELECT 1");
+    return { status: "ready", database: "ok" };
+  } catch (_) {
+    return { status: "not_ready", reason: "database_unavailable" };
+  }
 }
 
 function sameAnswer(a, b) {
@@ -788,7 +803,11 @@ async function handleDingtalkCallback(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname === "/auth/dingtalk/login") {
+  if (req.method === "GET" && url.pathname === "/healthz") {
+    json(res, 200, healthStatus());
+  } else if (req.method === "GET" && url.pathname === "/readyz") {
+    readinessStatus().then((status) => json(res, status.status === "ready" ? 200 : 503, status));
+  } else if (url.pathname === "/auth/dingtalk/login") {
     handleDingtalkLogin(req, res, url);
   } else if (url.pathname === "/auth/dingtalk/callback") {
     handleDingtalkCallback(req, res, url);
@@ -813,5 +832,7 @@ module.exports = {
   reviewObjectiveScores,
   validReturnTo,
   getAttemptInfo,
-  roleForUnionId
+  roleForUnionId,
+  healthStatus,
+  readinessStatus
 };

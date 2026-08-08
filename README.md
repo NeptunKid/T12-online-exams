@@ -23,7 +23,7 @@ cd $HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版
 npm start
 ```
 
-本地试运行时，`DINGTALK_REDIRECT_URI` 必须与钉钉开放平台登记的地址完全一致。若钉钉不允许回调到本机地址，请使用可访问的测试 HTTPS 域名或内网穿透地址。
+本地试运行时，`DINGTALK_REDIRECT_URI` 必须与钉钉开放平台登记的地址完全一致。公网部署请参阅 [东京阿里云公网部署](docs/deploy-public-server.md)，当前生产入口不使用 Cloudflare Tunnel。
 
 ## 访问地址
 
@@ -31,6 +31,12 @@ npm start
 
 - 考生考试页：`http://127.0.0.1:3001/`
 - 阅卷后台：`http://127.0.0.1:3001/admin`
+
+公网部署后：
+
+- 考生考试页：`https://exam.t12group.com/`
+- 健康检查：`https://exam.t12group.com/healthz`
+- 数据库就绪检查：`https://exam.t12group.com/readyz`
 
 启动后未配置钉钉环境变量时，页面会明确显示未配置状态；不会回退到账号密码登录，也不会允许匿名提交。
 

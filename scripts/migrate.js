@@ -19,7 +19,7 @@ function loadEnvFile() {
   const dbKeys = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"];
   if (dbKeys.every((key) => process.env[key] !== undefined)) return;
 
-  const envPath = path.join(ROOT, ".env");
+  const envPath = process.env.T12_ENV_FILE || path.join(ROOT, ".env");
   if (!fs.existsSync(envPath)) return;
 
   for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
