@@ -95,7 +95,7 @@ sudo chmod 640 /etc/t12-online-exams/t12-online-exams.env
 
 ```bash
 sudo -u codexdeploy bash -lc 'cd /opt/t12-online-exams && npm ci --omit=dev'
-sudo -u codexdeploy bash -lc 'cd /opt/t12-online-exams && npm run migrate'
+sudo -u codexdeploy env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env bash -lc 'cd /opt/t12-online-exams && npm run migrate'
 sudo install -m 644 /opt/t12-online-exams/deploy/t12-exams.service /etc/systemd/system/t12-exams.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now t12-exams
@@ -103,6 +103,8 @@ sudo systemctl status --no-pager t12-exams
 ```
 
 预期：状态为 `active (running)`。应用仍只监听 `127.0.0.1:3001`。
+
+如果你已经在 `/tmp/t12-online-exams` 中完成了代码更新，不要从该目录直接复制 `.env`。请先按上面的“部署应用目录”步骤确保 `/opt/t12-online-exams` 是最新代码，再执行迁移命令；迁移命令通过 `T12_ENV_FILE` 读取 `/etc/t12-online-exams/t12-online-exams.env`。
 
 ## 6. 安装并启动 Caddy
 

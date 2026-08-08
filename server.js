@@ -6,7 +6,7 @@ const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 
 function loadEnvFile() {
-  const envPath = path.join(__dirname, ".env");
+  const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
   if (!fs.existsSync(envPath)) return;
 
   for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
