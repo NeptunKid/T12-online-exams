@@ -5,6 +5,8 @@ let timerId = null;
 let submitted = false;
 let remainingSeconds = 0;
 let currentUser = null;
+let activeExamId = "default";
+let usingPostgresApi = false;
 
 const typeLabels = {
   single: "单选题",
@@ -58,18 +60,43 @@ function statusBadge(status) {
     : `<span class="badge pending">等待阅卷</span>`;
 }
 
-async function loadExam() {
-  const res = await fetch("/api/exam");
+function normalizePostgresExam(source) {
+  const normalized = { ...source, duration: Number(source.duration) / 60 };
+  normalized.questions = (source.questions || []).map((question) => ({
+    ...question,
+    text: question.text || question.stem || "",
+    options: Array.isArray(question.options)
+      ? Object.fromEntries(question.options.map((option) => [option.label, option.text]))
+      : (question.options || {})
+  }));
+  return normalized;
+}
+
+async function loadExam(examId = "default") {
+  const endpoint = usingPostgresApi && examId !== "default" ? `/api/exams/${encodeURIComponent(examId)}` : "/api/exam";
+  const res = await fetch(endpoint);
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(payload.error || "题目载入失败");
-  exam = payload;
+  exam = usingPostgresApi && payload.exam ? normalizePostgresExam(payload.exam) : payload;
+  if (usingPostgresApi) {
+    const assigned = dashboardData?.exams?.find((item) => item.id === examId);
+    exam.attempt = assigned?.attempt || { available: true, message: "" };
+  }
 }
 
 async function loadDashboard() {
-  const res = await fetch("/api/student/dashboard");
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(payload.error || "个人记录载入失败");
-  dashboardData = payload;
+  const postgresRes = await fetch("/api/exams/dashboard");
+  const postgresPayload = await postgresRes.json().catch(() => ({}));
+  if (postgresRes.ok && postgresPayload.source === "postgres") {
+    usingPostgresApi = true;
+    dashboardData = postgresPayload;
+  } else {
+    usingPostgresApi = false;
+    const legacyRes = await fetch("/api/student/dashboard");
+    const legacyPayload = await legacyRes.json().catch(() => ({}));
+    if (!legacyRes.ok) throw new Error(legacyPayload.error || postgresPayload.error || "个人记录载入失败");
+    dashboardData = legacyPayload;
+  }
   renderDashboard();
 }
 
@@ -123,9 +150,9 @@ function showOnly(pageId) {
 }
 
 async function startExam(examId) {
-  if (examId !== "default") return;
   try {
-    await loadExam();
+    activeExamId = examId || "default";
+    await loadExam(activeExamId);
     if (!exam.attempt?.available) {
       alert(exam.attempt?.message || "当前无法开始考核");
       return;
@@ -147,13 +174,36 @@ async function showStudentDetail(id) {
   const container = document.getElementById("studentDetail");
   container.innerHTML = `<div class="panel detail-loading">正在载入阅卷结果</div>`;
   try {
-    const res = await fetch(`/api/student/submissions/${encodeURIComponent(id)}`);
+    const endpoint = usingPostgresApi
+      ? `/api/exams/submissions/${encodeURIComponent(id)}`
+      : `/api/student/submissions/${encodeURIComponent(id)}`;
+    const res = await fetch(endpoint);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "答卷详情载入失败");
-    renderStudentDetail(data);
+    if (usingPostgresApi) renderPostgresStudentDetail(data);
+    else renderStudentDetail(data);
   } catch (err) {
     container.innerHTML = `<div class="panel detail-loading">${esc(err.message || "答卷详情载入失败")}</div>`;
   }
+}
+
+function renderPostgresStudentDetail(data) {
+  const { submission, questions } = data;
+  document.getElementById("studentDetailSub").textContent = `${submission.examTitle} · 第 ${submission.attemptNo} 次考核`;
+  const container = document.getElementById("studentDetail");
+  const questionHtml = (questions || []).map((question) => `
+    <article class="student-question-result">
+      <div class="student-question-top"><div><span class="num ${esc(question.type)}">${question.no}</span><strong>${esc(question.stem)}</strong></div><span class="result-question-score">${submission.status === "graded" ? `${question.earnedScore} / ${question.score} 分` : "待阅卷"}</span></div>
+      <div class="student-long-answer"><span>我的答案</span><div>${esc(answerDisplay(question.submittedAnswer))}</div></div>
+    </article>
+  `).join("");
+  container.innerHTML = `
+    <section class="panel student-result-head ${submission.status === "graded" ? (submission.pass ? "passed" : "failed") : "pending-result"}">
+      <div><div class="result-kicker">${submission.status === "graded" ? "阅卷已完成" : "答卷已提交"}</div><h1>${submission.totalScore === null ? "等待阅卷" : `${submission.totalScore} 分`}</h1><p class="brand-sub">第 ${submission.attemptNo} 次考核 · 提交时间：${fmtTime(submission.submittedAt)}</p></div>
+      <div class="student-result-score"><span>客观题得分</span><strong>${submission.objectiveScore} 分</strong><small>${submission.status === "graded" ? `通过线 ${submission.passScore} 分` : "最终成绩待阅卷"}</small></div>
+    </section>
+    <section class="student-review-section"><h2>答题记录</h2><div class="student-question-list">${questionHtml}</div></section>
+  `;
 }
 
 function renderStudentDetail(data) {
@@ -332,14 +382,17 @@ async function submitExam(force = false) {
   clearInterval(timerId);
   document.getElementById("submitBtn").disabled = true;
   try {
-    const res = await fetch("/api/submissions", {
+    const endpoint = usingPostgresApi && activeExamId !== "default"
+      ? `/api/exams/${encodeURIComponent(activeExamId)}/submissions`
+      : "/api/submissions";
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startedAt, durationSeconds: Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)), answers })
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(result.error || "提交失败");
-    showResult(result);
+    showResult(result.submission || result);
   } catch (err) {
     submitted = false;
     document.getElementById("submitBtn").disabled = false;
