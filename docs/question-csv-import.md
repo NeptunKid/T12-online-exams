@@ -7,7 +7,7 @@
 模板位于 [question-import-template.csv](templates/question-import-template.csv)。固定表头如下：
 
 ```text
-external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,option_g,option_h,option_i,option_j,answer,score,explanation,tags,difficulty,image_urls
+external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,option_g,option_h,option_i,option_j,option_image_a,option_image_b,option_image_c,option_image_d,option_image_e,option_image_f,option_image_g,option_image_h,option_image_i,option_image_j,answer,score,explanation,tags,difficulty,image_urls
 ```
 
 - `type` 仅允许 `single`、`multi`、`judge`、`fill`、`qa`。
@@ -16,6 +16,7 @@ external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,opti
 - `external_id` 在同一题库内必须唯一；`score` 必须为非负数字。
 - 选项从 A 开始连续填写，不能跳过；答案必须存在于选项中。
 - `image_urls` 用 `|` 分隔。只允许已经登记的 HTTPS 图片域名，或 `resource:<资源ID>`。
+- `option_image_a` 至 `option_image_j` 为选项级图片，只允许资源清单中的 `resource:<资源ID>`；图片会在服务端映射为固定的 `/question-resources/...` URL。
 
 ## 本机预览
 

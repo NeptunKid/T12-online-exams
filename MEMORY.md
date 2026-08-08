@@ -7,3 +7,4 @@
 2026-08-08 [Codex] 在 `feature/phase2-csv-preview` 提交 `27e1249`：新增 `fill` 填空题题型、CSV 校验、PostgreSQL `0003_fill_question_type` 迁移、自动判分（答案别名/去首尾空格/不区分大小写）、考生输入框与阅卷人工改分，质量门 34 项测试通过；用户已明确不纳入咖啡师招聘笔试，餐饮法规和咖啡基础各 3 份 PDF 为扫描试卷，待 OCR 与逐题复核。当前推送仍受本机 `ssh.github.com:443` 限制，未重复尝试。
 2026-08-08 [Codex] 复核 PDF OCR：法规 18 页、咖啡 20 页均未生成有效文字；macOS Vision 对所有页面返回 `Failed to create CVPixelBuffer`，因此没有题目/选项/答案可供确认，未写入仓库或题库。
 2026-08-09 [Codex] 在 `feature/phase2-xlsx-question-drafts` 提交 `d90fc7f`：从萃取原理、消防基础、IT 基础 Excel 生成 CSV 审阅稿；分值/时长分别为 101/50 分钟、100/30 分钟、剔除 3 道操作题后 86/30 分钟。消防和 IT CSV 预览通过；萃取第 18、19 题为图表图片选项，因尚未建立受控资源映射而暂不允许提交。CSV 模板扩展到 `option_j`，`npm run check` 34 项通过。
+2026-08-09 [Codex] 修正萃取图表题号：Excel 表头占第 1 行，因此第 17 题使用 `17-A.png` 至 `17-D.png`，第 18 题使用 `18-A.png` 至 `18-E.png`。新增 `public/question-resources/` 受控资源目录及 SHA-256 清单，CSV 增加 `option_image_a` 至 `option_image_j`，PostgreSQL API 和考生页支持受控选项图片；新增事务、幂等的三份题库/考试导入脚本与 Workbench 部署文档。本机质量门 36 项通过；尚未写入生产数据库。

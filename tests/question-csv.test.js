@@ -67,3 +67,14 @@ test("CSV 预览拒绝未允许的图片地址和不完整表头", () => {
   const missingHeader = previewQuestionCsv("external_id,type\nq-1,single");
   assert.equal(missingHeader.errors.some((error) => error.column === "stem"), true);
 });
+
+test("CSV 预览支持只有图片的选项并保留受控资源 ID", () => {
+  const csv = [HEADER, csvRow({
+    external_id: "q-image", type: "single", stem: "图表题", option_image_a: "resource:extraction-17-a",
+    option_image_b: "resource:extraction-17-b", answer: "B", score: 2
+  })].join("\n");
+  const preview = previewQuestionCsv(csv);
+  assert.equal(preview.canCommit, true);
+  assert.deepEqual(preview.questions[0].options, [{ label: "A", text: "" }, { label: "B", text: "" }]);
+  assert.deepEqual(preview.questions[0].optionImages, { A: "resource:extraction-17-a", B: "resource:extraction-17-b" });
+});

@@ -49,11 +49,11 @@ function getImageSet(q, sourceExam = exam) {
 
 function imageHtml(paths, className = "image-row") {
   if (!paths?.length) return "";
-  return `<div class="${className}">${paths.map((src) => `<img src="/${esc(src)}" alt="题目图片" loading="lazy">`).join("")}</div>`;
+  return `<div class="${className}">${paths.map((src) => `<img src="/${esc(String(src).replace(/^\/+/, ""))}" alt="题目图片" loading="lazy">`).join("")}</div>`;
 }
 
 function optionImageHtml(src) {
-  return src ? `<img class="option-image" src="/${esc(src)}" alt="选项图片" loading="lazy">` : "";
+  return src ? `<img class="option-image" src="/${esc(String(src).replace(/^\/+/, ""))}" alt="选项图片" loading="lazy">` : "";
 }
 
 function statusBadge(status) {
@@ -68,9 +68,18 @@ function normalizePostgresExam(source) {
     ...question,
     text: question.text || question.stem || "",
     options: Array.isArray(question.options)
-      ? Object.fromEntries(question.options.map((option) => [option.label, option.text]))
+      ? Object.fromEntries(question.options.map((option) => [option.label, option.text || ""]))
       : (question.options || {})
   }));
+  normalized.optionImages = Object.fromEntries((source.questions || []).map((question) => [
+    question.id,
+    Object.fromEntries((question.options || []).filter((option) => option.image).map((option) => [option.label, option.image]))
+  ]));
+  normalized.images = source.images || {};
+  for (const question of normalized.questions) {
+    normalized.images[question.id] = normalized.images[question.id] || { stem: [], options: normalized.optionImages[question.id] || {} };
+    normalized.images[question.id].options = { ...normalized.images[question.id].options, ...(normalized.optionImages[question.id] || {}) };
+  }
   return normalized;
 }
 
