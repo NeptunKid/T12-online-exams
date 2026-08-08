@@ -13,7 +13,8 @@
     "migrate": "node scripts/migrate.js",
     "migrate:plan": "node scripts/migrate.js --plan",
     "import:legacy": "node scripts/import-legacy-submissions.js",
-    "verify:legacy-import": "node scripts/verify-legacy-import.js"
+    "verify:legacy-import": "node scripts/verify-legacy-import.js",
+    "sync:feishu": "node scripts/sync-feishu-document.js"
   },
   "engines": {
     "node": ">=18"
