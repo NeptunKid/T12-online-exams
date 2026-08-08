@@ -7,7 +7,7 @@
 ```dotenv
 NODE_ENV=development
 HOST=127.0.0.1
-PORT=3003
+PORT=3001
 DINGTALK_CLIENT_ID=
 DINGTALK_CLIENT_SECRET=
 DINGTALK_REDIRECT_URI=https://exam.t12group.com/auth/dingtalk/callback

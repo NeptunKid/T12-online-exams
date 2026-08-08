@@ -1,0 +1,26 @@
+[Unit]
+Description=T12 online exam tracker
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=codexdeploy
+Group=codexdeploy
+WorkingDirectory=/opt/t12-online-exams
+EnvironmentFile=/etc/t12-online-exams/t12-online-exams.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/t12-online-exams/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/t12-online-exams/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
