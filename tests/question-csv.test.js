@@ -57,7 +57,10 @@ test("CSV 预览支持引号、换行和受控图片地址", () => {
 });
 
 test("CSV 预览拒绝未允许的图片地址和不完整表头", () => {
-  const invalidImage = `${HEADER}\nq-1,qa,题干,,,,,,,4,解析,,,,https://untrusted.example.com/image.png`;
+  const invalidImage = [HEADER, csvRow({
+    external_id: "q-1", type: "qa", stem: "题干", score: 4,
+    explanation: "解析", image_urls: "https://untrusted.example.com/image.png"
+  })].join("\n");
   const preview = previewQuestionCsv(invalidImage, { allowedImageHosts: ["cdn.example.com"] });
   assert.equal(preview.errors.some((error) => error.column === "image_urls"), true);
 

@@ -1,10 +1,11 @@
 const CSV_HEADERS = [
   "external_id", "type", "stem", "option_a", "option_b", "option_c", "option_d", "option_e",
-  "option_f", "answer", "score", "explanation", "tags", "difficulty", "image_urls"
+  "option_f", "option_g", "option_h", "option_i", "option_j", "answer", "score",
+  "explanation", "tags", "difficulty", "image_urls"
 ];
 
 const QUESTION_TYPES = new Set(["single", "multi", "judge", "fill", "qa"]);
-const OPTION_HEADERS = ["option_a", "option_b", "option_c", "option_d", "option_e", "option_f"];
+const OPTION_HEADERS = ["option_a", "option_b", "option_c", "option_d", "option_e", "option_f", "option_g", "option_h", "option_i", "option_j"];
 
 function parseCsv(text) {
   const source = String(text || "").replace(/^\uFEFF/, "");

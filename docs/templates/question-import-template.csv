@@ -1,2 +1,2 @@
-external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,answer,score,explanation,tags,difficulty,image_urls
-example-001,single,示例单选题,选项 A,选项 B,,,,,A,2,示例解析,基础|入职,easy,
+external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,option_g,option_h,option_i,option_j,answer,score,explanation,tags,difficulty,image_urls
+example-001,single,示例单选题,选项 A,选项 B,,,,,,,,,A,2,示例解析,基础|入职,easy,

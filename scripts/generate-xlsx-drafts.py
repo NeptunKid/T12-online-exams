@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""将指定 Excel 题库转换为 CSV 审阅稿；只读来源，不连接数据库。"""
+
+import argparse
+import csv
+import re
+from pathlib import Path
+
+from openpyxl import load_workbook
+
+HEADERS = [
+    "external_id", "type", "stem", "option_a", "option_b", "option_c",
+    "option_d", "option_e", "option_f", "option_g", "option_h", "option_i", "option_j", "answer", "score", "explanation",
+    "tags", "difficulty", "image_urls"
+]
+TYPE_MAP = {
+    "单选题": "single",
+    "多选题": "multi",
+    "判断题": "judge",
+    "填空题": "fill",
+    "问答题": "qa",
+    "问答题(人工判分)": "qa",
+}
+
+
+def clean(value):
+    return str(value or "").replace("\r\n", "\n").strip()
+
+
+def parse_fill_answer(value):
+    groups = re.findall(r"\[([^\]]+)\]", clean(value))
+    if not groups:
+        return [clean(value)] if clean(value) else []
+    choices = []
+    for group in groups:
+        choices.append([item.strip() for item in group.split("|") if item.strip()])
+    # 当前前端是单个文本框；多空题先以完整答案别名输出，并打待复核标签。
+    combined = ["、".join(items) for items in __import__("itertools").product(*choices)]
+    return list(dict.fromkeys(combined))
+
+
+def iter_source_rows(path):
+    worksheet = load_workbook(path, data_only=True).active
+    header_row = 1 if "萃取原理" in path.name else 2
+    for row_number, row in enumerate(worksheet.iter_rows(min_row=header_row + 1, values_only=True), header_row + 1):
+        values = list(row) + [None] * (15 - len(row))
+        if not clean(values[0]) or not clean(values[1]):
+            continue
+        yield row_number, values
+
+
+def build_question(row_number, values, exam_key, score_override=None):
+    raw_type, stem, raw_answer, explanation, source_score = values[:5]
+    type_name = TYPE_MAP.get(clean(raw_type))
+    if not type_name:
+        raise ValueError(f"第 {row_number} 行题型不受支持：{raw_type}")
+    options = [clean(item) for item in values[5:15]]
+    options = options[: max([index for index, item in enumerate(options) if item] + [-1]) + 1]
+    tags = [exam_key, f"source-row:{row_number}"]
+    if exam_key == "extraction" and row_number in (18, 19):
+        tags.append("needs-review:image-options")
+    answer = ""
+    if type_name == "judge":
+        options = ["正确", "错误"]
+        answer = clean(raw_answer)
+    elif type_name == "multi":
+        answer = clean(raw_answer)
+    elif type_name == "single":
+        answer = clean(raw_answer)
+    elif type_name == "fill":
+        aliases = parse_fill_answer(raw_answer)
+        answer = "|".join(aliases)
+        if len(re.findall(r"\[[^\]]+\]", clean(raw_answer))) > 1:
+            tags.append("needs-review:multi-blank")
+    elif type_name == "qa":
+        answer = ""
+        tags.append("manual-grading")
+
+    score = float(score_override if score_override is not None else (clean(source_score) or 0))
+    if score.is_integer():
+        score = int(score)
+    return {
+        "external_id": f"{exam_key}-{row_number:03d}",
+        "type": type_name,
+        "stem": clean(stem),
+        **{f"option_{chr(97 + index)}": value for index, value in enumerate(options)},
+        "answer": answer,
+        "score": score,
+        "explanation": clean(explanation),
+        "tags": "|".join(tags),
+        "difficulty": "",
+        "image_urls": "",
+    }
+
+
+def write_csv(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=HEADERS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def generate(source_dir, output_dir):
+    configs = [
+        ("萃取原理-题库-8d83633f-9faf-440d-83d4-475ae59dbc21.xlsx", "extraction", {"single": 2, "multi": 3, "judge": 2, "fill": 2, "qa": 2.5}, None),
+        ("消防基础知识考试.xlsx", "fire", None, None),
+        ("IT基础考试.xlsx", "it", None, "operation"),
+    ]
+    results = []
+    for filename, exam_key, score_map, excluded in configs:
+        rows = []
+        for row_number, values in iter_source_rows(source_dir / filename):
+            stem = clean(values[1])
+            if excluded and "操作题" in stem:
+                continue
+            override = score_map.get(TYPE_MAP.get(clean(values[0]))) if score_map else None
+            rows.append(build_question(row_number, values, exam_key, override))
+        output = output_dir / f"{exam_key}-questions.csv"
+        write_csv(output, rows)
+        results.append((exam_key, len(rows), sum(float(row["score"]) for row in rows), output))
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    args = parser.parse_args()
+    for key, count, total, path in generate(args.source_dir, args.output_dir):
+        print(f"{key}: {count} 题，总分 {total:g}，输出 {path}")
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,7 @@
 模板位于 [question-import-template.csv](templates/question-import-template.csv)。固定表头如下：
 
 ```text
-external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,answer,score,explanation,tags,difficulty,image_urls
+external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,option_g,option_h,option_i,option_j,answer,score,explanation,tags,difficulty,image_urls
 ```
 
 - `type` 仅允许 `single`、`multi`、`judge`、`fill`、`qa`。
