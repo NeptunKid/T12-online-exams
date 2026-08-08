@@ -1,0 +1,59 @@
+﻿external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,option_g,option_h,option_i,option_j,answer,score,explanation,tags,difficulty,image_urls
+extraction-002,qa,在浓缩咖啡的萃取中，随着研磨度不断调细，萃取率会不断升高吗？为什么？,,,,,,,,,,,,2.5,"1. 不会，萃取率有一个最高值，不会超过总可溶物含量。
+2.研磨度细到一定程度， 就会阻碍水的通过，在咖啡粉层中形成“微通道”，使得咖啡萃取不均匀，萃取率急剧下降。",extraction|source-row:2|manual-grading,,
+extraction-003,multi,下列哪些方式可以提升萃取均匀度？,增加填压力度,保证填压完全平整,使用水流分布更均匀的分水网和粉碗,不使用各种有明显不同溶解率的拼配,使用不怎么产生结块的磨豆机,增加磕粉次数,填压前均匀布粉，像刚修整完的草坪一样平,使用平底粉锤,,,B|C|D|E|G,3,,extraction|source-row:3,,
+extraction-004,multi,在保持其他参数不变的前提下，下列哪些方法可以提升一杯咖啡的萃取率？,调细研磨度,提高水温,增加液重,提升萃取均匀度,提高萃取压力,降低萃取压力,,,,,A|B|C|D,3,提升压力不一定提升萃取率。,extraction|source-row:4,,
+extraction-005,judge,在BH的框架中，要调整浓缩咖啡的风味走向时，可以用改变粉重的方法。,正确,错误,,,,,,,,,B,2,不要通过改变粉重去调整风味！！！,extraction|source-row:5,,
+extraction-006,multi,浓缩咖啡尝起来又酸又涩，可以________,调细研磨度,调粗研磨度,减少液重,增加液重,增加粉重,,,,,,A|D,3,,extraction|source-row:6,,
+extraction-007,single,咖啡豆中的各类可溶物中，按照溶解率排序，由快到慢分别是：,酸和有机盐 > 糖类 > 大分子,酸和有机盐 > 大分子  > 糖类,糖类  >  大分子  >  酸和有机盐,糖类  >   酸和有机盐 >   大分子,,,,,,,A,2,,extraction|source-row:7,,
+extraction-008,qa,在调试浓缩萃取方案时，是否可以通过调整填压力度来改变萃取时间？为什么？,,,,,,,,,,,,2.5,"不可以。
+真正能改变萃取率的是研磨度，即研磨颗粒大小。填压是把粉和粉之间的空气挤掉而已，并不能改变研磨颗粒大小，咖啡粉是固体颗粒，有最大密度，当粉锤停止移动时，即是最大密度。再大的力气只会伤及关节，长期则发展为劳损。",extraction|source-row:8|manual-grading,,
+extraction-009,fill,你用16g咖啡粉制作了一杯手冲咖啡，咖啡液总重为240g，冲煮完成后，你测量了一下这杯咖啡的浓度为1.2%，那么可以得知，它的萃取率为[]。,,,,,,,,,,,18%|18,2,,extraction|source-row:9,,
+extraction-010,qa,萃取不均匀的咖啡，其感官表现是怎样的？为什么会有这样的感官表现？,,,,,,,,,,,,2.5,"感官表现：又酸又苦、口感单薄、风味不清晰。
+原因：咖啡粉部分萃取不足，部分萃取过度。",extraction|source-row:10|manual-grading,,
+extraction-011,multi,调整下列哪个变量，可以同时提高/降低萃取率和浓度？,萃取均匀度,水温,液重,粉重,研磨度,萃取时间,萃取压力,,,,A|B|E,3,,extraction|source-row:11,,
+extraction-012,multi,下列哪些萃取方式属于加压式萃取？,爱乐压,法压壶,虹吸壶,摩卡壶,意式咖啡机,,,,,,A|C|D|E,3,"法压壶：浸泡式萃取
+虹吸壶：在最后下水的阶段，下壶中会产生负压，将咖啡液吸入下壶。",extraction|source-row:12,,
+extraction-013,judge,同样的咖啡豆，研磨度越细，咖啡粉总表面积越大，水通过时的萃取效率越高。,正确,错误,,,,,,,,,A,2,研磨越细，萃取时咖啡粉与水的接触面积越大，萃取效率越高。,extraction|source-row:13,,
+extraction-014,multi,在BH的浓缩调试框架中，浓缩咖啡的萃取方案主要由哪几个参数构成？,萃取时间,液重,水温,压力,研磨度,粉重,,,,,A|B|F,3,,extraction|source-row:14,,
+extraction-015,multi,在保持其他参数不变的前提下，下列哪些方法可以提升浓缩咖啡的浓度？,调细研磨度,提高水温,减少水量,增加液重,增加粉量,降低压力,增加萃取均匀度,,,,A|B|C|E|G,3,,extraction|source-row:15,,
+extraction-016,single,在调试浓缩咖啡的萃取方案时，一杯浓缩的感官表现可以作为调试参考的前提条件是什么？,流速落在正常范围,液重和原有参数一样,粉重原有参数一样,萃取时间和原有参数一样,萃取过程均匀,,,,,,E,2,,extraction|source-row:16,,
+extraction-017,judge,在浓缩咖啡的萃取中，液重越多，萃取率和浓度越高。,正确,错误,,,,,,,,,B,2,,extraction|source-row:17,,
+extraction-018,single,在一杯咖啡的萃取全过程中，如果用横轴代表萃取时间，纵轴代表这杯咖啡的浓度，以下哪张图表是符合浓度的变化规律的？,,,,,,,,,,,C,2,,extraction|source-row:18|needs-review:image-options,,
+extraction-019,single,在一杯咖啡的萃取全过程中，如果用横轴代表萃取时间，纵轴代表萃取率，以下哪张图表是符合萃取率的变化规律的？,,,,,,,,,,,D,2,,extraction|source-row:19|needs-review:image-options,,
+extraction-020,qa,在制定浓缩咖啡的萃取方案时，为什么说液重的本质是折衷？,,,,,,,,,,,,2.5,"确定液重，就是选择一个平衡萃取率和浓度的折衷方案
+–液重越大，萃取率越高，浓度越低。
+–液重越小，萃取率越低，浓度越高",extraction|source-row:20|manual-grading,,
+extraction-021,judge,在制定浓缩咖啡的萃取方案时，保持粉重的一致性非常重要，能够让你更加容易调整变量和理解咖啡。,正确,错误,,,,,,,,,A,2,,extraction|source-row:21,,
+extraction-022,judge,制定浓缩咖啡萃取方案时，粉量越大，风味物质越多，因此粉量越大越好。,正确,错误,,,,,,,,,B,2,"1. 粉饼厚度不能碰到分水网。
+2. 过大的粉量只会带来效率更低、更不均匀的萃取。",extraction|source-row:22,,
+extraction-023,fill,确定浓缩咖啡的粉量时，建议使用与粉碗标定值相差不超过[]克的粉重。,,,,,,,,,,,2|二|两,2,,extraction|source-row:23,,
+extraction-024,qa,影响一杯咖啡好坏的三个最重要的因素是什么？,,,,,,,,,,,,2.5,"1. 生豆基本品质（无瑕疵、杯测82分以上、正常的含水率和
+水活性）
+2.烘焙（发展良好、均匀、最低程度的干馏物）
+3.水（干净、与烘焙风格/烘焙度相匹配的矿物质含量和碱度）",extraction|source-row:24|manual-grading,,
+extraction-025,qa,萃取理想的咖啡，在感官上会有什么表现？,,,,,,,,,,,,2.5,"■甜和成熟感 Sweet and Ripe
+■干净度和透明度 Clarity and Transparency
+■好的酸质 Acidity
+■余韵悠长 Finish for Days",extraction|source-row:25|manual-grading,,
+extraction-026,judge,高品质的咖啡豆在萃取过度时不会出现苦涩等负面味道和口感。,正确,错误,,,,,,,,,B,2,无论什么品质的咖啡豆，萃取过度带来的负面味道是普适的。,extraction|source-row:26,,
+extraction-027,multi,萃取不足的表现有哪些？,不愉悦的酸,苦,咸,甜感不足,空洞,余韵短促,干涩,,,,A|C|D|F,3,,extraction|source-row:27,,
+extraction-028,multi,萃取过度的表现有哪些？,不愉悦的酸,苦,咸,甜感不足,空洞和乏味,余韵短促,干涩,,,,B|E|G,3,,extraction|source-row:28,,
+extraction-029,multi,影响Espresso萃取时间的主要因素有哪些？,水泵压力,冲煮头出水量,研磨度,粉碗,,,,,,,A|B|C|D,3,,extraction|source-row:29,,
+extraction-030,qa,请简述：什么是萃取率？,,,,,,,,,,,,2.5,,extraction|source-row:30|manual-grading,,
+extraction-031,judge,确定萃取参数后，日常运营可以通过改变填压力度改变萃取时间，调整咖啡风味。,正确,错误,,,,,,,,,B,2,真正能改变萃取率的是研磨度，即研磨颗粒大小。填压是把粉和粉之间的空气挤掉而已，并不能改变研磨颗粒大小，咖啡粉是固体颗粒，有最大密度，当粉锤停止移动时，即是最大密度。再大的力气只会伤及关节，长期则发展为劳损。,extraction|source-row:31,,
+extraction-032,judge,通常来说，萃取率和浓度落在金杯理论区间的咖啡就是好喝的咖啡。,正确,错误,,,,,,,,,B,2,"金杯理论是感官经验的总结，而非科学理论，仅供参考。
+进入金杯区间不代表萃取合适，更不代表一定好喝，应以感官为准。",extraction|source-row:32,,
+extraction-033,single,"在金杯理论的基础上，SCA 建议的滴滤咖啡最佳TDS区间为_______，浓缩咖啡的最佳
+ TDS 区间为_______。",8%~11%，1.15%-1.45%,1.2%-1.35% ， 6%~8%,6%~8%，1.2%-1.35%,1.15%-1.45% ， 8%~11%,,,,,,,D,2,,extraction|source-row:33,,
+extraction-034,single,金杯理论表明，在________的萃取率区间内容易得到平衡的风味。,18%~22%,16%～18%,22%～28%,12%～16%,,,,,,,A,2,,extraction|source-row:34,,
+extraction-035,judge,咖啡的浓度越高，风味越强烈，也就越容易被感知到。,正确,错误,,,,,,,,,B,2,味蕾很难辨别高浓度的液体，浓度过高时无法正确做出品鉴判断。,extraction|source-row:35,,
+extraction-036,single,在BH的浓缩调试框架中，____的调整属于粗调，____的调整属于微调。,粉重 液重,粉重 研磨度,液重 萃取时间,萃取时间 液重,,,,,,,C,2,,extraction|source-row:36,,
+extraction-037,judge,咖啡豆中的纤维素会被水带到咖啡中，构成萃取物的一部分。,正确,错误,,,,,,,,,B,2,纤维素不溶于水，不属于萃取物。,extraction|source-row:37,,
+extraction-038,judge,对于一杯咖啡而言，其浓度是一个确定的数字，可以通过测量和计算获得。,正确,错误,,,,,,,,,A,2,浓度是一个客观数值，唯一且确定,extraction|source-row:38,,
+extraction-039,multi,合适的填压压力应该是_____。,填压至粉锤停止向下移动,每次都一致,让粉床到达最大密度,保证以上前提条件下，尽可能地小,,,,,,,A|B|C|D,3,,extraction|source-row:39,,
+extraction-040,single,咖啡豆中大约含有多少可溶物？,18%,30%,22%,2%,,,,,,,B,2,烘焙好的咖啡豆中含有约30%（以重量计）的可溶物,extraction|source-row:40,,
+extraction-041,single,浓缩咖啡尝起来又苦又涩，可以________,增加粉量,减少液重,增加液重,调细研磨度,,,,,,,B,2,,extraction|source-row:41,,
+extraction-042,qa,为什么在咖啡萃取的过程中要追求均匀？萃取均匀对浓度和萃取率有什么影响？,,,,,,,,,,,,2.5,,extraction|source-row:42|manual-grading,,
+extraction-043,judge,改变粉重是调整萃取时间的一种方法。,正确,错误,,,,,,,,,B,2,不要通过改变粉重去调整萃取时间！！！,extraction|source-row:43,,
+extraction-044,single,按照BH的浓缩调试框架，应该按照以下顺序设定萃取参数：先确定_____，然后确定_____，最后才是_____。,研磨度 粉重 液重,液重 粉重  研磨度,萃取时间 粉重 液重,粉重  液重  萃取时间,,,,,,,D,2,,extraction|source-row:44,,
