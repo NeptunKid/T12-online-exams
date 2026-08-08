@@ -48,6 +48,14 @@ sudo chown -R codexdeploy:codexdeploy /opt/t12-online-exams
 sudo -u codexdeploy git -C /opt/t12-online-exams pull --ff-only origin main
 ```
 
+如果执行 `install .../deploy/...: No such file or directory`，说明 `/opt` 目录不是最新仓库。请在**阿里云 Workbench**先执行：
+
+```bash
+sudo test -f /opt/t12-online-exams/deploy/Caddyfile && echo "部署文件已存在" || echo "请先按上面的首次部署命令重新 clone"
+```
+
+不要从 `/tmp/t12-online-exams` 直接启动生产服务；`/tmp` 只用于临时拉取代码，systemd 固定使用 `/opt/t12-online-exams`。
+
 不要将本机 `.env`、`data/submissions.json` 或备份复制到 Git 工作树。生产答卷已在 PostgreSQL 中，应用目录只保留代码和静态资源。
 
 ## 4. 写入生产环境变量
@@ -119,6 +127,14 @@ sudo systemctl status --no-pager caddy
 ```
 
 预期：Caddy 为 `exam.t12group.com` 申请证书，并将 HTTPS 请求反代至 Node。若 Cloudflare 使用橙色云，证书申请仍需确保阿里云安全组和服务器防火墙允许 `80/443`。
+
+如果日志仍提示 `server is listening only on the HTTP port`，请检查：
+
+```bash
+sudo sed -n '1,80p' /etc/caddy/Caddyfile
+```
+
+第一行必须是 `exam.t12group.com {`，不能是旧的 `:80 {` 或空白占位配置。
 
 ## 7. 验证
 
