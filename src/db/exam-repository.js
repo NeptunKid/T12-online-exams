@@ -85,6 +85,13 @@ function sameAnswer(actual, expected) {
   return actual === expected;
 }
 
+function matchesFillAnswer(actual, expected) {
+  const normalizedActual = String(actual ?? "").trim().toLocaleLowerCase();
+  if (!normalizedActual) return false;
+  const accepted = Array.isArray(expected) ? expected : [expected];
+  return accepted.some((item) => normalizedActual === String(item ?? "").trim().toLocaleLowerCase());
+}
+
 function gradePublishedQuestions(rows, answers) {
   const objectiveDetail = {};
   let objectiveScore = 0;
@@ -97,7 +104,7 @@ function gradePublishedQuestions(rows, answers) {
       continue;
     }
     const expected = row.answer_json;
-    const exact = sameAnswer(answer, expected);
+    const exact = row.type === "fill" ? matchesFillAnswer(answer, expected) : sameAnswer(answer, expected);
     const partial = row.type === "multi" && Array.isArray(answer) && Array.isArray(expected)
       && answer.length > 0 && answer.every((item) => expected.includes(item));
     const earned = exact ? score : partial ? score / 2 : 0;

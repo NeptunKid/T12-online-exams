@@ -12,6 +12,7 @@ const typeLabels = {
   single: "单选题",
   multi: "多选题",
   judge: "判断题",
+  fill: "填空题",
   qa: "问答题"
 };
 
@@ -19,6 +20,7 @@ const typeTips = {
   single: "每题只有一个正确答案",
   multi: "漏选得一半分，错选不得分",
   judge: "请选择正确或错误",
+  fill: "请输入答案，系统会先自动判分",
   qa: "阅卷人后台评分"
 };
 
@@ -283,7 +285,7 @@ function renderExam() {
     return acc;
   }, {});
 
-  form.innerHTML = ["single", "multi", "judge", "qa"].map((type) => {
+  form.innerHTML = ["single", "multi", "judge", "fill", "qa"].map((type) => {
     const questions = grouped[type] || [];
     if (!questions.length) return "";
     return `
@@ -305,7 +307,7 @@ function renderQuestion(q, no) {
   const inputName = `q_${q.id}`;
   let answerHtml = "";
 
-  if (q.type === "qa") {
+  if (["fill", "qa"].includes(q.type)) {
     answerHtml = `<div class="qa-box"><textarea id="answer_${q.id}" name="${inputName}" placeholder="请在此作答"></textarea></div>`;
   } else {
     const inputType = q.type === "multi" ? "checkbox" : "radio";
@@ -329,7 +331,7 @@ function collectAnswers() {
   for (const q of exam.questions) {
     const name = `q_${q.id}`;
     if (q.type === "multi") answers[q.id] = Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
-    else if (q.type === "qa") answers[q.id] = document.querySelector(`[name="${name}"]`)?.value.trim() || "";
+    else if (["fill", "qa"].includes(q.type)) answers[q.id] = document.querySelector(`[name="${name}"]`)?.value.trim() || "";
     else answers[q.id] = document.querySelector(`input[name="${name}"]:checked`)?.value || "";
   }
   return answers;
