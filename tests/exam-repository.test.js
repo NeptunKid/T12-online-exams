@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createSubmission, getPublishedExam, getStudentSubmission, gradePublishedQuestions, listPublishedExams, listStudentSubmissions } = require("../src/db/exam-repository");
+const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, gradePublishedQuestions, listPublishedExams, listStudentSubmissions } = require("../src/db/exam-repository");
 
 test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async () => {
   const queries = [];
@@ -79,4 +79,20 @@ test("考生答卷详情剔除历史快照中的标准答案和解析", async ()
   assert.equal(Object.hasOwn(detail.questions[0], "answer"), false);
   assert.equal(Object.hasOwn(detail.questions[0], "explanation"), false);
   assert.equal(queries[0].includes("$2"), true);
+});
+
+test("考生工作台映射授权考试和补考状态", async () => {
+  let call = 0;
+  const pool = {
+    query: async (sql) => {
+      call += 1;
+      if (call === 1) return { rows: [{ id: "exam-1", title: "测试考试", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1, completed_attempts: "1", awaiting_grade: false, remaining_extra_attempts: "0" }] };
+      return { rows: [{ id: "s-1", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "graded", objective_score: "80", qa_score: "0", total_score: "80", pass: true, pass_score: "60", attempt_no: 1, graded_at: null, grader_name: "" }] };
+    }
+  };
+  const dashboard = await getStudentDashboard(pool, "u1");
+  assert.equal(dashboard.exams[0].duration, 10);
+  assert.equal(dashboard.exams[0].attempt.attemptNo, 2);
+  assert.equal(dashboard.exams[0].attempt.available, true);
+  assert.equal(dashboard.submissions.length, 1);
 });

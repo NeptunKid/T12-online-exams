@@ -230,6 +230,56 @@ async function listStudentSubmissions(pool, unionId) {
   return result.rows.map(mapStudentSubmission);
 }
 
+async function getStudentDashboard(pool, unionId) {
+  const examResult = await pool.query(`
+    WITH current_identity AS (
+      SELECT ui.user_id
+      FROM user_identities ui
+      WHERE ui.union_id = $1
+        AND ui.provider IN ('dingtalk', 'legacy')
+      ORDER BY (ui.provider = 'dingtalk') DESC, ui.created_at
+      LIMIT 1
+    )
+    SELECT e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version,
+      COUNT(s.id)::integer AS completed_attempts,
+      COALESCE(bool_or(s.status = 'pending'), false) AS awaiting_grade,
+      COALESCE(rp.remaining_count, 0)::integer AS remaining_extra_attempts
+    FROM exams e
+    JOIN exam_assignments ea ON ea.exam_id = e.id AND ea.subject_type = 'user'
+    JOIN current_identity ci ON ci.user_id = ea.subject_id
+    LEFT JOIN submissions s ON s.exam_id = e.id AND s.user_id = ci.user_id
+    LEFT JOIN retake_permissions rp ON rp.exam_id = e.id AND rp.user_id = ci.user_id
+    WHERE e.status IN ('scheduled', 'published', 'paused')
+      AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
+      AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
+    GROUP BY e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version, rp.remaining_count
+    ORDER BY e.created_at, e.id;`, [unionId]);
+
+  const exams = examResult.rows.map((row) => {
+    const completedAttempts = Number(row.completed_attempts);
+    const awaitingGrade = Boolean(row.awaiting_grade);
+    const remainingExtraAttempts = Number(row.remaining_extra_attempts);
+    const attemptNo = completedAttempts + 1;
+    const available = !awaitingGrade && (attemptNo <= 2 || remainingExtraAttempts > 0);
+    let message = "本次为首次考核。";
+    if (awaitingGrade) message = "上一份答卷正在阅卷，阅卷完成后才能参加补考。";
+    else if (attemptNo === 2) message = "本次为一次免费补考。";
+    else if (available) message = `管理员已额外开放补考，本次为第 ${attemptNo} 次考核。`;
+    else message = "已完成可用考核次数，请联系管理员开放额外补考权限。";
+    return {
+      id: row.id,
+      title: row.title,
+      duration: Number(row.duration_seconds) / 60,
+      totalScore: Number(row.total_score),
+      passScore: Number(row.pass_score),
+      version: Number(row.version),
+      studyStatus: "学习资料待配置",
+      attempt: { attemptNo, completedAttempts, available, awaitingGrade, remainingExtraAttempts, message }
+    };
+  });
+  return { exams, submissions: await listStudentSubmissions(pool, unionId) };
+}
+
 function mapStudentQuestion(row, graded) {
   const snapshot = row.snapshot_json || {};
   return {
@@ -268,6 +318,7 @@ async function getStudentSubmission(pool, submissionId, unionId) {
 
 module.exports = {
   createSubmission,
+  getStudentDashboard,
   getPublishedExam,
   getStudentSubmission,
   gradePublishedQuestions,
