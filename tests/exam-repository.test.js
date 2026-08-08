@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createSubmission, getPublishedExam, gradePublishedQuestions, listPublishedExams } = require("../src/db/exam-repository");
+const { createSubmission, getPublishedExam, getStudentSubmission, gradePublishedQuestions, listPublishedExams, listStudentSubmissions } = require("../src/db/exam-repository");
 
 test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async () => {
   const queries = [];
@@ -55,4 +55,28 @@ test("发布考试客观题评分兼容多选漏选半分", () => {
   ], { "q-1": ["A"] });
   assert.equal(result.objectiveScore, 10);
   assert.equal(result.objectiveDetail["q-1"].automaticEarned, 10);
+});
+
+test("考生答卷列表按身份过滤并映射分数", async () => {
+  const pool = {
+    query: async () => ({ rows: [{ id: "s-1", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "graded", objective_score: "80", qa_score: "0", total_score: "80", pass: true, pass_score: "60", attempt_no: 1, graded_at: "2026-08-08T01:00:00Z", grader_name: "阅卷人" }] })
+  };
+  const submissions = await listStudentSubmissions(pool, "u1");
+  assert.deepEqual(submissions[0], { id: "s-1", examId: "exam-1", examTitle: "测试考试", submittedAt: "2026-08-08T00:00:00Z", status: "graded", objectiveScore: 80, qaScore: 0, totalScore: 80, pass: true, passScore: 60, attemptNo: 1, gradedAt: "2026-08-08T01:00:00Z", graderName: "阅卷人" });
+});
+
+test("考生答卷详情剔除历史快照中的标准答案和解析", async () => {
+  const queries = [];
+  const pool = {
+    query: async (sql) => {
+      queries.push(sql);
+      if (sql.includes("FROM submissions s")) return { rows: [{ id: "s-1", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "graded", objective_score: "80", qa_score: "0", total_score: "80", pass: true, pass_score: "60", attempt_no: 1, graded_at: null, grader_name: "" }] };
+      return { rows: [{ question_id: "q-1", position: 1, snapshot_json: { id: "q-1", type: "single", stem: "题目", options: [], answer: "A", explanation: "解析", score: 80 }, answer_json: "B", earned_score: "0", automatic_score: "0", manually_adjusted: false }] };
+    }
+  };
+  const detail = await getStudentSubmission(pool, "s-1", "u1");
+  assert.equal(detail.questions[0].submittedAnswer, "B");
+  assert.equal(Object.hasOwn(detail.questions[0], "answer"), false);
+  assert.equal(Object.hasOwn(detail.questions[0], "explanation"), false);
+  assert.equal(queries[0].includes("$2"), true);
 });

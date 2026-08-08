@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
-const { createSubmission, getPublishedExam, listPublishedExams } = require("./src/db/exam-repository");
+const { createSubmission, getPublishedExam, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -449,6 +449,33 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool, user.unionId) });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
+    }
+  }
+
+  if (req.method === "GET" && pathname === "/api/exams/submissions") {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
+    try {
+      return json(res, 200, { source: "postgres", submissions: await listStudentSubmissions(pool, user.unionId) });
+    } catch (_) {
+      return json(res, 503, { error: "答卷数据库暂不可用" });
+    }
+  }
+
+  const studentSubmissionMatch = pathname.match(/^\/api\/exams\/submissions\/([^/]+)$/);
+  if (req.method === "GET" && studentSubmissionMatch) {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
+    try {
+      const detail = await getStudentSubmission(pool, decodeURIComponent(studentSubmissionMatch[1]), user.unionId);
+      if (!detail) return json(res, 404, { error: "未找到该答卷" });
+      return json(res, 200, { source: "postgres", ...detail });
+    } catch (_) {
+      return json(res, 503, { error: "答卷数据库暂不可用" });
     }
   }
 

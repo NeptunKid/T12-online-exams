@@ -192,5 +192,89 @@ async function createSubmission(pool, examId, unionId, input = {}) {
   }
 }
 
-module.exports = { createSubmission, getPublishedExam, listPublishedExams, mapExam, mapQuestion, gradePublishedQuestions };
+function mapStudentSubmission(row) {
+  return {
+    id: row.id,
+    examId: row.exam_id,
+    examTitle: row.exam_title,
+    submittedAt: row.submitted_at,
+    status: row.status,
+    objectiveScore: Number(row.objective_score),
+    qaScore: Number(row.qa_score),
+    totalScore: row.total_score === null ? null : Number(row.total_score),
+    pass: row.pass,
+    passScore: Number(row.pass_score),
+    attemptNo: Number(row.attempt_no),
+    gradedAt: row.graded_at,
+    graderName: row.grader_name || ""
+  };
+}
+
+const STUDENT_IDENTITY_FILTER = `
+      EXISTS (
+        SELECT 1 FROM user_identities ui
+        WHERE ui.user_id = s.user_id
+          AND ui.union_id = $1
+          AND ui.provider IN ('dingtalk', 'legacy')
+      )`;
+
+async function listStudentSubmissions(pool, unionId) {
+  const result = await pool.query(`
+    SELECT s.id, s.exam_id, e.title AS exam_title, s.submitted_at, s.status,
+      s.objective_score, s.qa_score, s.total_score, s.pass, s.pass_score,
+      s.attempt_no, s.graded_at, s.grader_name
+    FROM submissions s
+    JOIN exams e ON e.id = s.exam_id
+    WHERE ${STUDENT_IDENTITY_FILTER}
+    ORDER BY s.submitted_at DESC, s.id DESC;`, [unionId]);
+  return result.rows.map(mapStudentSubmission);
+}
+
+function mapStudentQuestion(row, graded) {
+  const snapshot = row.snapshot_json || {};
+  return {
+    id: row.question_id || snapshot.id || null,
+    no: Number(row.position),
+    type: snapshot.type || "",
+    stem: snapshot.stem || "",
+    options: snapshot.options || [],
+    score: Number(snapshot.score || 0),
+    submittedAnswer: row.answer_json,
+    ...(graded ? { earnedScore: Number(row.earned_score), automaticScore: row.automatic_score === null ? null : Number(row.automatic_score), manuallyAdjusted: Boolean(row.manually_adjusted) } : {})
+  };
+}
+
+async function getStudentSubmission(pool, submissionId, unionId) {
+  const submissionResult = await pool.query(`
+    SELECT s.id, s.exam_id, e.title AS exam_title, s.submitted_at, s.status,
+      s.objective_score, s.qa_score, s.total_score, s.pass, s.pass_score,
+      s.attempt_no, s.graded_at, s.grader_name
+    FROM submissions s
+    JOIN exams e ON e.id = s.exam_id
+    WHERE s.id = $1 AND ${STUDENT_IDENTITY_FILTER.replace('$1', '$2')};`, [submissionId, unionId]);
+  if (!submissionResult.rows.length) return null;
+  const submission = mapStudentSubmission(submissionResult.rows[0]);
+  const questionsResult = await pool.query(`
+    SELECT question_id, position, snapshot_json, answer_json, earned_score,
+      automatic_score, manually_adjusted
+    FROM submission_questions
+    WHERE submission_id = $1
+    ORDER BY position;`, [submissionId]);
+  return {
+    submission,
+    questions: questionsResult.rows.map((row) => mapStudentQuestion(row, submission.status === "graded"))
+  };
+}
+
+module.exports = {
+  createSubmission,
+  getPublishedExam,
+  getStudentSubmission,
+  gradePublishedQuestions,
+  listPublishedExams,
+  listStudentSubmissions,
+  mapExam,
+  mapQuestion,
+  mapStudentSubmission
+};
 const crypto = require("node:crypto");
