@@ -104,6 +104,7 @@ sudo chmod 640 /etc/t12-online-exams/t12-online-exams.env
 ```bash
 sudo -u codexdeploy bash -lc 'cd /opt/t12-online-exams && npm ci --omit=dev'
 sudo -u codexdeploy env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env bash -lc 'cd /opt/t12-online-exams && npm run migrate'
+sudo install -d -o codexdeploy -g codexdeploy -m 750 /opt/t12-online-exams/data
 sudo install -m 644 /opt/t12-online-exams/deploy/t12-exams.service /etc/systemd/system/t12-exams.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now t12-exams
