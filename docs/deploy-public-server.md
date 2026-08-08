@@ -126,7 +126,17 @@ sudo systemctl reload caddy
 sudo systemctl status --no-pager caddy
 ```
 
-预期：Caddy 为 `exam.t12group.com` 申请证书，并将 HTTPS 请求反代至 Node。若 Cloudflare 使用橙色云，证书申请仍需确保阿里云安全组和服务器防火墙允许 `80/443`。
+预期：Caddy 为 `exam.t12group.com` 申请证书，并将 HTTPS 请求反代至 Node。访问日志写入 systemd journal，不再依赖 `/var/log/caddy` 文件权限。若 Cloudflare 使用橙色云，证书申请仍需确保阿里云安全组和服务器防火墙允许 `80/443`。
+
+如果 `caddy validate` 成功但 `systemctl enable --now caddy` 失败，请先在**阿里云 Workbench**执行只读诊断，不要重复启动：
+
+```bash
+sudo systemctl status --no-pager -l caddy
+sudo journalctl -u caddy -n 80 --no-pager
+sudo ss -ltnp | grep -E ':(80|443)\\b' || true
+```
+
+重点查看是否出现 `address already in use`（端口被占用）或 `permission denied`（日志目录权限不足）。
 
 如果日志仍提示 `server is listening only on the HTTP port`，请检查：
 
