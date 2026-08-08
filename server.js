@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
-const { getPublishedExam, listPublishedExams } = require("./src/db/exam-repository");
+const { createSubmission, getPublishedExam, listPublishedExams } = require("./src/db/exam-repository");
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -449,6 +449,22 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool, user.unionId) });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
+    }
+  }
+
+  const submissionMatch = pathname.match(/^\/api\/exams\/([^/]+)\/submissions$/);
+  if (req.method === "POST" && submissionMatch) {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
+    try {
+      const body = await readBody(req);
+      const submission = await createSubmission(pool, decodeURIComponent(submissionMatch[1]), user.unionId, body);
+      if (!submission) return json(res, 404, { error: "未找到已授权的已发布考试" });
+      return json(res, 201, { source: "postgres", submission });
+    } catch (_) {
+      return json(res, 400, { error: "答卷提交失败" });
     }
   }
 
