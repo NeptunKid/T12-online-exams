@@ -6,3 +6,4 @@
 2026-08-08 [Codex] 公网验收完成：`/healthz`、`/readyz` 和 `https://exam.t12group.com/` 均通过，架构为 Cloudflare -> Caddy -> Node.js -> PostgreSQL。已新增 Phase 2 CSV 题库校验预览（`6fe6b68`）：只读解析、无数据库写入；来源核对得到萃取原理 43 题（无分数列、含填空与 9 张图片）、消防 32 题/100 分、IT 37 题/99 分（需先脱敏）和候选咖啡师招聘笔试 23 题/72 分；“5 个剩余考试”中仍有两份未确认。
 2026-08-08 [Codex] 在 `feature/phase2-csv-preview` 提交 `27e1249`：新增 `fill` 填空题题型、CSV 校验、PostgreSQL `0003_fill_question_type` 迁移、自动判分（答案别名/去首尾空格/不区分大小写）、考生输入框与阅卷人工改分，质量门 34 项测试通过；用户已明确不纳入咖啡师招聘笔试，餐饮法规和咖啡基础各 3 份 PDF 为扫描试卷，待 OCR 与逐题复核。当前推送仍受本机 `ssh.github.com:443` 限制，未重复尝试。
 2026-08-08 [Codex] 复核 PDF OCR：法规 18 页、咖啡 20 页均未生成有效文字；macOS Vision 对所有页面返回 `Failed to create CVPixelBuffer`，因此没有题目/选项/答案可供确认，未写入仓库或题库。
+2026-08-09 [Codex] 在 `feature/phase2-xlsx-question-drafts` 提交 `d90fc7f`：从萃取原理、消防基础、IT 基础 Excel 生成 CSV 审阅稿；分值/时长分别为 101/50 分钟、100/30 分钟、剔除 3 道操作题后 86/30 分钟。消防和 IT CSV 预览通过；萃取第 18、19 题为图表图片选项，因尚未建立受控资源映射而暂不允许提交。CSV 模板扩展到 `option_j`，`npm run check` 34 项通过。
