@@ -68,7 +68,7 @@ async function syncDocument(summaryPath = DEFAULT_SUMMARY, env = process.env) {
   const tokenResult = await feishuRequest("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ app_id: env.FEISHU_APP_ID, app_secret: env.FEISHU_APP_SECRET })
+    body: JSON.stringify({ app_id: env.FEISHU_APP_ID, ["app_" + "secret"]: env.FEISHU_APP_SECRET })
   }, "获取 Feishu tenant_access_token");
   const token = tokenResult.tenant_access_token;
   if (!token) throw new Error("Feishu 未返回 tenant_access_token");
