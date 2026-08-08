@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-08T18:00:26.465Z",
+  "resources": {
+    "resource:extraction-17-a": {
+      "file": "extraction/extraction-17-a.png",
+      "url": "/question-resources/extraction/extraction-17-a.png",
+      "mediaType": "image/png",
+      "bytes": 18914,
+      "sha256": "751e21b16af4f8e76193cef55fa81fb4d846f9d78eb0dfefb7c3d9760f972e55"
+    },
+    "resource:extraction-17-b": {
+      "file": "extraction/extraction-17-b.png",
+      "url": "/question-resources/extraction/extraction-17-b.png",
+      "mediaType": "image/png",
+      "bytes": 21830,
+      "sha256": "28618db32e648a4a8108298a0494101724f51f9c8c6115c66251f517bd66c100"
+    },
+    "resource:extraction-17-c": {
+      "file": "extraction/extraction-17-c.png",
+      "url": "/question-resources/extraction/extraction-17-c.png",
+      "mediaType": "image/png",
+      "bytes": 20874,
+      "sha256": "b6d3cd2fe791896d93e031ffd77e5971d75af10615efa238d880c565eade2431"
+    },
+    "resource:extraction-17-d": {
+      "file": "extraction/extraction-17-d.png",
+      "url": "/question-resources/extraction/extraction-17-d.png",
+      "mediaType": "image/png",
+      "bytes": 18541,
+      "sha256": "ddc8c4b4b48b47c292ed5d479daab5fa4200420dff58901cf5150c53bf3f6551"
+    },
+    "resource:extraction-18-a": {
+      "file": "extraction/extraction-18-a.png",
+      "url": "/question-resources/extraction/extraction-18-a.png",
+      "mediaType": "image/png",
+      "bytes": 20874,
+      "sha256": "b6d3cd2fe791896d93e031ffd77e5971d75af10615efa238d880c565eade2431"
+    },
+    "resource:extraction-18-b": {
+      "file": "extraction/extraction-18-b.png",
+      "url": "/question-resources/extraction/extraction-18-b.png",
+      "mediaType": "image/png",
+      "bytes": 19524,
+      "sha256": "0b514dd778073ccb6f446ce4bf46eef479eb413d2a4c8d39df671056e70ef877"
+    },
+    "resource:extraction-18-c": {
+      "file": "extraction/extraction-18-c.png",
+      "url": "/question-resources/extraction/extraction-18-c.png",
+      "mediaType": "image/png",
+      "bytes": 21830,
+      "sha256": "28618db32e648a4a8108298a0494101724f51f9c8c6115c66251f517bd66c100"
+    },
+    "resource:extraction-18-d": {
+      "file": "extraction/extraction-18-d.png",
+      "url": "/question-resources/extraction/extraction-18-d.png",
+      "mediaType": "image/png",
+      "bytes": 19039,
+      "sha256": "53ddfdf73bf2aa64eaef22eaee689361c50970eba97661d048cddf2200f7b4d4"
+    },
+    "resource:extraction-18-e": {
+      "file": "extraction/extraction-18-e.png",
+      "url": "/question-resources/extraction/extraction-18-e.png",
+      "mediaType": "image/png",
+      "bytes": 18914,
+      "sha256": "751e21b16af4f8e76193cef55fa81fb4d846f9d78eb0dfefb7c3d9760f972e55"
+    }
+  }
+}

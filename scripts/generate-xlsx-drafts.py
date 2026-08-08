@@ -10,7 +10,10 @@ from openpyxl import load_workbook
 
 HEADERS = [
     "external_id", "type", "stem", "option_a", "option_b", "option_c",
-    "option_d", "option_e", "option_f", "option_g", "option_h", "option_i", "option_j", "answer", "score", "explanation",
+    "option_d", "option_e", "option_f", "option_g", "option_h", "option_i", "option_j",
+    "option_image_a", "option_image_b", "option_image_c", "option_image_d", "option_image_e",
+    "option_image_f", "option_image_g", "option_image_h", "option_image_i", "option_image_j",
+    "answer", "score", "explanation",
     "tags", "difficulty", "image_urls"
 ]
 TYPE_MAP = {
@@ -57,8 +60,14 @@ def build_question(row_number, values, exam_key, score_override=None):
     options = [clean(item) for item in values[5:15]]
     options = options[: max([index for index, item in enumerate(options) if item] + [-1]) + 1]
     tags = [exam_key, f"source-row:{row_number}"]
-    if exam_key == "extraction" and row_number in (18, 19):
-        tags.append("needs-review:image-options")
+    question_no = row_number - 1 if exam_key == "extraction" else row_number
+    image_options = {}
+    if exam_key == "extraction" and question_no in (17, 18):
+        image_count = 4 if question_no == 17 else 5
+        image_options = {
+            f"option_image_{chr(97 + index)}": f"resource:extraction-{question_no}-{chr(97 + index)}"
+            for index in range(image_count)
+        }
     answer = ""
     if type_name == "judge":
         options = ["正确", "错误"]
@@ -87,9 +96,10 @@ def build_question(row_number, values, exam_key, score_override=None):
         "answer": answer,
         "score": score,
         "explanation": clean(explanation),
-        "tags": "|".join(tags),
+        "tags": "|".join(tags + ([f"question-no:{question_no}"] if exam_key == "extraction" else [])),
         "difficulty": "",
         "image_urls": "",
+        **image_options,
     }
 
 
