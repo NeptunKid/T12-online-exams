@@ -8,12 +8,18 @@ const {
   validReturnTo,
   getAttemptInfo,
   roleForUnionId,
-  healthStatus
+  healthStatus,
+  matchesFillAnswer
 } = require("../server");
 
 test("答案比较不受多选顺序影响", () => {
   assert.equal(sameAnswer(["B", "A"], ["A", "B"]), true);
   assert.equal(sameAnswer(["A"], ["A", "B"]), false);
+});
+
+test("填空题答案忽略首尾空格和大小写并支持别名", () => {
+  assert.equal(matchesFillAnswer("  Espresso ", ["浓缩咖啡", "espresso"]), true);
+  assert.equal(matchesFillAnswer("拿铁", ["浓缩咖啡", "espresso"]), false);
 });
 
 test("客观题评分覆盖正确、漏选半分和错选零分", () => {

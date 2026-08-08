@@ -11,26 +11,28 @@ function csvRow(values) {
   }).join(",");
 }
 
-test("CSV 预览接受四种标准题型且不产生写入副作用", () => {
+test("CSV 预览接受五种标准题型且不产生写入副作用", () => {
   const csv = [
     HEADER,
     csvRow({ external_id: "q-1", type: "single", stem: "单选题", option_a: "A选项", option_b: "B选项", answer: "A", score: 2, explanation: "解析", tags: "基础", difficulty: "normal" }),
     csvRow({ external_id: "q-2", type: "multi", stem: "多选题", option_a: "A选项", option_b: "B选项", option_c: "C选项", answer: "A|C", score: 3, difficulty: "hard" }),
     csvRow({ external_id: "q-3", type: "judge", stem: "判断题", option_a: "正确", option_b: "错误", answer: "B", score: 1, difficulty: "easy" }),
-    csvRow({ external_id: "q-4", type: "qa", stem: "问答题", score: 5, explanation: "参考答案写在解析", tags: "沟通", difficulty: "hard" })
+    csvRow({ external_id: "q-4", type: "qa", stem: "问答题", score: 5, explanation: "参考答案写在解析", tags: "沟通", difficulty: "hard" }),
+    csvRow({ external_id: "q-5", type: "fill", stem: "填空题", answer: "浓缩咖啡|espresso", score: 2 })
   ].join("\n");
 
   const preview = previewQuestionCsv(csv);
   assert.equal(preview.canCommit, true);
-  assert.equal(preview.validRows, 4);
+  assert.equal(preview.validRows, 5);
   assert.equal(preview.questions[1].answer[1], "C");
   assert.equal(preview.questions[3].answer, null);
+  assert.deepEqual(preview.questions[4].answer, ["浓缩咖啡", "espresso"]);
 });
 
 test("CSV 预览逐行报告题型、分数、选项和重复编号错误", () => {
   const csv = [
     HEADER,
-    "q-1,fill,填空题,甲,,乙,,,,A,2,,,,",
+    "q-1,unsupported,不支持题型,,,,,,,,2,,,,",
     "q-1,single,缺少分数,甲,乙,,,,C,,,,,",
     "q-3,multi,多选题,甲,乙,,,,Z,3,,,,"
   ].join("\n");

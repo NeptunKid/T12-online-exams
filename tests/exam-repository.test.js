@@ -88,6 +88,14 @@ test("发布考试客观题评分兼容多选漏选半分", () => {
   assert.equal(result.objectiveDetail["q-1"].automaticEarned, 10);
 });
 
+test("发布考试填空题自动判分支持答案别名", () => {
+  const result = gradePublishedQuestions([
+    { question_id: "q-fill", type: "fill", answer_json: ["浓缩咖啡", "espresso"], score: "4" }
+  ], { "q-fill": " Espresso " });
+  assert.equal(result.objectiveScore, 4);
+  assert.equal(result.objectiveDetail["q-fill"].automaticEarned, 4);
+});
+
 test("考生答卷列表按身份过滤并映射分数", async () => {
   const pool = {
     query: async () => ({ rows: [{ id: "s-1", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "graded", objective_score: "80", qa_score: "0", total_score: "80", pass: true, pass_score: "60", attempt_no: 1, graded_at: "2026-08-08T01:00:00Z", grader_name: "阅卷人" }] })

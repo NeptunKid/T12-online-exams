@@ -3,7 +3,7 @@ const CSV_HEADERS = [
   "option_f", "answer", "score", "explanation", "tags", "difficulty", "image_urls"
 ];
 
-const QUESTION_TYPES = new Set(["single", "multi", "judge", "qa"]);
+const QUESTION_TYPES = new Set(["single", "multi", "judge", "fill", "qa"]);
 const OPTION_HEADERS = ["option_a", "option_b", "option_c", "option_d", "option_e", "option_f"];
 
 function parseCsv(text) {
@@ -126,10 +126,13 @@ function previewQuestionCsv(text, options = {}) {
       if (!options.length) rowErrors.push(issue(rowNumber, "option_a", "多选题必须提供选项", "至少填写 option_a 和 option_b"));
       if (!answerParts.length) rowErrors.push(issue(rowNumber, "answer", "多选题必须有答案", "用 | 分隔选项字母，例如 A|C"));
     }
-    if (values.type === "qa" && options.length) rowErrors.push(issue(rowNumber, "option_a", "问答题不应包含选项", "清空 option_a 至 option_f"));
+    if (["fill", "qa"].includes(values.type) && options.length) rowErrors.push(issue(rowNumber, "option_a", `${values.type === "fill" ? "填空题" : "问答题"}不应包含选项`, "清空 option_a 至 option_f"));
     if (values.type === "qa" && values.answer) rowErrors.push(issue(rowNumber, "answer", "问答题标准答案不进入考生评分规则", "将参考答案写入 explanation，answer 留空"));
-    for (const answer of answerParts) {
-      if (!labels.has(answer)) rowErrors.push(issue(rowNumber, "answer", `答案 ${answer} 不在选项中`, "确保答案字母存在且使用大写字母"));
+    if (values.type === "fill" && answerParts.length === 0) rowErrors.push(issue(rowNumber, "answer", "填空题至少需要一个标准答案", "多个可接受答案用 | 分隔，例如 浓缩咖啡|espresso"));
+    if (["single", "multi", "judge"].includes(values.type)) {
+      for (const answer of answerParts) {
+        if (!labels.has(answer)) rowErrors.push(issue(rowNumber, "answer", `答案 ${answer} 不在选项中`, "确保答案字母存在且使用大写字母"));
+      }
     }
 
     const imageUrls = parseImageUrls(values.image_urls);
@@ -146,7 +149,7 @@ function previewQuestionCsv(text, options = {}) {
       type: values.type,
       stem: values.stem,
       options,
-      answer: values.type === "multi" ? answerParts : values.type === "qa" ? null : answerParts[0],
+      answer: ["multi", "fill"].includes(values.type) ? answerParts : values.type === "qa" ? null : answerParts[0],
       score,
       explanation: values.explanation,
       tags: values.tags.split("|").map((value) => value.trim()).filter(Boolean),

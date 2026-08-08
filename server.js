@@ -282,6 +282,13 @@ function sameAnswer(a, b) {
   return String(a || "") === String(b || "");
 }
 
+function matchesFillAnswer(actual, expected) {
+  const normalizedActual = String(actual ?? "").trim().toLocaleLowerCase();
+  if (!normalizedActual) return false;
+  const accepted = Array.isArray(expected) ? expected : [expected];
+  return accepted.some((item) => normalizedActual === String(item ?? "").trim().toLocaleLowerCase());
+}
+
 function gradeObjective(answers) {
   const detail = {};
   const summary = {
@@ -316,7 +323,7 @@ function gradeObjective(answers) {
         summary.multiWrong += 1;
       }
     } else {
-      correct = sameAnswer(userAns, q.answer);
+      correct = q.type === "fill" ? matchesFillAnswer(userAns, q.answer) : sameAnswer(userAns, q.answer);
       earned = correct ? q.score : 0;
       if (q.type === "single") summary[correct ? "singleRight" : "singleWrong"] += 1;
       if (q.type === "judge") summary[correct ? "judgeRight" : "judgeWrong"] += 1;
@@ -834,5 +841,6 @@ module.exports = {
   getAttemptInfo,
   roleForUnionId,
   healthStatus,
-  readinessStatus
+  readinessStatus,
+  matchesFillAnswer
 };
