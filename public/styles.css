@@ -363,6 +363,16 @@ select:focus {
   font-weight: 700;
 }
 
+.blank-placeholder {
+  display: inline-block;
+  width: min(7em, 42vw);
+  min-width: 4em;
+  height: 1.05em;
+  margin: 0 0.2em;
+  border-bottom: 2px solid currentColor;
+  vertical-align: baseline;
+}
+
 .score-tag {
   flex: 0 0 auto;
   padding: 2px 9px;
@@ -1026,6 +1036,107 @@ select:focus {
   box-shadow: 0 24px 80px rgba(38, 50, 65, 0.22);
 }
 
+.question-dialog {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+
+.question-manager-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.5fr);
+  gap: 18px;
+  min-height: min(620px, calc(100vh - 150px));
+}
+
+.question-manager-list-panel,
+.question-editor {
+  min-width: 0;
+}
+
+.question-manager-list {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 220px);
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.question-list-item {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.question-list-item.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.question-list-stem {
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 700;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.question-editor {
+  max-height: calc(100vh - 180px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.question-editor-form {
+  display: grid;
+  gap: 14px;
+}
+
+.question-editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question-option-editor,
+.question-answer-options {
+  display: grid;
+  gap: 8px;
+}
+
+.question-option-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.question-option-label {
+  padding-top: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.question-answer-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.question-save-row {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 2px;
+  background: var(--panel);
+}
+
 .admin-dialog::backdrop {
   background: rgba(38, 50, 65, 0.48);
 }
@@ -1324,6 +1435,18 @@ select:focus {
   .admin-user-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .question-manager-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .question-manager-list {
+    max-height: 220px;
+  }
+
+  .question-editor {
+    max-height: none;
   }
 
   .admin-user-row .btn {

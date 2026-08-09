@@ -92,7 +92,15 @@ async function ensureBootstrapAdmin(pool, userId) {
 
 async function getAdminAccess(pool, unionId, bootstrapUnionIds = new Set()) {
   const bootstrap = bootstrapUnionIds.has(unionId);
-  if (!pool) return { userId: null, roles: [], canAccess: bootstrap, canManageAdmins: bootstrap };
+  if (!pool) {
+    return {
+      userId: null,
+      roles: [],
+      canAccess: bootstrap,
+      canManageAdmins: bootstrap,
+      canManageQuestions: bootstrap
+    };
+  }
   const result = await pool.query(`
     SELECT u.id,
       COALESCE(array_agg(DISTINCT ur.role_code ORDER BY ur.role_code)
@@ -110,7 +118,8 @@ async function getAdminAccess(pool, unionId, bootstrapUnionIds = new Set()) {
     userId: row?.id || null,
     roles,
     canAccess: bootstrap || roles.some((role) => ACCESS_ROLES.has(role)),
-    canManageAdmins: bootstrap || roles.includes("system_admin")
+    canManageAdmins: bootstrap || roles.includes("system_admin"),
+    canManageQuestions: bootstrap || roles.includes("system_admin") || roles.includes("exam_admin")
   };
 }
 

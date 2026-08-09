@@ -10,3 +10,4 @@
 2026-08-09 [Codex] 修正萃取图表题号：Excel 表头占第 1 行，因此第 17 题使用 `17-A.png` 至 `17-D.png`，第 18 题使用 `18-A.png` 至 `18-E.png`。新增 `public/question-resources/` 受控资源目录及 SHA-256 清单，CSV 增加 `option_image_a` 至 `option_image_j`，PostgreSQL API 和考生页支持受控选项图片；新增事务、幂等的三份题库/考试导入脚本与 Workbench 部署文档。本机质量门 36 项通过；尚未写入生产数据库。
 2026-08-09 [Codex] 在 `feature/admin-role-management` 实现 PostgreSQL 管理员角色管理：钉钉登录登记/关联用户，首位管理员由 `DINGTALK_GRADER_UNION_IDS` 引导，后台可检索已登录钉钉用户并授予/撤销 `grader + system_admin`，权限变更写入 `audit_logs`，禁止自我撤权和移除最后系统管理员；本机质量门 32 项通过，尚未部署生产。
 2026-08-09 [Codex] 已解决 PR #23 与最新 `main` 的 `MEMORY.md`、`package.json` 冲突：保留双方全部进展记录，并合并 Phase 2 与管理员 repository 的语法检查项；合并后质量门 42 项通过。
+2026-08-09 [Codex] 在 `feature/admin-question-editing` 实现管理员会话提前校验、题干 `【】` 下划线显示和 PostgreSQL 已有试题编辑；仅 `exam_admin/system_admin` 可修改题干、选项、参考答案和解析，事务保存时递增题目及引用考试版本并写入审计日志，历史答卷快照保持不变；交卷增加试卷版本校验以避免编辑期间静默错分，完整质量门 64 项测试通过。

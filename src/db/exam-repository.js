@@ -197,6 +197,9 @@ async function createSubmission(pool, examId, unionId, input = {}) {
     }
 
     const first = examResult.rows[0];
+    if (!Number.isInteger(Number(input.examVersion)) || Number(input.examVersion) !== Number(first.version)) {
+      throw new Error("考试内容已更新，请刷新页面后重新开始考试");
+    }
     const userId = first.user_id;
     const rows = [];
     const seen = new Set();
