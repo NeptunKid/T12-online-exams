@@ -11,7 +11,8 @@ const { loadEnvFile } = require("./migrate");
 const BANKS = [
   { key: "extraction", file: "extraction-questions.csv", bankId: "bank-extraction-principle", examId: "exam-extraction-principle", title: "萃取原理考试", duration: 50 },
   { key: "fire", file: "fire-questions.csv", bankId: "bank-fire-basics", examId: "exam-fire-basics", title: "消防基础考试", duration: 30 },
-  { key: "it", file: "it-questions.csv", bankId: "bank-it-basics", examId: "exam-it-basics", title: "IT基础考试", duration: 30 }
+  { key: "it", file: "it-questions.csv", bankId: "bank-it-basics", examId: "exam-it-basics", title: "IT基础考试", duration: 30 },
+  { key: "coffee", file: "coffee-questions.csv", bankId: "bank-coffee-basics", examId: "exam-coffee-basics", title: "咖啡基础知识", duration: 60 }
 ];
 
 function parseArgs(argv) {
@@ -20,7 +21,8 @@ function parseArgs(argv) {
     unionId: "",
     userName: "授权员工",
     publish: false,
-    allActiveDingtalkUsers: false
+    allActiveDingtalkUsers: false,
+    only: ""
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -29,6 +31,11 @@ function parseArgs(argv) {
     else if (value === "--user-name") args.userName = argv[++index] || args.userName;
     else if (value === "--publish") args.publish = true;
     else if (value === "--all-active-dingtalk-users") args.allActiveDingtalkUsers = true;
+    else if (value === "--only") {
+      const only = argv[++index];
+      if (!only || only.startsWith("--")) throw new Error("--only 必须提供题库 key");
+      args.only = only;
+    }
     else if (value === "--help") return null;
     else throw new Error(`不支持的参数：${value}`);
   }
@@ -37,6 +44,9 @@ function parseArgs(argv) {
   }
   if (!args.unionId && !args.allActiveDingtalkUsers) {
     throw new Error("必须提供 --union-id 或 --all-active-dingtalk-users");
+  }
+  if (args.only && !BANKS.some((bank) => bank.key === args.only)) {
+    throw new Error(`未知题库：${args.only}`);
   }
   return args;
 }
@@ -162,7 +172,7 @@ async function ensureAssignmentsForActiveDingtalkUsers(client, exams) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) {
-    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users) [--user-name 姓名] [--input-dir 目录] [--publish]");
+    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users) [--user-name 姓名] [--input-dir 目录] [--only 题库key] [--publish]");
     return;
   }
   loadEnvFile();
@@ -172,7 +182,8 @@ async function main() {
   try {
     await client.query("BEGIN");
     const imported = [];
-    for (const bank of BANKS) {
+    const selectedBanks = args.only ? BANKS.filter((bank) => bank.key === args.only) : BANKS;
+    for (const bank of selectedBanks) {
       const file = path.join(inputDir, bank.file);
       if (!fs.existsSync(file)) throw new Error(`缺少题库文件：${file}`);
       const preview = previewQuestionCsv(fs.readFileSync(file, "utf8"), { allowedResourceIds: Object.keys(loadQuestionResourceManifest()) });
@@ -209,6 +220,7 @@ if (require.main === module) {
 
 module.exports = {
   BANKS,
+  ensureExam,
   ensureAssignment,
   ensureAssignmentsForActiveDingtalkUsers,
   ensureAssignmentsForUserIds,
