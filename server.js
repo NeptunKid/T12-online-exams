@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
+const { listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, listAdminUsers, setAdminRole, upsertDingtalkUser } = require("./src/db/user-repository");
 
 function loadEnvFile() {
@@ -567,8 +568,11 @@ async function handleApi(req, res, pathname) {
       const submission = await createSubmission(pool, decodeURIComponent(submissionMatch[1]), user.unionId, body);
       if (!submission) return json(res, 404, { error: "未找到已授权的已发布考试" });
       return json(res, 201, { source: "postgres", submission });
-    } catch (_) {
-      return json(res, 400, { error: "答卷提交失败" });
+    } catch (error) {
+      const message = error.message === "考试内容已更新，请刷新页面后重新开始考试"
+        ? error.message
+        : "答卷提交失败";
+      return json(res, 400, { error: message });
     }
   }
 
@@ -689,8 +693,39 @@ async function handleApi(req, res, pathname) {
     return json(res, 200, {
       ok: true,
       canManageAdmins: adminAccess.canManageAdmins,
+      canManageQuestions: adminAccess.canManageQuestions,
       currentUserId: adminAccess.userId
     });
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/questions") {
+    if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
+    try {
+      return json(res, 200, { questions: await listQuestions(pool) });
+    } catch (_) {
+      return json(res, 503, { error: "题库数据库暂不可用" });
+    }
+  }
+
+  const adminQuestionMatch = pathname.match(/^\/api\/admin\/questions\/([^/]+)$/);
+  if (adminQuestionMatch && req.method === "PUT") {
+    if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
+    try {
+      const body = await readBody(req);
+      const question = await updateQuestion(
+        pool,
+        decodeURIComponent(adminQuestionMatch[1]),
+        body,
+        adminAccess.userId
+      );
+      return json(res, 200, { question });
+    } catch (error) {
+      return json(res, 400, { error: error.message || "题目保存失败" });
+    }
   }
 
   if (req.method === "GET" && pathname === "/api/admin/users") {

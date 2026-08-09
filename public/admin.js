@@ -5,6 +5,10 @@ let gradeSaveNotice = "";
 let showWrongOnly = false;
 let adminUsers = [];
 let currentAdminUserId = "";
+let adminQuestions = [];
+let currentQuestionId = "";
+let sessionHeartbeatId = 0;
+let sessionCheckInFlight = null;
 
 function esc(value) {
   return String(value ?? "")
@@ -12,6 +16,10 @@ function esc(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function questionText(value) {
+  return window.QuestionFormat.formatQuestionText(value);
 }
 
 function fmtTime(iso) {
@@ -30,8 +38,59 @@ async function api(path, options = {}) {
     }
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "请求失败");
+  if (!res.ok) {
+    const error = new Error(data.error || "请求失败");
+    error.status = res.status;
+    if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉登录。");
+    throw error;
+  }
   return data;
+}
+
+function closeOpenAdminDialogs() {
+  for (const id of ["adminManagerDialog", "questionManagerDialog"]) {
+    const dialog = document.getElementById(id);
+    if (dialog?.open) dialog.close();
+  }
+}
+
+function lockAdminSession(message) {
+  if (sessionHeartbeatId) window.clearInterval(sessionHeartbeatId);
+  sessionHeartbeatId = 0;
+  closeOpenAdminDialogs();
+  document.getElementById("adminPage").classList.add("hidden");
+  document.getElementById("loginPage").classList.remove("hidden");
+  document.getElementById("dingtalkAdminLogin").classList.remove("hidden");
+  const msg = document.getElementById("loginMsg");
+  msg.textContent = message;
+  msg.className = "notice error";
+}
+
+function applyAdminAccess(access) {
+  document.getElementById("manageAdminsBtn").classList.toggle("hidden", !access.canManageAdmins);
+  document.getElementById("manageQuestionsBtn").classList.toggle("hidden", !access.canManageQuestions);
+  currentAdminUserId = access.currentUserId || "";
+}
+
+async function verifyAdminSession() {
+  if (document.getElementById("adminPage").classList.contains("hidden")) return;
+  if (sessionCheckInFlight) return sessionCheckInFlight;
+  sessionCheckInFlight = api("/api/admin/check")
+    .then(applyAdminAccess)
+    .catch((error) => {
+      if (error.status === 403) lockAdminSession("当前钉钉账号的后台权限已失效，请重新登录或联系系统管理员。");
+    })
+    .finally(() => {
+      sessionCheckInFlight = null;
+    });
+  return sessionCheckInFlight;
+}
+
+function startAdminSessionMonitoring() {
+  if (sessionHeartbeatId) window.clearInterval(sessionHeartbeatId);
+  sessionHeartbeatId = window.setInterval(() => {
+    if (document.visibilityState === "visible") verifyAdminSession();
+  }, 60_000);
 }
 
 function renderAdminUsers() {
@@ -98,6 +157,163 @@ async function updateAdminRole(button) {
   } catch (error) {
     message.textContent = error.message || "管理员权限更新失败";
     message.className = "notice error";
+    button.disabled = false;
+  }
+}
+
+function renderQuestionList() {
+  const query = document.getElementById("questionSearch").value.trim().toLowerCase();
+  const filtered = adminQuestions.filter((question) => [
+    question.stem,
+    question.bankName,
+    question.externalId,
+    ...question.exams.map((exam) => exam.title)
+  ].some((value) => String(value || "").toLowerCase().includes(query)));
+  const list = document.getElementById("questionList");
+  list.innerHTML = filtered.length ? filtered.map((question) => `
+    <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
+      <span class="question-list-stem">${questionText(question.stem)}</span>
+      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)} · ${question.score} 分</span>
+    </button>
+  `).join("") : `<div class="empty-state admin-user-empty">暂无匹配题目</div>`;
+  for (const button of document.querySelectorAll(".question-list-item")) {
+    button.addEventListener("click", () => selectQuestion(button.dataset.questionId));
+  }
+}
+
+function answerEditor(question) {
+  if (["single", "judge", "multi"].includes(question.type)) {
+    const answers = new Set(Array.isArray(question.answer) ? question.answer : [question.answer]);
+    const inputType = question.type === "multi" ? "checkbox" : "radio";
+    return `
+      <div class="field">
+        <label>参考答案</label>
+        <div class="question-answer-options">
+          ${question.options.map((option) => `
+            <label class="question-answer-choice">
+              <input type="${inputType}" name="questionAnswer" value="${esc(option.label)}" ${answers.has(option.label) ? "checked" : ""}>
+              <span><strong>${esc(option.label)}.</strong> ${esc(option.text)}</span>
+            </label>
+          `).join("")}
+        </div>
+      </div>`;
+  }
+  const answer = Array.isArray(question.answer) ? question.answer.join("\n") : question.answer;
+  const label = question.type === "fill" ? "参考答案（每行一个可接受答案）" : "参考答案";
+  return `<div class="field"><label for="questionAnswerText">${label}</label><textarea id="questionAnswerText">${esc(answer || "")}</textarea></div>`;
+}
+
+function renderQuestionEditor() {
+  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  const editor = document.getElementById("questionEditor");
+  if (!question) {
+    editor.innerHTML = `<div class="empty-state">请选择一道题目</div>`;
+    return;
+  }
+  const examNames = question.exams.length ? question.exams.map((exam) => exam.title).join("、") : "尚未用于考试";
+  editor.innerHTML = `
+    <form id="questionEditorForm" class="question-editor-form">
+      <div class="question-editor-meta">
+        <span class="badge graded">${esc(question.bankName)}</span>
+        <span class="badge pending">${typeLabel(question.type)}</span>
+        <span class="brand-sub">版本 ${question.version} · ${question.score} 分</span>
+      </div>
+      <div class="brand-sub">引用考试：${esc(examNames)}</div>
+      <div class="field">
+        <label for="questionStem">题干</label>
+        <textarea id="questionStem" required>${esc(question.stem)}</textarea>
+      </div>
+      ${question.options.length ? `
+        <div class="field">
+          <label>选项</label>
+          <div class="question-option-editor">
+            ${question.options.map((option) => `
+              <div class="question-option-row">
+                <div class="question-option-label">${esc(option.label)}.</div>
+                <textarea class="question-option-text" data-label="${esc(option.label)}" ${option.hasImage ? "" : "required"}>${esc(option.text)}</textarea>
+                ${option.hasImage ? `<span class="brand-sub" style="grid-column:2">保留现有选项图片</span>` : ""}
+              </div>
+            `).join("")}
+          </div>
+        </div>` : ""}
+      ${answerEditor(question)}
+      <div class="field">
+        <label for="questionExplanation">题目解析</label>
+        <textarea id="questionExplanation">${esc(question.explanation || "")}</textarea>
+      </div>
+      <div class="question-save-row">
+        <button class="btn success" id="saveQuestionBtn" type="submit">保存题目</button>
+        <span class="brand-sub" id="questionSaveMsg"></span>
+      </div>
+    </form>`;
+  document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
+}
+
+function selectQuestion(questionId) {
+  currentQuestionId = questionId;
+  renderQuestionList();
+  renderQuestionEditor();
+}
+
+async function loadQuestions() {
+  document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
+  const data = await api("/api/admin/questions");
+  adminQuestions = data.questions;
+  if (!adminQuestions.some((question) => question.id === currentQuestionId)) currentQuestionId = adminQuestions[0]?.id || "";
+  renderQuestionList();
+  renderQuestionEditor();
+}
+
+async function openQuestionManager() {
+  const dialog = document.getElementById("questionManagerDialog");
+  dialog.showModal();
+  try {
+    await loadQuestions();
+  } catch (error) {
+    document.getElementById("questionEditor").innerHTML = `<div class="notice error">${esc(error.message || "题目载入失败")}</div>`;
+  }
+}
+
+function collectQuestionAnswer(question) {
+  if (question.type === "multi") {
+    return Array.from(document.querySelectorAll('input[name="questionAnswer"]:checked')).map((input) => input.value);
+  }
+  if (question.type === "single" || question.type === "judge") {
+    return document.querySelector('input[name="questionAnswer"]:checked')?.value || "";
+  }
+  const value = document.getElementById("questionAnswerText").value;
+  return question.type === "fill" ? value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) : value;
+}
+
+async function saveQuestion(event) {
+  event.preventDefault();
+  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  if (!question) return;
+  const button = document.getElementById("saveQuestionBtn");
+  const message = document.getElementById("questionSaveMsg");
+  button.disabled = true;
+  message.textContent = "正在保存";
+  const options = Array.from(document.querySelectorAll(".question-option-text")).map((input) => ({
+    label: input.dataset.label,
+    text: input.value
+  }));
+  try {
+    const data = await api(`/api/admin/questions/${encodeURIComponent(question.id)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        version: question.version,
+        stem: document.getElementById("questionStem").value,
+        options,
+        answer: collectQuestionAnswer(question),
+        explanation: document.getElementById("questionExplanation").value
+      })
+    });
+    adminQuestions = adminQuestions.map((item) => item.id === data.question.id ? data.question : item);
+    renderQuestionList();
+    renderQuestionEditor();
+    document.getElementById("questionSaveMsg").textContent = "已保存到题库，历史答卷不受影响。";
+  } catch (error) {
+    message.textContent = error.message || "题目保存失败";
     button.disabled = false;
   }
 }
@@ -213,7 +429,7 @@ function renderObjectiveReview(submission, exam) {
             <article class="objective-review-card ${status !== "correct" ? "answer-incorrect" : "answer-correct"}">
               <div class="question-head review-question-head">
                 <span class="num ${esc(q.type)}">${q.no || index + 1}</span>
-                <div><div class="question-text">${esc(q.text)}</div><div class="brand-sub">${typeLabel(q.type)} · 满分 ${q.score} 分</div></div>
+                <div><div class="question-text">${questionText(q.text)}</div><div class="brand-sub">${typeLabel(q.type)} · 满分 ${q.score} 分</div></div>
                 <span class="review-answer-status ${status}">${objectiveAnswerLabel(status)}</span>
               </div>
               ${reviewImages(images.stem || [])}
@@ -243,7 +459,7 @@ function renderQaReview(submission, exam) {
       <div class="qa-review">
         ${qa.map((q, index) => `
           <article class="qa-review-card">
-            <h3>${index + 1}. ${esc(q.text)} <span class="brand-sub">满分 ${q.score} 分</span></h3>
+            <h3>${index + 1}. ${questionText(q.text)} <span class="brand-sub">满分 ${q.score} 分</span></h3>
             ${reviewImages(getImageSet(exam, q).stem || [])}
             <div class="meta-label">考生答案</div>
             <div class="answer-box">${esc(submission.answers?.[q.id] || "未作答")}</div>
@@ -388,39 +604,48 @@ async function grantRetake() {
 async function initializeAdmin() {
   const msg = document.getElementById("loginMsg");
   msg.classList.add("hidden");
-  const [configRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
-  const config = await configRes.json();
-  const me = await meRes.json();
-  if (!config.enabled) {
-    document.getElementById("dingtalkAdminLogin").classList.add("hidden");
-    msg.textContent = "钉钉登录尚未配置，请联系系统管理员。";
-    msg.classList.remove("hidden");
-    return;
-  }
-  if (!me.user) return;
   try {
+    const [configRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
+    const config = await configRes.json();
+    const me = await meRes.json();
+    if (!config.enabled) {
+      document.getElementById("dingtalkAdminLogin").classList.add("hidden");
+      msg.textContent = "钉钉登录尚未配置，请联系系统管理员。";
+      msg.classList.remove("hidden");
+      return;
+    }
+    if (!me.user) return;
     const access = await api("/api/admin/check");
-    currentAdminUserId = access.currentUserId || "";
-    if (access.canManageAdmins) document.getElementById("manageAdminsBtn").classList.remove("hidden");
+    applyAdminAccess(access);
     document.getElementById("loginPage").classList.add("hidden");
     document.getElementById("adminPage").classList.remove("hidden");
     await loadList();
+    startAdminSessionMonitoring();
   } catch (err) {
     msg.textContent = err.message || "当前钉钉账号没有阅卷权限。";
-    msg.classList.remove("hidden");
+    msg.className = "notice error";
   }
 }
 
 document.getElementById("refreshBtn").addEventListener("click", loadList);
 document.getElementById("manageAdminsBtn").addEventListener("click", openAdminManager);
+document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
   document.getElementById("adminManagerDialog").close();
 });
+document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
+  document.getElementById("questionManagerDialog").close();
+});
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
+document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
   location.reload();
 });
 document.getElementById("searchInput").addEventListener("input", renderList);
 document.getElementById("statusFilter").addEventListener("change", renderList);
+window.addEventListener("pageshow", verifyAdminSession);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") verifyAdminSession();
+});
 initializeAdmin();

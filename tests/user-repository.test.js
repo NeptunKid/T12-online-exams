@@ -23,10 +23,27 @@ test("数据库系统管理员和环境引导账号均可管理管理员", async
   const databaseAccess = await getAdminAccess(pool, "union-1", new Set());
   assert.equal(databaseAccess.canAccess, true);
   assert.equal(databaseAccess.canManageAdmins, true);
+  assert.equal(databaseAccess.canManageQuestions, true);
 
   const bootstrapAccess = await getAdminAccess(null, "bootstrap-1", new Set(["bootstrap-1"]));
   assert.equal(bootstrapAccess.canAccess, true);
   assert.equal(bootstrapAccess.canManageAdmins, true);
+  assert.equal(bootstrapAccess.canManageQuestions, true);
+});
+
+test("考试管理员可以维护题库但不能管理系统管理员", async () => {
+  const pool = { query: async () => ({ rows: [{ id: "user-2", roles: ["exam_admin"] }] }) };
+  const access = await getAdminAccess(pool, "union-2", new Set());
+  assert.equal(access.canAccess, true);
+  assert.equal(access.canManageQuestions, true);
+  assert.equal(access.canManageAdmins, false);
+});
+
+test("普通阅卷人不能维护题库", async () => {
+  const pool = { query: async () => ({ rows: [{ id: "user-3", roles: ["grader"] }] }) };
+  const access = await getAdminAccess(pool, "union-3", new Set());
+  assert.equal(access.canAccess, true);
+  assert.equal(access.canManageQuestions, false);
 });
 
 test("钉钉登录会复用相同 unionId 的历史用户", async () => {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理员阅卷后台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260809-1">
+  <link rel="stylesheet" href="/styles.css?v=20260809-2">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -26,6 +26,7 @@
           <div class="brand-sub">多人多次考试记录</div>
         </div>
         <div class="btn-row">
+          <button class="btn secondary hidden" id="manageQuestionsBtn" type="button">题库</button>
           <button class="btn secondary hidden" id="manageAdminsBtn" type="button">管理员</button>
           <button class="btn secondary" id="refreshBtn" type="button">刷新</button>
           <button class="btn danger" id="logoutBtn" type="button">退出登录</button>
@@ -77,6 +78,28 @@
     </div>
   </dialog>
 
-  <script src="/admin.js?v=20260809-1"></script>
+  <dialog id="questionManagerDialog" class="admin-dialog question-dialog">
+    <div class="admin-dialog-shell">
+      <div class="admin-dialog-head">
+        <div>
+          <h2>题库维护</h2>
+          <p class="brand-sub">编辑现有试题</p>
+        </div>
+        <button class="btn secondary compact-btn" id="closeQuestionManagerBtn" type="button">关闭</button>
+      </div>
+      <div class="question-manager-layout">
+        <aside class="question-manager-list-panel">
+          <input id="questionSearch" type="search" placeholder="搜索题干、题库或考试">
+          <div id="questionList" class="question-manager-list"></div>
+        </aside>
+        <section id="questionEditor" class="question-editor">
+          <div class="empty-state">请选择一道题目</div>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/question-format.js?v=20260809-1"></script>
+  <script src="/admin.js?v=20260809-2"></script>
 </body>
 </html>

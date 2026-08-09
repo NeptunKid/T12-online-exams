@@ -32,6 +32,10 @@ function esc(value) {
     .replace(/\"/g, "&quot;");
 }
 
+function questionText(value) {
+  return window.QuestionFormat.formatQuestionText(value);
+}
+
 function fmtTime(iso) {
   if (!iso) return "-";
   const date = new Date(iso);
@@ -223,7 +227,7 @@ function renderPostgresStudentDetail(data) {
       : `<div class="student-long-answer"><span>我的答案</span><div>${esc(answerDisplay(question.submittedAnswer))}</div></div>`;
     return `
       <article class="student-question-result">
-        <div class="student-question-top"><div><span class="num ${esc(question.type)}">${question.no}</span><strong>${esc(question.stem || "题干未记录")}</strong></div><span class="result-question-score">${graded ? `${question.earnedScore} / ${question.score} 分` : "待阅卷"}</span></div>
+        <div class="student-question-top"><div><span class="num ${esc(question.type)}">${question.no}</span><strong>${questionText(question.stem || "题干未记录")}</strong></div><span class="result-question-score">${graded ? `${question.earnedScore} / ${question.score} 分` : "待阅卷"}</span></div>
         ${imageHtml(question.images?.stem || [], "student-image-row")}
         ${optionHtml}
         ${answerHtml}
@@ -289,7 +293,7 @@ function renderStudentObjective(q, no, submission, detailExam) {
   const explanation = q.explanation ? `<div class="student-explanation">${esc(q.explanation)}</div>` : "";
   return `
     <article class="student-question-result ${correct ? "correct" : "incorrect"}">
-      <div class="student-question-top"><div><span class="num ${esc(q.type)}">${no}</span><strong>${esc(q.text)}</strong></div><span class="result-question-score">${score}/${q.score} 分</span></div>
+      <div class="student-question-top"><div><span class="num ${esc(q.type)}">${no}</span><strong>${questionText(q.text)}</strong></div><span class="result-question-score">${score}/${q.score} 分</span></div>
       ${imageHtml(getImageSet(q, detailExam).stem || [], "student-image-row")}
       <div class="student-answer-grid"><div><span>我的答案</span><strong>${esc(answerDisplay(detail.answer ?? submission.answers?.[q.id]))}</strong></div><div><span>标准答案</span><strong>${esc(answerDisplay(q.answer))}</strong></div></div>
       ${explanation}
@@ -301,7 +305,7 @@ function renderStudentQa(q, no, submission, detailExam) {
   const score = submission.qaScores?.[q.id] ?? 0;
   return `
     <article class="student-question-result">
-      <div class="student-question-top"><div><span class="num qa">${no}</span><strong>${esc(q.text)}</strong></div><span class="result-question-score">${score}/${q.score} 分</span></div>
+      <div class="student-question-top"><div><span class="num qa">${no}</span><strong>${questionText(q.text)}</strong></div><span class="result-question-score">${score}/${q.score} 分</span></div>
       ${imageHtml(getImageSet(q, detailExam).stem || [], "student-image-row")}
       <div class="student-long-answer"><span>我的答案</span><div>${esc(submission.answers?.[q.id] || "未作答")}</div></div>
     </article>
@@ -350,7 +354,7 @@ function renderQuestion(q, no) {
 
   return `
     <article class="panel question-card" data-qid="${esc(q.id)}" data-type="${esc(q.type)}">
-      <div class="question-head"><span class="num ${esc(q.type)}">${no}</span><div class="question-text">${esc(q.text)}</div><span class="score-tag">${q.score} 分</span></div>
+      <div class="question-head"><span class="num ${esc(q.type)}">${no}</span><div class="question-text">${questionText(q.text)}</div><span class="score-tag">${q.score} 分</span></div>
       ${imageHtml(images.stem || [])}
       ${answerHtml}
     </article>
@@ -421,7 +425,12 @@ async function submitExam(force = false) {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ startedAt, durationSeconds: Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)), answers })
+      body: JSON.stringify({
+        examVersion: exam.version,
+        startedAt,
+        durationSeconds: Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)),
+        answers
+      })
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(result.error || "提交失败");

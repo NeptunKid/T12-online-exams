@@ -77,10 +77,42 @@ test("发布考试交卷只保存服务端快照并自动计算客观题", async
     release() {}
   };
   const pool = { connect: async () => client };
-  const result = await createSubmission(pool, "exam-1", "u1", { submissionId: "submission-1", answers: { "q-1": "A" } });
+  const result = await createSubmission(pool, "exam-1", "u1", {
+    submissionId: "submission-1",
+    examVersion: 1,
+    answers: { "q-1": "A" }
+  });
   assert.deepEqual(result, { id: "submission-1", status: "pending", objectiveScore: 100, attemptNo: 1 });
   assert.equal(Object.hasOwn(result, "answer"), false);
   assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("交卷时拒绝与当前试卷版本不一致的旧页面", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes("FROM exams e")) {
+        return { rows: [{
+          id: "exam-1", title: "测试考试", version: 2, pass_score: "60", total_score: "100",
+          user_id: "user-1", question_id: "q-1", type: "single", stem: "新题目",
+          options_json: [{ label: "A", text: "选项" }], answer_json: "A", explanation: "",
+          position: 1, score: "100"
+        }] };
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await assert.rejects(
+    createSubmission({ connect: async () => client }, "exam-1", "union-1", {
+      examVersion: 1,
+      answers: { "q-1": "A" }
+    }),
+    /考试内容已更新/
+  );
+  assert.equal(calls.some((sql) => sql.includes("INSERT INTO submissions")), false);
+  assert.equal(calls.includes("ROLLBACK"), true);
 });
 
 test("发布考试客观题评分兼容多选漏选半分", () => {
