@@ -38,8 +38,11 @@ test("active DingTalk users receive every imported exam idempotently", async () 
   const userIds = await ensureAssignmentsForActiveDingtalkUsers(client, exams);
 
   assert.deepEqual(userIds, ["user-a", "user-b"]);
-  assert.equal(inserts.length, 6);
-  assert.deepEqual(new Set(inserts.map((params) => `${params[1]}:${params[2]}`)).size, 6);
+  const directAssignments = inserts.filter((params) => params.length === 3);
+  const groupAssignments = inserts.filter((params) => params.length === 2);
+  assert.equal(directAssignments.length, 6);
+  assert.equal(groupAssignments.length, 3);
+  assert.deepEqual(new Set(directAssignments.map((params) => `${params[1]}:${params[2]}`)).size, 6);
 });
 
 test("bulk assignment aborts when no active DingTalk user exists", async () => {

@@ -202,12 +202,34 @@ function renderPostgresStudentDetail(data) {
   const { submission, questions } = data;
   document.getElementById("studentDetailSub").textContent = `${submission.examTitle} · 第 ${submission.attemptNo} 次考核`;
   const container = document.getElementById("studentDetail");
-  const questionHtml = (questions || []).map((question) => `
-    <article class="student-question-result">
-      <div class="student-question-top"><div><span class="num ${esc(question.type)}">${question.no}</span><strong>${esc(question.stem)}</strong></div><span class="result-question-score">${submission.status === "graded" ? `${question.earnedScore} / ${question.score} 分` : "待阅卷"}</span></div>
-      <div class="student-long-answer"><span>我的答案</span><div>${esc(answerDisplay(question.submittedAnswer))}</div></div>
-    </article>
-  `).join("");
+  const graded = submission.status === "graded";
+  const questionHtml = (questions || []).map((question) => {
+    const selected = new Set(Array.isArray(question.submittedAnswer)
+      ? question.submittedAnswer
+      : [question.submittedAnswer].filter(Boolean));
+    const optionHtml = (question.options || []).length ? `
+      <div class="review-options">${question.options.map((option) => {
+        const optionImage = option.image || question.images?.options?.[option.label] || "";
+        return `
+          <div class="review-option ${selected.has(option.label) ? "selected" : ""}">
+            <strong>${esc(option.label)}.</strong>
+            <span>${esc(option.text || "")}</span>
+            ${selected.has(option.label) ? `<span class="selected-mark">我的选择</span>` : ""}
+            ${optionImage ? `<img src="/${esc(String(optionImage).replace(/^\/+/, ""))}" alt="选项 ${esc(option.label)} 图片" loading="lazy">` : ""}
+          </div>`;
+      }).join("")}</div>` : "";
+    const answerHtml = graded
+      ? `<div class="student-answer-grid"><div><span>我的答案</span><strong>${esc(answerDisplay(question.submittedAnswer))}</strong></div><div><span>标准答案</span><strong>${esc(answerDisplay(question.correctAnswer))}</strong></div></div>`
+      : `<div class="student-long-answer"><span>我的答案</span><div>${esc(answerDisplay(question.submittedAnswer))}</div></div>`;
+    return `
+      <article class="student-question-result">
+        <div class="student-question-top"><div><span class="num ${esc(question.type)}">${question.no}</span><strong>${esc(question.stem || "题干未记录")}</strong></div><span class="result-question-score">${graded ? `${question.earnedScore} / ${question.score} 分` : "待阅卷"}</span></div>
+        ${imageHtml(question.images?.stem || [], "student-image-row")}
+        ${optionHtml}
+        ${answerHtml}
+        ${graded && question.explanation ? `<div class="student-explanation">${esc(question.explanation)}</div>` : ""}
+      </article>`;
+  }).join("");
   container.innerHTML = `
     <section class="panel student-result-head ${submission.status === "graded" ? (submission.pass ? "passed" : "failed") : "pending-result"}">
       <div><div class="result-kicker">${submission.status === "graded" ? "阅卷已完成" : "答卷已提交"}</div><h1>${submission.totalScore === null ? "等待阅卷" : `${submission.totalScore} 分`}</h1><p class="brand-sub">第 ${submission.attemptNo} 次考核 · 提交时间：${fmtTime(submission.submittedAt)}</p></div>

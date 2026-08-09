@@ -150,6 +150,12 @@ async function ensureAssignmentsForActiveDingtalkUsers(client, exams) {
     throw new Error("没有找到已登录且状态为 active 的钉钉用户，未写入考试授权");
   }
   await ensureAssignmentsForUserIds(client, userIds, exams);
+  for (const exam of exams) {
+    await client.query(`INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id)
+      VALUES ($1, $2, 'group', 'all-active-dingtalk-users')
+      ON CONFLICT (exam_id, subject_type, subject_id) DO NOTHING`,
+    [`global_assignment_${stableHash(exam.examId)}`, exam.examId]);
+  }
   return userIds;
 }
 

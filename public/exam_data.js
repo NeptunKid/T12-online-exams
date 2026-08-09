@@ -3,7 +3,7 @@
 
 const EXAM_DATA = {
   "title": "清洁卫生入职培训考试",
-  "duration": 30,
+  "duration": 45,
   "passScore": 88,
   "totalScore": 100,
   "questions": [

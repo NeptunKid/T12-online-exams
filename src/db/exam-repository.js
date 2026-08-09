@@ -15,6 +15,7 @@ const { mapQuestionOptions } = require("../resources/question-resources");
 function mapQuestion(row) {
   return {
     id: row.question_id,
+    sourceId: row.external_id || row.question_id,
     no: Number(row.position),
     type: row.type,
     stem: row.stem,
@@ -27,13 +28,31 @@ const ASSIGNMENT_FILTER = `
       AND EXISTS (
         SELECT 1
         FROM exam_assignments ea
-        JOIN user_identities ui ON ui.user_id = ea.subject_id
         WHERE ea.exam_id = e.id
-          AND ea.subject_type = 'user'
-          AND ui.union_id = $1
-          AND ui.provider IN ('dingtalk', 'legacy')
           AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
           AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
+          AND (
+            (ea.subject_type = 'user' AND EXISTS (
+              SELECT 1
+              FROM user_identities ui
+              JOIN users u ON u.id = ui.user_id
+              WHERE ui.user_id = ea.subject_id
+                AND ui.union_id = $1
+                AND ui.provider IN ('dingtalk', 'legacy')
+                AND u.status = 'active'
+            ))
+            OR
+            (ea.subject_type = 'group'
+              AND ea.subject_id = 'all-active-dingtalk-users'
+              AND EXISTS (
+                SELECT 1
+                FROM user_identities ui
+                JOIN users u ON u.id = ui.user_id
+                WHERE ui.union_id = $1
+                  AND ui.provider IN ('dingtalk', 'legacy')
+                  AND u.status = 'active'
+              ))
+          )
       )`;
 
 async function listPublishedExams(pool, unionId) {
@@ -57,8 +76,15 @@ async function getPublishedExam(pool, examId, unionId) {
       e.pass_score,
       e.version,
       q.id AS question_id,
+      q.external_id,
       q.type,
-      q.stem,
+      COALESCE(NULLIF(q.stem, ''), (
+        SELECT NULLIF(sq.snapshot_json->>'text', '')
+        FROM submission_questions sq
+        WHERE sq.question_id = q.id
+        ORDER BY sq.created_at
+        LIMIT 1
+      ), '') AS stem,
       q.options_json,
       eq.position,
       eq.score
@@ -124,20 +150,45 @@ async function createSubmission(pool, examId, unionId, input = {}) {
   try {
     await client.query("BEGIN");
     const examResult = await client.query(`
+      WITH current_identity AS (
+        SELECT ui.user_id
+        FROM user_identities ui
+        JOIN users u ON u.id = ui.user_id
+        WHERE ui.union_id = $2
+          AND ui.provider IN ('dingtalk', 'legacy')
+          AND u.status = 'active'
+        ORDER BY (ui.provider = 'dingtalk') DESC, ui.created_at
+        LIMIT 1
+      )
       SELECT e.id, e.title, e.version, e.pass_score, e.total_score,
-        q.id AS question_id, q.type, q.stem, q.options_json, q.answer_json, q.explanation,
-        eq.position, eq.score, ui.user_id
+        q.id AS question_id, q.external_id, q.type,
+        COALESCE(NULLIF(q.stem, ''), (
+          SELECT NULLIF(sq.snapshot_json->>'text', '')
+          FROM submission_questions sq
+          WHERE sq.question_id = q.id
+          ORDER BY sq.created_at
+          LIMIT 1
+        ), '') AS stem,
+        q.options_json, q.answer_json, q.explanation,
+        eq.position, eq.score, ci.user_id
       FROM exams e
+      CROSS JOIN current_identity ci
       JOIN exam_questions eq ON eq.exam_id = e.id
       JOIN questions q ON q.id = eq.question_id
-      JOIN exam_assignments ea ON ea.exam_id = e.id AND ea.subject_type = 'user'
-      JOIN user_identities ui ON ui.user_id = ea.subject_id
-        AND ui.union_id = $2 AND ui.provider IN ('dingtalk', 'legacy')
       WHERE e.id = $1
         AND e.status IN ('scheduled', 'published', 'paused')
-        AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
-        AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
-      ORDER BY eq.position, (ui.provider = 'dingtalk') DESC;`, [examId, unionId]);
+        AND EXISTS (
+          SELECT 1
+          FROM exam_assignments ea
+          WHERE ea.exam_id = e.id
+            AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
+            AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
+            AND (
+              (ea.subject_type = 'user' AND ea.subject_id = ci.user_id)
+              OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-dingtalk-users')
+            )
+        )
+      ORDER BY eq.position;`, [examId, unionId]);
     if (!examResult.rows.length) {
       await client.query("ROLLBACK");
       return null;
@@ -160,10 +211,9 @@ async function createSubmission(pool, examId, unionId, input = {}) {
     );
     const attemptNo = Number(attemptResult.rows[0].attempt_no);
     const grading = gradePublishedQuestions(rows, input.answers);
-    const hasQa = grading.qaMaxScore > 0;
-    const status = hasQa ? "pending" : "graded";
-    const totalScore = hasQa ? null : grading.objectiveScore;
-    const pass = hasQa ? null : grading.objectiveScore >= Number(first.pass_score);
+    const status = "pending";
+    const totalScore = null;
+    const pass = null;
     const submittedAt = input.submittedAt || new Date().toISOString();
     const submissionId = input.submissionId || `postgres-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     const scores = { objectiveDetail: grading.objectiveDetail, qaMaxScore: grading.qaMaxScore, qaScores: {} };
@@ -179,8 +229,9 @@ async function createSubmission(pool, examId, unionId, input = {}) {
     for (const row of rows) {
       const answer = input.answers[row.question_id] ?? (row.type === "multi" ? [] : "");
       const snapshot = {
-        id: row.question_id, type: row.type, stem: row.stem, options: mapQuestionOptions(row.options_json || []),
-        explanation: row.explanation || "", score: Number(row.score), position: Number(row.position)
+        id: row.question_id, sourceId: row.external_id || row.question_id,
+        type: row.type, stem: row.stem, options: mapQuestionOptions(row.options_json || []),
+        answer: row.answer_json, explanation: row.explanation || "", score: Number(row.score), position: Number(row.position)
       };
       const detail = grading.objectiveDetail[row.question_id];
       await client.query(`
@@ -244,8 +295,10 @@ async function getStudentDashboard(pool, unionId) {
     WITH current_identity AS (
       SELECT ui.user_id
       FROM user_identities ui
+      JOIN users u ON u.id = ui.user_id
       WHERE ui.union_id = $1
         AND ui.provider IN ('dingtalk', 'legacy')
+        AND u.status = 'active'
       ORDER BY (ui.provider = 'dingtalk') DESC, ui.created_at
       LIMIT 1
     )
@@ -254,13 +307,21 @@ async function getStudentDashboard(pool, unionId) {
       COALESCE(bool_or(s.status = 'pending'), false) AS awaiting_grade,
       COALESCE(rp.remaining_count, 0)::integer AS remaining_extra_attempts
     FROM exams e
-    JOIN exam_assignments ea ON ea.exam_id = e.id AND ea.subject_type = 'user'
-    JOIN current_identity ci ON ci.user_id = ea.subject_id
+    CROSS JOIN current_identity ci
     LEFT JOIN submissions s ON s.exam_id = e.id AND s.user_id = ci.user_id
     LEFT JOIN retake_permissions rp ON rp.exam_id = e.id AND rp.user_id = ci.user_id
     WHERE e.status IN ('scheduled', 'published', 'paused')
-      AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
-      AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
+      AND EXISTS (
+        SELECT 1
+        FROM exam_assignments ea
+        WHERE ea.exam_id = e.id
+          AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
+          AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
+          AND (
+            (ea.subject_type = 'user' AND ea.subject_id = ci.user_id)
+            OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-dingtalk-users')
+          )
+      )
     GROUP BY e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version, rp.remaining_count
     ORDER BY e.created_at, e.id;`, [unionId]);
 
@@ -291,15 +352,24 @@ async function getStudentDashboard(pool, unionId) {
 
 function mapStudentQuestion(row, graded) {
   const snapshot = row.snapshot_json || {};
+  const answer = Object.hasOwn(snapshot, "answer") ? snapshot.answer : row.current_answer;
+  const explanation = Object.hasOwn(snapshot, "explanation") ? snapshot.explanation : row.current_explanation;
   return {
     id: row.question_id || snapshot.id || null,
+    sourceId: snapshot.sourceId || snapshot.legacySourceKey || row.external_id || snapshot.id || row.question_id || null,
     no: Number(row.position),
-    type: snapshot.type || "",
-    stem: snapshot.stem || "",
-    options: mapQuestionOptions(snapshot.options || []),
-    score: Number(snapshot.score || 0),
+    type: snapshot.type || row.current_type || "",
+    stem: snapshot.stem || snapshot.text || row.current_stem || "",
+    options: mapQuestionOptions(snapshot.options || row.current_options || []),
+    score: Number(snapshot.score ?? row.current_score ?? 0),
     submittedAnswer: row.answer_json,
-    ...(graded ? { earnedScore: Number(row.earned_score), automaticScore: row.automatic_score === null ? null : Number(row.automatic_score), manuallyAdjusted: Boolean(row.manually_adjusted) } : {})
+    ...(graded ? {
+      correctAnswer: answer,
+      explanation: explanation || "",
+      earnedScore: Number(row.earned_score),
+      automaticScore: row.automatic_score === null ? null : Number(row.automatic_score),
+      manuallyAdjusted: Boolean(row.manually_adjusted)
+    } : {})
   };
 }
 
@@ -314,11 +384,16 @@ async function getStudentSubmission(pool, submissionId, unionId) {
   if (!submissionResult.rows.length) return null;
   const submission = mapStudentSubmission(submissionResult.rows[0]);
   const questionsResult = await pool.query(`
-    SELECT question_id, position, snapshot_json, answer_json, earned_score,
-      automatic_score, manually_adjusted
-    FROM submission_questions
-    WHERE submission_id = $1
-    ORDER BY position;`, [submissionId]);
+    SELECT sq.question_id, sq.position, sq.snapshot_json, sq.answer_json, sq.earned_score,
+      sq.automatic_score, sq.manually_adjusted, q.external_id,
+      q.type AS current_type, q.stem AS current_stem, q.options_json AS current_options,
+      q.answer_json AS current_answer, q.explanation AS current_explanation,
+      eq.score AS current_score
+    FROM submission_questions sq
+    LEFT JOIN questions q ON q.id = sq.question_id
+    LEFT JOIN exam_questions eq ON eq.exam_id = $2 AND eq.question_id = sq.question_id
+    WHERE sq.submission_id = $1
+    ORDER BY sq.position;`, [submissionId, submission.examId]);
   return {
     submission,
     questions: questionsResult.rows.map((row) => mapStudentQuestion(row, submission.status === "graded"))

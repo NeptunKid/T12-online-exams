@@ -19,9 +19,18 @@ function resourceUrl(resourceId, resources = loadQuestionResourceManifest()) {
 }
 
 function mapQuestionOptions(options, resources = loadQuestionResourceManifest()) {
-  return (Array.isArray(options) ? options : []).map((option) => ({
+  const normalized = Array.isArray(options)
+    ? options
+    : options && typeof options === "object"
+      ? Object.entries(options).map(([label, text]) => ({ label, text }))
+      : [];
+  return normalized.map((option) => ({
     ...option,
-    image: option.image ? resourceUrl(option.image, resources) : ""
+    image: option.image
+      ? /^\/question-resources\/[A-Za-z0-9_./-]+$/.test(option.image) && !option.image.includes("..")
+        ? option.image
+        : resourceUrl(option.image, resources)
+      : ""
   }));
 }
 
