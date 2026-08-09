@@ -6,6 +6,7 @@ const path = require("node:path");
 const { previewQuestionCsv } = require("../src/import/question-csv");
 const { createPostgresPool } = require("../src/db/postgres-client");
 const { loadQuestionResourceManifest } = require("../src/resources/question-resources");
+const { loadEnvFile } = require("./migrate");
 
 const BANKS = [
   { key: "extraction", file: "extraction-questions.csv", bankId: "bank-extraction-principle", examId: "exam-extraction-principle", title: "萃取原理考试", duration: 50 },
@@ -14,17 +15,29 @@ const BANKS = [
 ];
 
 function parseArgs(argv) {
-  const args = { inputDir: path.join(__dirname, "../docs/question-bank-drafts"), unionId: "", userName: "授权员工", publish: false };
+  const args = {
+    inputDir: path.join(__dirname, "../docs/question-bank-drafts"),
+    unionId: "",
+    userName: "授权员工",
+    publish: false,
+    allActiveDingtalkUsers: false
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--input-dir") args.inputDir = argv[++index] || args.inputDir;
     else if (value === "--union-id") args.unionId = argv[++index] || "";
     else if (value === "--user-name") args.userName = argv[++index] || args.userName;
     else if (value === "--publish") args.publish = true;
+    else if (value === "--all-active-dingtalk-users") args.allActiveDingtalkUsers = true;
     else if (value === "--help") return null;
     else throw new Error(`不支持的参数：${value}`);
   }
-  if (!args.unionId) throw new Error("必须提供 --union-id；不要把 unionId 写入 Git");
+  if (args.unionId && args.allActiveDingtalkUsers) {
+    throw new Error("--union-id 与 --all-active-dingtalk-users 不能同时使用");
+  }
+  if (!args.unionId && !args.allActiveDingtalkUsers) {
+    throw new Error("必须提供 --union-id 或 --all-active-dingtalk-users");
+  }
   return args;
 }
 
@@ -110,19 +123,43 @@ async function ensureAssignment(client, unionId, userName, exams) {
     await client.query(`INSERT INTO user_identities (id, user_id, provider, provider_subject, union_id)
       VALUES ($1, $2, 'dingtalk', $3, $3) ON CONFLICT (provider, provider_subject) DO NOTHING`, [`identity-dingtalk-${stableHash(unionId)}`, userId, unionId]);
   }
-  for (const exam of exams) {
-    await client.query(`INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id)
-      VALUES ($1, $2, 'user', $3) ON CONFLICT (exam_id, subject_type, subject_id) DO NOTHING`, [`assignment-${exam.examId}-${stableHash(userId)}`, exam.examId, userId]);
-  }
+  await ensureAssignmentsForUserIds(client, [userId], exams);
   return userId;
+}
+
+async function ensureAssignmentsForUserIds(client, userIds, exams) {
+  for (const userId of userIds) {
+    for (const exam of exams) {
+      await client.query(`INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id)
+        VALUES ($1, $2, 'user', $3) ON CONFLICT (exam_id, subject_type, subject_id) DO NOTHING`,
+      [`assignment-${exam.examId}-${stableHash(userId)}`, exam.examId, userId]);
+    }
+  }
+}
+
+async function ensureAssignmentsForActiveDingtalkUsers(client, exams) {
+  const result = await client.query(`
+    SELECT DISTINCT u.id
+    FROM users u
+    JOIN user_identities ui ON ui.user_id = u.id
+    WHERE u.status = 'active'
+      AND ui.provider = 'dingtalk'
+    ORDER BY u.id;`);
+  const userIds = result.rows.map((row) => row.id);
+  if (!userIds.length) {
+    throw new Error("没有找到已登录且状态为 active 的钉钉用户，未写入考试授权");
+  }
+  await ensureAssignmentsForUserIds(client, userIds, exams);
+  return userIds;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) {
-    console.log("用法：node scripts/import-question-banks.js --union-id <钉钉unionId> [--user-name 姓名] [--input-dir 目录] [--publish]");
+    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users) [--user-name 姓名] [--input-dir 目录] [--publish]");
     return;
   }
+  loadEnvFile();
   const inputDir = path.resolve(args.inputDir);
   const pool = createPostgresPool();
   const client = await pool.connect();
@@ -138,9 +175,16 @@ async function main() {
       const exam = await ensureExam(client, bank, questionRows, args.publish);
       imported.push({ ...bank, ...exam, questions: questionRows.length });
     }
-    const userId = await ensureAssignment(client, args.unionId, args.userName, imported);
+    const userIds = args.allActiveDingtalkUsers
+      ? await ensureAssignmentsForActiveDingtalkUsers(client, imported)
+      : [await ensureAssignment(client, args.unionId, args.userName, imported)];
     await client.query("COMMIT");
-    console.log(JSON.stringify({ userId, publish: args.publish, exams: imported }, null, 2));
+    console.log(JSON.stringify({
+      assignmentMode: args.allActiveDingtalkUsers ? "all_active_dingtalk_users" : "single_dingtalk_user",
+      assignmentCount: userIds.length,
+      publish: args.publish,
+      exams: imported
+    }, null, 2));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
@@ -150,7 +194,18 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message || "题库导入失败");
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message || "题库导入失败");
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  BANKS,
+  ensureAssignment,
+  ensureAssignmentsForActiveDingtalkUsers,
+  ensureAssignmentsForUserIds,
+  parseArgs,
+  stableHash
+};

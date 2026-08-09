@@ -23,7 +23,7 @@ cd /opt/t12-online-exams
 test -f package.json && test -f public/question-resources/manifest.json
 git pull --ff-only origin main
 npm ci
-npm run migrate
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env /usr/bin/npm run migrate
 ```
 
 导入前先备份 PostgreSQL（不会修改答卷）：
@@ -32,17 +32,17 @@ npm run migrate
 sudo -u postgres pg_dump -Fc t12_exams > "/var/backups/t12_exams-before-question-import-$(date +%Y%m%d%H%M%S).dump"
 ```
 
-确认备份命令成功后，在同一目录执行事务导入。`--publish` 会将三份考试设为 `published` 并给指定钉钉 `unionId` 建立授权；不加 `--publish` 只写入草稿：
+确认备份命令成功后，在同一目录执行事务导入。`--publish` 会将三份考试设为 `published`；`--all-active-dingtalk-users` 会给所有已登录、状态为 `active` 的钉钉用户建立授权：
 
 ```bash
 cd /opt/t12-online-exams
-node scripts/import-question-banks.js \
-  --union-id '9yuUiPzleiPnEeaiSviSSlXEVwiEiE' \
-  --user-name '授权员工' \
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node scripts/import-question-banks.js \
+  --all-active-dingtalk-users \
   --publish
 ```
 
-导入脚本会校验题库数量、题目内容、总分、考试时长和 85% 通过线；重复执行不会重复创建，已有内容不一致时会整笔回滚并报错。
+若只需给单个员工授权，可改用 `--union-id '<钉钉 unionId>' --user-name '<员工姓名>'`；真实身份值不得写入 Git。导入脚本会校验题库数量、题目内容、总分、考试时长和 85% 通过线；重复执行不会重复创建，已有内容不一致时会整笔回滚并报错。
 
 导入完成后重启服务并验证资源与数据库：
 
@@ -54,6 +54,13 @@ curl -I https://exam.t12group.com/question-resources/extraction/extraction-17-a.
 sudo -u postgres psql -d t12_exams -c \
   "SELECT e.id, e.title, e.status, count(eq.question_id) AS questions, e.total_score, e.pass_score \
    FROM exams e LEFT JOIN exam_questions eq ON eq.exam_id = e.id \
+   WHERE e.id IN ('exam-extraction-principle','exam-fire-basics','exam-it-basics') \
+   GROUP BY e.id ORDER BY e.id;"
+
+sudo -u postgres psql -d t12_exams -c \
+  "SELECT e.id, count(DISTINCT ea.subject_id) AS assigned_users \
+   FROM exams e LEFT JOIN exam_assignments ea \
+     ON ea.exam_id = e.id AND ea.subject_type = 'user' \
    WHERE e.id IN ('exam-extraction-principle','exam-fire-basics','exam-it-basics') \
    GROUP BY e.id ORDER BY e.id;"
 ```
