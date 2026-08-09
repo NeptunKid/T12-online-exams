@@ -22,6 +22,9 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
   assert.equal(Object.hasOwn(exam.questions[0], "explanation"), false);
   assert.equal(queries.some((sql) => sql.includes("answer_json") || sql.includes("explanation")), false);
   assert.equal(queries.every((sql) => sql.includes("exam_assignments")), true);
+  const detailQuery = queries.find((sql) => sql.includes("q.id AS question_id"));
+  assert.equal((detailQuery.match(/ui\.union_id = \$2/g) || []).length, 2);
+  assert.equal(detailQuery.includes("ui.union_id = $1"), false);
 });
 
 test("考试 repository 未找到考试时返回 null", async () => {

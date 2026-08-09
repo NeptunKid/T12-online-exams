@@ -24,7 +24,8 @@ function mapQuestion(row) {
   };
 }
 
-const ASSIGNMENT_FILTER = `
+function assignmentFilter(identityParameter) {
+  return `
       AND EXISTS (
         SELECT 1
         FROM exam_assignments ea
@@ -37,7 +38,7 @@ const ASSIGNMENT_FILTER = `
               FROM user_identities ui
               JOIN users u ON u.id = ui.user_id
               WHERE ui.user_id = ea.subject_id
-                AND ui.union_id = $1
+                AND ui.union_id = ${identityParameter}
                 AND ui.provider IN ('dingtalk', 'legacy')
                 AND u.status = 'active'
             ))
@@ -48,19 +49,20 @@ const ASSIGNMENT_FILTER = `
                 SELECT 1
                 FROM user_identities ui
                 JOIN users u ON u.id = ui.user_id
-                WHERE ui.union_id = $1
+                WHERE ui.union_id = ${identityParameter}
                   AND ui.provider IN ('dingtalk', 'legacy')
                   AND u.status = 'active'
               ))
           )
       )`;
+}
 
 async function listPublishedExams(pool, unionId) {
   const result = await pool.query(`
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score, e.version
     FROM exams e
     WHERE e.status IN ('scheduled', 'published', 'paused')
-      ${ASSIGNMENT_FILTER}
+      ${assignmentFilter("$1")}
     ORDER BY e.created_at, e.id;`, [unionId]);
   return result.rows.map(mapExam);
 }
@@ -93,7 +95,7 @@ async function getPublishedExam(pool, examId, unionId) {
     JOIN questions q ON q.id = eq.question_id
     WHERE e.id = $1
       AND e.status IN ('scheduled', 'published', 'paused')
-      ${ASSIGNMENT_FILTER.replace('$1', '$2')}
+      ${assignmentFilter("$2")}
     ORDER BY eq.position;`, [examId, unionId]);
 
   if (!result.rows.length) return null;
