@@ -3,6 +3,8 @@ let currentId = "";
 let currentDetail = null;
 let gradeSaveNotice = "";
 let showWrongOnly = false;
+let adminUsers = [];
+let currentAdminUserId = "";
 
 function esc(value) {
   return String(value ?? "")
@@ -30,6 +32,74 @@ async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "请求失败");
   return data;
+}
+
+function renderAdminUsers() {
+  const query = document.getElementById("adminUserSearch").value.trim().toLowerCase();
+  const users = adminUsers.filter((user) => [user.name, user.employeeNo, user.department]
+    .some((value) => String(value || "").toLowerCase().includes(query)));
+  const list = document.getElementById("adminUserList");
+  list.innerHTML = users.length ? users.map((user) => {
+    const isCurrent = user.id === currentAdminUserId;
+    return `
+      <div class="admin-user-row">
+        <div class="admin-user-main">
+          <div class="admin-user-name">${esc(user.name || "未命名用户")}${isCurrent ? "（当前账号）" : ""}</div>
+          <div class="brand-sub">${esc(user.department || "未填写部门")} · ${esc(user.employeeNo || user.identityHint)}</div>
+        </div>
+        <span class="badge ${user.isAdmin ? "graded" : "pending"}">${user.isAdmin ? "管理员" : "普通用户"}</span>
+        <button class="btn ${user.isAdmin ? "danger" : "primary"} compact-btn admin-role-btn" type="button"
+          data-user-id="${esc(user.id)}" data-enabled="${user.isAdmin ? "false" : "true"}" ${user.isAdmin && isCurrent ? "disabled" : ""}>
+          ${user.isAdmin && isCurrent ? "当前管理员" : user.isAdmin ? "移除" : "设为管理员"}
+        </button>
+      </div>`;
+  }).join("") : `<div class="empty-state admin-user-empty">暂无匹配用户</div>`;
+
+  for (const button of document.querySelectorAll(".admin-role-btn")) {
+    button.addEventListener("click", () => updateAdminRole(button));
+  }
+}
+
+async function loadAdminUsers() {
+  const list = document.getElementById("adminUserList");
+  list.innerHTML = `<div class="empty-state admin-user-empty">正在载入用户</div>`;
+  const data = await api("/api/admin/users");
+  adminUsers = data.users;
+  renderAdminUsers();
+}
+
+async function openAdminManager() {
+  const dialog = document.getElementById("adminManagerDialog");
+  const message = document.getElementById("adminManagerMsg");
+  message.classList.add("hidden");
+  dialog.showModal();
+  try {
+    await loadAdminUsers();
+  } catch (error) {
+    message.textContent = error.message || "用户列表载入失败";
+    message.className = "notice error";
+  }
+}
+
+async function updateAdminRole(button) {
+  const message = document.getElementById("adminManagerMsg");
+  const enabled = button.dataset.enabled === "true";
+  button.disabled = true;
+  message.textContent = enabled ? "正在授予管理员权限" : "正在移除管理员权限";
+  message.className = "notice";
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(button.dataset.userId)}/admin-role`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled })
+    });
+    message.textContent = enabled ? "管理员权限已授予" : "管理员权限已移除";
+    message.className = "notice success";
+    await loadAdminUsers();
+  } catch (error) {
+    message.textContent = error.message || "管理员权限更新失败";
+    message.className = "notice error";
+    button.disabled = false;
+  }
 }
 
 function badge(status) {
@@ -328,7 +398,9 @@ async function initializeAdmin() {
   }
   if (!me.user) return;
   try {
-    await api("/api/admin/check");
+    const access = await api("/api/admin/check");
+    currentAdminUserId = access.currentUserId || "";
+    if (access.canManageAdmins) document.getElementById("manageAdminsBtn").classList.remove("hidden");
     document.getElementById("loginPage").classList.add("hidden");
     document.getElementById("adminPage").classList.remove("hidden");
     await loadList();
@@ -339,6 +411,11 @@ async function initializeAdmin() {
 }
 
 document.getElementById("refreshBtn").addEventListener("click", loadList);
+document.getElementById("manageAdminsBtn").addEventListener("click", openAdminManager);
+document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
+  document.getElementById("adminManagerDialog").close();
+});
+document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
   location.reload();

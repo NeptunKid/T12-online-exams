@@ -1015,6 +1015,63 @@ select:focus {
   padding: 28px;
 }
 
+.admin-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(38, 50, 65, 0.22);
+}
+
+.admin-dialog::backdrop {
+  background: rgba(38, 50, 65, 0.48);
+}
+
+.admin-dialog-shell {
+  padding: 20px;
+}
+
+.admin-dialog-head,
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-dialog-head {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.admin-user-list {
+  display: grid;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-user-row {
+  min-height: 68px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-user-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-user-name {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-empty {
+  min-height: 140px;
+}
+
 .toolbar {
   display: grid;
   gap: 12px;
@@ -1262,6 +1319,15 @@ select:focus {
 
   .retake-control .btn {
     margin-left: 0;
+  }
+
+  .admin-user-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-user-row .btn {
+    width: 100%;
   }
 
   .review-option {
