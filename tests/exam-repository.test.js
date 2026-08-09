@@ -131,6 +131,7 @@ test("考生工作台映射授权考试和补考状态", async () => {
   };
   const dashboard = await getStudentDashboard(pool, "u1");
   assert.equal(dashboard.exams[0].duration, 10);
+  assert.equal(dashboard.exams[0].studyStatus, "考核已开放");
   assert.equal(dashboard.exams[0].attempt.attemptNo, 2);
   assert.equal(dashboard.exams[0].attempt.available, true);
   assert.equal(dashboard.submissions.length, 1);
