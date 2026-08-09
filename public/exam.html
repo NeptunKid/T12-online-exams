@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>在线考试</title>
+  <title>T12学习考核中心</title>
   <link rel="stylesheet" href="/styles.css?v=20260804-3">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
     <main class="panel start-panel">
-      <h1>我的学习与考核</h1>
-      <p class="brand-sub" id="loginSub">请使用钉钉账号登录后查看学习项目与考试记录。</p>
+      <h1>T12学习考核中心</h1>
+      <p class="brand-sub">我的学习与考核</p>
+      <p id="loginSub">请使用钉钉账号登录后查看学习项目与考试记录。</p>
       <div id="loginActions" class="btn-row">
         <a class="btn primary" id="dingtalkLogin" href="/auth/dingtalk/login?returnTo=/">使用钉钉登录</a>
       </div>
@@ -22,10 +23,11 @@
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <div class="brand-title">我的学习与考核</div>
-          <div class="brand-sub" id="dashboardUser"></div>
+          <div class="brand-title">T12学习考核中心</div>
+          <div class="brand-sub">我的学习与考核</div>
         </div>
         <div class="btn-row">
+          <span class="brand-sub" id="dashboardUser"></span>
           <button class="btn secondary" id="dashboardRefreshBtn" type="button">刷新</button>
           <button class="btn danger" id="studentLogoutBtn" type="button">退出登录</button>
         </div>
