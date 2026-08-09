@@ -282,7 +282,7 @@ async function getStudentDashboard(pool, unionId) {
       totalScore: Number(row.total_score),
       passScore: Number(row.pass_score),
       version: Number(row.version),
-      studyStatus: "学习资料待配置",
+      studyStatus: "考核已开放",
       attempt: { attemptNo, completedAttempts, available, awaitingGrade, remainingExtraAttempts, message }
     };
   });

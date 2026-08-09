@@ -575,7 +575,7 @@ async function handleApi(req, res, pathname) {
         duration: examData.duration,
         totalScore: examData.totalScore,
         passScore: examData.passScore,
-        studyStatus: "学习资料待配置",
+        studyStatus: "考核已开放",
         attempt
       }],
       submissions
