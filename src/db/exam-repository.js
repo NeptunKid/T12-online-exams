@@ -10,13 +10,15 @@ function mapExam(row) {
   };
 }
 
+const { mapQuestionOptions } = require("../resources/question-resources");
+
 function mapQuestion(row) {
   return {
     id: row.question_id,
     no: Number(row.position),
     type: row.type,
     stem: row.stem,
-    options: row.options_json || [],
+    options: mapQuestionOptions(row.options_json || []),
     score: Number(row.score)
   };
 }
@@ -85,6 +87,13 @@ function sameAnswer(actual, expected) {
   return actual === expected;
 }
 
+function matchesFillAnswer(actual, expected) {
+  const normalizedActual = String(actual ?? "").trim().toLocaleLowerCase();
+  if (!normalizedActual) return false;
+  const accepted = Array.isArray(expected) ? expected : [expected];
+  return accepted.some((item) => normalizedActual === String(item ?? "").trim().toLocaleLowerCase());
+}
+
 function gradePublishedQuestions(rows, answers) {
   const objectiveDetail = {};
   let objectiveScore = 0;
@@ -97,7 +106,7 @@ function gradePublishedQuestions(rows, answers) {
       continue;
     }
     const expected = row.answer_json;
-    const exact = sameAnswer(answer, expected);
+    const exact = row.type === "fill" ? matchesFillAnswer(answer, expected) : sameAnswer(answer, expected);
     const partial = row.type === "multi" && Array.isArray(answer) && Array.isArray(expected)
       && answer.length > 0 && answer.every((item) => expected.includes(item));
     const earned = exact ? score : partial ? score / 2 : 0;
@@ -170,7 +179,7 @@ async function createSubmission(pool, examId, unionId, input = {}) {
     for (const row of rows) {
       const answer = input.answers[row.question_id] ?? (row.type === "multi" ? [] : "");
       const snapshot = {
-        id: row.question_id, type: row.type, stem: row.stem, options: row.options_json || [],
+        id: row.question_id, type: row.type, stem: row.stem, options: mapQuestionOptions(row.options_json || []),
         explanation: row.explanation || "", score: Number(row.score), position: Number(row.position)
       };
       const detail = grading.objectiveDetail[row.question_id];
@@ -287,7 +296,7 @@ function mapStudentQuestion(row, graded) {
     no: Number(row.position),
     type: snapshot.type || "",
     stem: snapshot.stem || "",
-    options: snapshot.options || [],
+    options: mapQuestionOptions(snapshot.options || []),
     score: Number(snapshot.score || 0),
     submittedAnswer: row.answer_json,
     ...(graded ? { earnedScore: Number(row.earned_score), automaticScore: row.automatic_score === null ? null : Number(row.automatic_score), manuallyAdjusted: Boolean(row.manually_adjusted) } : {})

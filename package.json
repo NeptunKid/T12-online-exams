@@ -7,13 +7,16 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test tests/*.test.js",
-    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check scripts/migrate.js && node --check scripts/import-legacy-submissions.js && node --check scripts/verify-legacy-import.js && node --check src/db/postgres-client.js && node --check src/db/exam-repository.js && node --check src/db/user-repository.js",
+    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check scripts/migrate.js && node --check scripts/import-legacy-submissions.js && node --check scripts/verify-legacy-import.js && node --check scripts/preview-question-csv.js && node --check scripts/prepare-question-resources.js && node --check scripts/import-question-banks.js && node --check src/db/postgres-client.js && node --check src/db/exam-repository.js && node --check src/db/user-repository.js && node --check src/import/question-csv.js && node --check src/resources/question-resources.js",
     "check:secrets": "node scripts/check-secrets.js",
     "check": "npm run check:syntax && npm test && npm run check:secrets",
     "migrate": "node scripts/migrate.js",
     "migrate:plan": "node scripts/migrate.js --plan",
     "import:legacy": "node scripts/import-legacy-submissions.js",
     "verify:legacy-import": "node scripts/verify-legacy-import.js",
+    "import:questions:preview": "node scripts/preview-question-csv.js",
+    "prepare:question-resources": "node scripts/prepare-question-resources.js",
+    "import:question-banks": "node scripts/import-question-banks.js",
     "sync:feishu": "node scripts/sync-feishu-document.js"
   },
   "engines": {

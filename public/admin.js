@@ -109,7 +109,7 @@ function badge(status) {
 }
 
 function typeLabel(type) {
-  return { single: "单选题", multi: "多选题", judge: "判断题", qa: "问答题" }[type] || type;
+  return { single: "单选题", multi: "多选题", judge: "判断题", fill: "填空题", qa: "问答题" }[type] || type;
 }
 
 function answerDisplay(value) {

@@ -29,6 +29,37 @@ test("考试 repository 未找到考试时返回 null", async () => {
   assert.equal(await getPublishedExam(pool, "missing", "u1"), null);
 });
 
+test("多个已发布考试独立映射且保留各自版本", async () => {
+  const pool = {
+    query: async (sql) => {
+      if (sql.includes("FROM exams e") && sql.includes("q.id AS question_id")) {
+        return {
+          rows: [{
+            id: "exam-2", title: "第二份考试", status: "published", duration_seconds: "900",
+            total_score: "80", pass_score: "48", version: 3, question_id: "q-2",
+            type: "judge", stem: "判断题", options_json: [{ label: "A", text: "正确" }], position: 1, score: "80"
+          }]
+        };
+      }
+      return {
+        rows: [
+          { id: "exam-1", title: "历史考试", status: "published", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1 },
+          { id: "exam-2", title: "第二份考试", status: "published", duration_seconds: "900", total_score: "80", pass_score: "48", version: 3 }
+        ]
+      };
+    }
+  };
+
+  const exams = await listPublishedExams(pool, "u1");
+  assert.deepEqual(exams.map((exam) => [exam.id, exam.version]), [["exam-1", 1], ["exam-2", 3]]);
+
+  const secondExam = await getPublishedExam(pool, "exam-2", "u1");
+  assert.equal(secondExam.id, "exam-2");
+  assert.equal(secondExam.version, 3);
+  assert.equal(secondExam.questions[0].id, "q-2");
+  assert.equal(Object.hasOwn(secondExam.questions[0], "answer"), false);
+});
+
 test("发布考试交卷只保存服务端快照并自动计算客观题", async () => {
   const calls = [];
   const client = {
@@ -55,6 +86,14 @@ test("发布考试客观题评分兼容多选漏选半分", () => {
   ], { "q-1": ["A"] });
   assert.equal(result.objectiveScore, 10);
   assert.equal(result.objectiveDetail["q-1"].automaticEarned, 10);
+});
+
+test("发布考试填空题自动判分支持答案别名", () => {
+  const result = gradePublishedQuestions([
+    { question_id: "q-fill", type: "fill", answer_json: ["浓缩咖啡", "espresso"], score: "4" }
+  ], { "q-fill": " Espresso " });
+  assert.equal(result.objectiveScore, 4);
+  assert.equal(result.objectiveDetail["q-fill"].automaticEarned, 4);
 });
 
 test("考生答卷列表按身份过滤并映射分数", async () => {
