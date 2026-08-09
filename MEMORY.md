@@ -11,3 +11,4 @@
 2026-08-09 [Codex] 在 `feature/admin-role-management` 实现 PostgreSQL 管理员角色管理：钉钉登录登记/关联用户，首位管理员由 `DINGTALK_GRADER_UNION_IDS` 引导，后台可检索已登录钉钉用户并授予/撤销 `grader + system_admin`，权限变更写入 `audit_logs`，禁止自我撤权和移除最后系统管理员；本机质量门 32 项通过，尚未部署生产。
 2026-08-09 [Codex] 已解决 PR #23 与最新 `main` 的 `MEMORY.md`、`package.json` 冲突：保留双方全部进展记录，并合并 Phase 2 与管理员 repository 的语法检查项；合并后质量门 42 项通过。
 2026-08-09 [Codex] 在 `feature/admin-question-editing` 实现管理员会话提前校验、题干 `【】` 下划线显示和 PostgreSQL 已有试题编辑；仅 `exam_admin/system_admin` 可修改题干、选项、参考答案和解析，事务保存时递增题目及引用考试版本并写入审计日志，历史答卷快照保持不变；交卷增加试卷版本校验以避免编辑期间静默错分，完整质量门 64 项测试通过。
+2026-08-09 [Codex] 在 `fix/t12-page-branding` 将考生首页及浏览器标题统一为“T12学习考核中心”，副标题为“我的学习与考核”；管理员登录页和后台顶栏以“T12学习考核中心”为主标题、“管理员阅卷后台”为副标题，未涉及数据库或业务逻辑，完整质量门 66 项测试通过。
