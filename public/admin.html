@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心 - 管理员阅卷后台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260809-2">
+  <link rel="stylesheet" href="/styles.css?v=20260809-3">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -90,7 +90,12 @@
       </div>
       <div class="question-manager-layout">
         <aside class="question-manager-list-panel">
-          <input id="questionSearch" type="search" placeholder="搜索题干、题库或考试">
+          <div class="field question-exam-picker">
+            <label for="questionExamFilter">试卷</label>
+            <select id="questionExamFilter"></select>
+          </div>
+          <div class="brand-sub question-count" id="questionCount"></div>
+          <input id="questionSearch" type="search" placeholder="搜索当前试卷题目">
           <div id="questionList" class="question-manager-list"></div>
         </aside>
         <section id="questionEditor" class="question-editor">
@@ -100,7 +105,8 @@
     </div>
   </dialog>
 
-  <script src="/question-format.js?v=20260809-1"></script>
-  <script src="/admin.js?v=20260809-2"></script>
+  <script src="/question-format.js?v=20260809-2"></script>
+  <script src="/question-admin-model.js?v=20260809-1"></script>
+  <script src="/admin.js?v=20260809-3"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ let showWrongOnly = false;
 let adminUsers = [];
 let currentAdminUserId = "";
 let adminQuestions = [];
+let currentQuestionExamId = "";
 let currentQuestionId = "";
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
@@ -163,13 +164,9 @@ async function updateAdminRole(button) {
 
 function renderQuestionList() {
   const query = document.getElementById("questionSearch").value.trim().toLowerCase();
-  const filtered = adminQuestions.filter((question) => [
-    question.stem,
-    question.bankName,
-    question.externalId,
-    ...question.exams.map((exam) => exam.title)
-  ].some((value) => String(value || "").toLowerCase().includes(query)));
+  const filtered = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId, query);
   const list = document.getElementById("questionList");
+  document.getElementById("questionCount").textContent = `当前试卷 ${filtered.length} 道题`;
   list.innerHTML = filtered.length ? filtered.map((question) => `
     <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
       <span class="question-list-stem">${questionText(question.stem)}</span>
@@ -181,22 +178,24 @@ function renderQuestionList() {
   }
 }
 
+function renderQuestionExamFilter() {
+  const exams = window.QuestionAdminModel.listQuestionExams(adminQuestions);
+  const select = document.getElementById("questionExamFilter");
+  select.innerHTML = exams.map((exam) => `<option value="${esc(exam.id)}">${esc(exam.title)}</option>`).join("");
+  if (!exams.some((exam) => exam.id === currentQuestionExamId)) currentQuestionExamId = exams[0]?.id || "";
+  select.value = currentQuestionExamId;
+}
+
+function currentAnswerLabels(question) {
+  const answer = Array.isArray(question.answer) ? question.answer : [question.answer];
+  return new Set(answer.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean));
+}
+
 function answerEditor(question) {
   if (["single", "judge", "multi"].includes(question.type)) {
-    const answers = new Set(Array.isArray(question.answer) ? question.answer : [question.answer]);
-    const inputType = question.type === "multi" ? "checkbox" : "radio";
-    return `
-      <div class="field">
-        <label>参考答案</label>
-        <div class="question-answer-options">
-          ${question.options.map((option) => `
-            <label class="question-answer-choice">
-              <input type="${inputType}" name="questionAnswer" value="${esc(option.label)}" ${answers.has(option.label) ? "checked" : ""}>
-              <span><strong>${esc(option.label)}.</strong> ${esc(option.text)}</span>
-            </label>
-          `).join("")}
-        </div>
-      </div>`;
+    const value = window.QuestionAdminModel.choiceAnswerText(question.type, question.answer);
+    const placeholder = question.type === "multi" ? "例如 A|B|D" : "例如 A";
+    return `<div class="field"><label for="questionAnswerText">参考答案</label><input id="questionAnswerText" type="text" value="${esc(value)}" placeholder="${placeholder}" autocomplete="off"></div>`;
   }
   const answer = Array.isArray(question.answer) ? question.answer.join("\n") : question.answer;
   const label = question.type === "fill" ? "参考答案（每行一个可接受答案）" : "参考答案";
@@ -211,6 +210,7 @@ function renderQuestionEditor() {
     return;
   }
   const examNames = question.exams.length ? question.exams.map((exam) => exam.title).join("、") : "尚未用于考试";
+  const answerLabels = currentAnswerLabels(question);
   editor.innerHTML = `
     <form id="questionEditorForm" class="question-editor-form">
       <div class="question-editor-meta">
@@ -228,7 +228,7 @@ function renderQuestionEditor() {
           <label>选项</label>
           <div class="question-option-editor">
             ${question.options.map((option) => `
-              <div class="question-option-row">
+              <div class="question-option-row ${answerLabels.has(option.label) ? "current-answer" : ""}" data-option-label="${esc(option.label)}">
                 <div class="question-option-label">${esc(option.label)}.</div>
                 <textarea class="question-option-text" data-label="${esc(option.label)}" ${option.hasImage ? "" : "required"}>${esc(option.text)}</textarea>
                 ${option.hasImage ? `<span class="brand-sub" style="grid-column:2">保留现有选项图片</span>` : ""}
@@ -247,6 +247,18 @@ function renderQuestionEditor() {
       </div>
     </form>`;
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
+  if (["single", "judge", "multi"].includes(question.type)) {
+    document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(question));
+  }
+}
+
+function updateChoiceAnswerHighlight(question) {
+  const value = document.getElementById("questionAnswerText")?.value || "";
+  const parsed = window.QuestionAdminModel.parseChoiceAnswer(question.type, value);
+  const labels = new Set(Array.isArray(parsed) ? parsed : [parsed]);
+  for (const row of document.querySelectorAll(".question-option-row")) {
+    row.classList.toggle("current-answer", labels.has(row.dataset.optionLabel));
+  }
 }
 
 function selectQuestion(questionId) {
@@ -259,7 +271,9 @@ async function loadQuestions() {
   document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
   const data = await api("/api/admin/questions");
   adminQuestions = data.questions;
-  if (!adminQuestions.some((question) => question.id === currentQuestionId)) currentQuestionId = adminQuestions[0]?.id || "";
+  renderQuestionExamFilter();
+  const examQuestions = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId);
+  if (!examQuestions.some((question) => question.id === currentQuestionId)) currentQuestionId = examQuestions[0]?.id || "";
   renderQuestionList();
   renderQuestionEditor();
 }
@@ -275,11 +289,8 @@ async function openQuestionManager() {
 }
 
 function collectQuestionAnswer(question) {
-  if (question.type === "multi") {
-    return Array.from(document.querySelectorAll('input[name="questionAnswer"]:checked')).map((input) => input.value);
-  }
-  if (question.type === "single" || question.type === "judge") {
-    return document.querySelector('input[name="questionAnswer"]:checked')?.value || "";
+  if (["single", "judge", "multi"].includes(question.type)) {
+    return window.QuestionAdminModel.parseChoiceAnswer(question.type, document.getElementById("questionAnswerText").value);
   }
   const value = document.getElementById("questionAnswerText").value;
   return question.type === "fill" ? value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) : value;
@@ -638,6 +649,14 @@ document.getElementById("closeQuestionManagerBtn").addEventListener("click", () 
 });
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
+document.getElementById("questionExamFilter").addEventListener("change", (event) => {
+  currentQuestionExamId = event.target.value;
+  const examQuestions = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId);
+  currentQuestionId = examQuestions[0]?.id || "";
+  document.getElementById("questionSearch").value = "";
+  renderQuestionList();
+  renderQuestionEditor();
+});
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
   location.reload();

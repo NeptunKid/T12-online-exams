@@ -9,8 +9,8 @@
 
   function formatQuestionText(value) {
     return escapeHtml(value).replace(
-      /【\s*】/g,
-      '<span class="blank-placeholder" role="img" aria-label="填空位置">&nbsp;</span>'
+      /【\s*】|「\s*」|\[\s*\]/g,
+      '<span class="blank-placeholder" role="img" aria-label="填空位置">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>'
     );
   }
 
