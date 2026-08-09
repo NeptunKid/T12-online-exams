@@ -27,6 +27,12 @@ DB_SSL=false
 
 真实凭证只允许出现在本地 `.env`、部署 Secret 或 GitHub Actions Secret。不要写入 README、测试样例、日志或开发总结。
 
+## 首位管理员
+
+`DINGTALK_GRADER_UNION_IDS` 是首位管理员的安全引导名单。首次部署时，将负责人的钉钉 `unionId` 填入该变量并重启服务；该账号下一次登录时会被登记到 PostgreSQL，并获得 `system_admin` 与 `grader` 角色。之后可在管理员后台的“管理员”窗口授予或撤销其他已登录用户的权限，无需继续修改环境变量。
+
+当前登录用户可通过 `https://exam.t12group.com/api/auth/me` 查看自己的 `unionId`。该值属于员工身份数据，只能写入服务器环境文件，不能提交到 Git、开发总结或公开聊天记录。
+
 ## GitHub Actions
 
 在仓库 `Settings -> Secrets and variables -> Actions` 中配置：

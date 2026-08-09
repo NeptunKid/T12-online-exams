@@ -4,6 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
+const { ensureBootstrapAdmin, getAdminAccess, listAdminUsers, setAdminRole, upsertDingtalkUser } = require("./src/db/user-repository");
 
 function loadEnvFile() {
   const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
@@ -168,7 +169,14 @@ function currentUser(req) {
     unionId: session.unionId,
     name: session.name,
     avatarUrl: session.avatarUrl,
-    role: roleForUnionId(session.unionId)
+    role: session.roles?.includes("system_admin")
+      ? "system_admin"
+      : session.roles?.includes("exam_admin")
+        ? "exam_admin"
+        : session.roles?.includes("grader") || GRADER_UNION_IDS.has(session.unionId)
+          ? "grader"
+          : "student",
+    roles: session.roles || []
   };
 }
 
@@ -217,6 +225,7 @@ async function getDingtalkUser(code) {
   if (!userResponse.ok || !user.unionId) throw new Error(user.message || "未能读取钉钉用户信息");
   return {
     unionId: String(user.unionId),
+    openId: String(user.openId || ""),
     name: String(user.nick || user.name || "钉钉用户").trim() || "钉钉用户",
     avatarUrl: String(user.avatarUrl || "")
   };
@@ -249,13 +258,18 @@ function requireUser(req, res) {
   return user;
 }
 
-function requireGrader(req, res) {
+async function requireGrader(req, res) {
   const user = requireUser(req, res);
-  if (user && user.role !== "grader") {
+  if (!user) return null;
+  try {
+    const access = await getAdminAccess(getPostgresPool(), user.unionId, GRADER_UNION_IDS);
+    if (access.canAccess) return { user, ...access };
     json(res, 403, { error: "当前钉钉账号没有阅卷权限" });
     return null;
+  } catch (_) {
+    json(res, 503, { error: "用户权限数据库暂不可用" });
+    return null;
   }
-  return user;
 }
 
 function healthStatus() {
@@ -637,12 +651,49 @@ async function handleApi(req, res, pathname) {
     }
   }
 
+  let adminAccess = null;
   if (pathname.startsWith("/api/admin/")) {
-    if (!requireGrader(req, res)) return;
+    adminAccess = await requireGrader(req, res);
+    if (!adminAccess) return;
   }
 
   if (req.method === "GET" && pathname === "/api/admin/check") {
-    return json(res, 200, { ok: true });
+    return json(res, 200, {
+      ok: true,
+      canManageAdmins: adminAccess.canManageAdmins,
+      currentUserId: adminAccess.userId
+    });
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/users") {
+    if (!adminAccess.canManageAdmins) return json(res, 403, { error: "当前账号没有管理员授权权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "用户权限数据库尚未配置" });
+    try {
+      return json(res, 200, { users: await listAdminUsers(pool) });
+    } catch (_) {
+      return json(res, 503, { error: "用户权限数据库暂不可用" });
+    }
+  }
+
+  const adminRoleMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/admin-role$/);
+  if (adminRoleMatch && req.method === "PUT") {
+    if (!adminAccess.canManageAdmins) return json(res, 403, { error: "当前账号没有管理员授权权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "用户权限数据库尚未配置" });
+    try {
+      const body = await readBody(req);
+      if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled 必须是布尔值" });
+      const updated = await setAdminRole(
+        pool,
+        decodeURIComponent(adminRoleMatch[1]),
+        body.enabled,
+        adminAccess.userId
+      );
+      return json(res, 200, { user: updated });
+    } catch (error) {
+      return json(res, 400, { error: error.message || "管理员权限更新失败" });
+    }
   }
 
   if (req.method === "GET" && pathname === "/api/admin/submissions") {
@@ -798,8 +849,19 @@ async function handleDingtalkCallback(req, res, url) {
   AUTH_STATES.delete(state);
   try {
     const user = await getDingtalkUser(code);
+    let roles = [];
+    const pool = getPostgresPool();
+    if (pool) {
+      try {
+        const userId = await upsertDingtalkUser(pool, user);
+        if (GRADER_UNION_IDS.has(user.unionId)) await ensureBootstrapAdmin(pool, userId);
+        roles = (await getAdminAccess(pool, user.unionId, GRADER_UNION_IDS)).roles;
+      } catch (_) {
+        throw new Error("用户权限数据库暂不可用");
+      }
+    }
     const token = crypto.randomBytes(32).toString("hex");
-    SESSIONS.set(token, { ...user, expiresAt: Date.now() + SESSION_TTL });
+    SESSIONS.set(token, { ...user, roles, expiresAt: Date.now() + SESSION_TTL });
     setSessionCookie(res, token);
     res.writeHead(302, { Location: pending.returnTo });
     res.end();
