@@ -365,12 +365,12 @@ select:focus {
 
 .blank-placeholder {
   display: inline-block;
-  width: min(7em, 42vw);
-  min-width: 4em;
-  height: 1.05em;
   margin: 0 0.2em;
-  border-bottom: 2px solid currentColor;
   vertical-align: baseline;
+  white-space: nowrap;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.12em;
 }
 
 .score-tag {
@@ -1053,6 +1053,14 @@ select:focus {
   min-width: 0;
 }
 
+.question-exam-picker {
+  margin-bottom: 8px;
+}
+
+.question-count {
+  margin-bottom: 10px;
+}
+
 .question-manager-list {
   display: grid;
   gap: 8px;
@@ -1101,8 +1109,7 @@ select:focus {
   gap: 8px;
 }
 
-.question-option-editor,
-.question-answer-options {
+.question-option-editor {
   display: grid;
   gap: 8px;
 }
@@ -1112,19 +1119,26 @@ select:focus {
   grid-template-columns: 34px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
+  padding: 8px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.question-option-row.current-answer {
+  border-color: var(--green);
+  background: var(--green-soft);
+  box-shadow: inset 4px 0 0 var(--green);
+}
+
+.question-option-row textarea {
+  min-height: 72px;
 }
 
 .question-option-label {
   padding-top: 12px;
   font-weight: 800;
   text-align: center;
-}
-
-.question-answer-choice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
 }
 
 .question-save-row {
