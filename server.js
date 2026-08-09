@@ -4,6 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
+const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const { ensureBootstrapAdmin, getAdminAccess, listAdminUsers, setAdminRole, upsertDingtalkUser } = require("./src/db/user-repository");
 
 function loadEnvFile() {
@@ -67,6 +68,31 @@ function readExamData() {
 
 const examData = readExamData();
 const questionsById = new Map(examData.questions.map((q) => [String(q.id), q]));
+
+function attachLegacyExamImages(exam) {
+  if (!exam || exam.title !== examData.title) return exam;
+  const images = { ...(exam.images || {}) };
+  for (const question of exam.questions || []) {
+    const legacy = examData.images?.[String(question.sourceId)] || { stem: [], options: {} };
+    const current = images[question.id] || question.images || { stem: [], options: {} };
+    images[question.id] = {
+      stem: [...(current.stem || []), ...(legacy.stem || [])],
+      options: { ...(current.options || {}), ...(legacy.options || {}) }
+    };
+  }
+  return { ...exam, images };
+}
+
+function attachLegacyStudentImages(detail) {
+  if (!detail || detail.submission?.examTitle !== examData.title) return detail;
+  return {
+    ...detail,
+    questions: (detail.questions || []).map((question) => ({
+      ...question,
+      images: examData.images?.[String(question.sourceId)] || { stem: [], options: {} }
+    }))
+  };
+}
 
 function retakeKey(unionId, examTitle) {
   return `${unionId}:${examTitle}`;
@@ -520,7 +546,9 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      const detail = await getStudentSubmission(pool, decodeURIComponent(studentSubmissionMatch[1]), user.unionId);
+      const detail = attachLegacyStudentImages(
+        await getStudentSubmission(pool, decodeURIComponent(studentSubmissionMatch[1]), user.unionId)
+      );
       if (!detail) return json(res, 404, { error: "未找到该答卷" });
       return json(res, 200, { source: "postgres", ...detail });
     } catch (_) {
@@ -551,7 +579,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      const exam = await getPublishedExam(pool, decodeURIComponent(examMatch[1]), user.unionId);
+      const exam = attachLegacyExamImages(await getPublishedExam(pool, decodeURIComponent(examMatch[1]), user.unionId));
       if (!exam) return json(res, 404, { error: "未找到已发布考试" });
       return json(res, 200, { source: "postgres", exam });
     } catch (_) {
@@ -697,6 +725,14 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "GET" && pathname === "/api/admin/submissions") {
+    const pool = getPostgresPool();
+    if (pool) {
+      try {
+        return json(res, 200, await listAdminSubmissions(pool));
+      } catch (_) {
+        return json(res, 503, { error: "答卷数据库暂不可用" });
+      }
+    }
     const store = readStore();
     return json(res, 200, {
       submissions: store.submissions.map(toListItem),
@@ -712,6 +748,15 @@ async function handleApi(req, res, pathname) {
   const retakePermissionMatch = pathname.match(/^\/api\/admin\/submissions\/([^/]+)\/retake-permission$/);
   if (retakePermissionMatch && req.method === "PUT") {
     try {
+      const pool = getPostgresPool();
+      if (pool) {
+        const retake = await grantRetakePermission(
+          pool,
+          decodeURIComponent(retakePermissionMatch[1]),
+          adminAccess.userId
+        );
+        return json(res, 200, { retake });
+      }
       const store = readStore();
       const item = store.submissions.find((submission) => submission.id === retakePermissionMatch[1]);
       if (!item) return json(res, 404, { error: "未找到该答卷" });
@@ -732,6 +777,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (detailMatch && req.method === "GET") {
+    const pool = getPostgresPool();
+    if (pool) {
+      try {
+        const detail = await getAdminSubmission(pool, decodeURIComponent(detailMatch[1]));
+        if (!detail) return json(res, 404, { error: "未找到该答卷" });
+        return json(res, 200, { ...detail, exam: attachLegacyExamImages(detail.exam) });
+      } catch (_) {
+        return json(res, 503, { error: "答卷数据库暂不可用" });
+      }
+    }
     const store = readStore();
     const item = store.submissions.find((s) => s.id === detailMatch[1]);
     if (!item) return json(res, 404, { error: "未找到该答卷" });
@@ -745,6 +800,16 @@ async function handleApi(req, res, pathname) {
   if (detailMatch && req.method === "PUT") {
     try {
       const body = await readBody(req);
+      const pool = getPostgresPool();
+      if (pool) {
+        const detail = await gradeAdminSubmission(
+          pool,
+          decodeURIComponent(detailMatch[1]),
+          body,
+          { userId: adminAccess.userId, name: currentUser(req).name }
+        );
+        return json(res, 200, { submission: detail.submission });
+      }
       const store = readStore();
       const index = store.submissions.findIndex((s) => s.id === detailMatch[1]);
       if (index < 0) return json(res, 404, { error: "未找到该答卷" });

@@ -12,6 +12,10 @@ const {
   matchesFillAnswer
 } = require("../server");
 
+test("清洁卫生入职培训考试时长为 45 分钟", () => {
+  assert.equal(examData.duration, 45);
+});
+
 test("答案比较不受多选顺序影响", () => {
   assert.equal(sameAnswer(["B", "A"], ["A", "B"]), true);
   assert.equal(sameAnswer(["A"], ["A", "B"]), false);

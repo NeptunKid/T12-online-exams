@@ -75,7 +75,7 @@ test("发布考试交卷只保存服务端快照并自动计算客观题", async
   };
   const pool = { connect: async () => client };
   const result = await createSubmission(pool, "exam-1", "u1", { submissionId: "submission-1", answers: { "q-1": "A" } });
-  assert.deepEqual(result, { id: "submission-1", status: "graded", objectiveScore: 100, attemptNo: 1 });
+  assert.deepEqual(result, { id: "submission-1", status: "pending", objectiveScore: 100, attemptNo: 1 });
   assert.equal(Object.hasOwn(result, "answer"), false);
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
@@ -104,20 +104,34 @@ test("考生答卷列表按身份过滤并映射分数", async () => {
   assert.deepEqual(submissions[0], { id: "s-1", examId: "exam-1", examTitle: "测试考试", submittedAt: "2026-08-08T00:00:00Z", status: "graded", objectiveScore: 80, qaScore: 0, totalScore: 80, pass: true, passScore: 60, attemptNo: 1, gradedAt: "2026-08-08T01:00:00Z", graderName: "阅卷人" });
 });
 
-test("考生答卷详情剔除历史快照中的标准答案和解析", async () => {
+test("已批阅答卷兼容历史 text 题干并返回标准答案", async () => {
   const queries = [];
   const pool = {
     query: async (sql) => {
       queries.push(sql);
       if (sql.includes("FROM submissions s")) return { rows: [{ id: "s-1", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "graded", objective_score: "80", qa_score: "0", total_score: "80", pass: true, pass_score: "60", attempt_no: 1, graded_at: null, grader_name: "" }] };
-      return { rows: [{ question_id: "q-1", position: 1, snapshot_json: { id: "q-1", type: "single", stem: "题目", options: [], answer: "A", explanation: "解析", score: 80 }, answer_json: "B", earned_score: "0", automatic_score: "0", manually_adjusted: false }] };
+      return { rows: [{ question_id: "q-1", position: 1, snapshot_json: { id: "q-1", type: "single", text: "历史题目", options: { A: "选项 A", B: "选项 B" }, answer: "A", explanation: "解析", score: 80 }, answer_json: "B", earned_score: "0", automatic_score: "0", manually_adjusted: false }] };
     }
   };
   const detail = await getStudentSubmission(pool, "s-1", "u1");
   assert.equal(detail.questions[0].submittedAnswer, "B");
-  assert.equal(Object.hasOwn(detail.questions[0], "answer"), false);
-  assert.equal(Object.hasOwn(detail.questions[0], "explanation"), false);
+  assert.equal(detail.questions[0].stem, "历史题目");
+  assert.equal(detail.questions[0].options.length, 2);
+  assert.equal(detail.questions[0].correctAnswer, "A");
+  assert.equal(detail.questions[0].explanation, "解析");
   assert.equal(queries[0].includes("$2"), true);
+});
+
+test("待阅卷答卷不返回标准答案和解析", async () => {
+  const pool = {
+    query: async (sql) => {
+      if (sql.includes("FROM submissions s")) return { rows: [{ id: "s-2", exam_id: "exam-1", exam_title: "测试考试", submitted_at: "2026-08-08T00:00:00Z", status: "pending", objective_score: "0", qa_score: "0", total_score: null, pass: null, pass_score: "60", attempt_no: 1, graded_at: null, grader_name: "" }] };
+      return { rows: [{ question_id: "q-1", position: 1, snapshot_json: { type: "qa", stem: "问答题", answer: "参考答案", explanation: "解析", score: 10 }, answer_json: "我的作答", earned_score: "0", automatic_score: null, manually_adjusted: false }] };
+    }
+  };
+  const detail = await getStudentSubmission(pool, "s-2", "u1");
+  assert.equal(Object.hasOwn(detail.questions[0], "correctAnswer"), false);
+  assert.equal(Object.hasOwn(detail.questions[0], "explanation"), false);
 });
 
 test("考生工作台映射授权考试和补考状态", async () => {

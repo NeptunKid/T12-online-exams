@@ -52,3 +52,14 @@ test("0003 迁移允许填空题并可恢复旧题型约束", () => {
   assert.match(migration.sql, /'fill'/);
   assert.match(require("node:fs").readFileSync(migration.downPath, "utf8"), /'qa'/);
 });
+
+test("0004 修正清洁卫生时长并建立可回滚的全员授权", () => {
+  const migration = listMigrations().find((item) => item.name === "0004_production_exam_workflow");
+  assert.ok(migration);
+  assert.match(migration.sql, /duration_seconds = 2700/);
+  assert.match(migration.sql, /all-active-dingtalk-users/);
+  assert.match(migration.sql, /graded_at IS NULL/);
+  const down = require("node:fs").readFileSync(migration.downPath, "utf8");
+  assert.match(down, /DELETE FROM exam_assignments/);
+  assert.match(down, /duration_seconds = 30/);
+});

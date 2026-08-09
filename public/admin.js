@@ -130,7 +130,8 @@ function renderList() {
   const query = document.getElementById("searchInput").value.trim().toLowerCase();
   const status = document.getElementById("statusFilter").value;
   const list = submissions.filter((item) => {
-    const hit = item.studentName.toLowerCase().includes(query);
+    const hit = [item.studentName, item.examTitle]
+      .some((value) => String(value || "").toLowerCase().includes(query));
     return hit && (status === "all" || item.status === status);
   });
 
@@ -140,7 +141,7 @@ function renderList() {
         <span class="submission-name">${esc(item.studentName || "未命名")}</span>
         ${badge(item.status)}
       </div>
-      <div class="brand-sub">第 ${item.attemptNo || 1} 次考核</div>
+      <div class="brand-sub">${esc(item.examTitle || "未命名考试")} · 第 ${item.attemptNo || 1} 次考核</div>
       <div class="submission-line" style="margin-top:6px">
         <span class="brand-sub">${fmtTime(item.submittedAt)}</span>
         <strong>${item.totalScore ?? item.objectiveScore} 分</strong>

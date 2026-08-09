@@ -120,12 +120,12 @@ function buildImportSql(normalized) {
   const bankId = stableId("legacy_bank", examData.title);
   const statements = ["BEGIN;"];
   statements.push(`INSERT INTO question_banks (id, name, description, status) VALUES (${sqlLiteral(bankId)}, ${sqlLiteral(`002 历史题库：${examData.title}`)}, '从 002 只读导入', 'active') ON CONFLICT (id) DO NOTHING;`);
-  statements.push(`INSERT INTO exams (id, title, status, duration_seconds, pass_score, total_score, version, answer_rules_json) VALUES (${sqlLiteral(examId)}, ${sqlLiteral(examData.title)}, 'published', ${asFiniteNumber(examData.duration)}, ${asFiniteNumber(examData.passScore)}, ${asFiniteNumber(examData.totalScore)}, 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;`);
+  statements.push(`INSERT INTO exams (id, title, status, duration_seconds, pass_score, total_score, version, answer_rules_json) VALUES (${sqlLiteral(examId)}, ${sqlLiteral(examData.title)}, 'published', ${asFiniteNumber(examData.duration) * 60}, ${asFiniteNumber(examData.passScore)}, ${asFiniteNumber(examData.totalScore)}, 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;`);
 
   questions.forEach((question, index) => {
     const questionId = stableId("legacy_question", `${examId}:${question.legacySourceKey}`);
     const snapshot = { ...question };
-    statements.push(`INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, answer_json, explanation, score, version, status) VALUES (${sqlLiteral(questionId)}, ${sqlLiteral(bankId)}, ${sqlLiteral(question.legacySourceKey)}, ${sqlLiteral(question.type)}, ${sqlLiteral(question.stem || "")}, ${jsonLiteral(question.options || [])}, ${jsonLiteral(question.answer)}, ${sqlLiteral(question.explanation || "")}, ${asFiniteNumber(question.score)}, 1, 'active') ON CONFLICT (id) DO NOTHING;`);
+    statements.push(`INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, answer_json, explanation, score, version, status) VALUES (${sqlLiteral(questionId)}, ${sqlLiteral(bankId)}, ${sqlLiteral(question.legacySourceKey)}, ${sqlLiteral(question.type)}, ${sqlLiteral(question.stem || question.text || "")}, ${jsonLiteral(question.options || [])}, ${jsonLiteral(question.answer)}, ${sqlLiteral(question.explanation || "")}, ${asFiniteNumber(question.score)}, 1, 'active') ON CONFLICT (id) DO NOTHING;`);
     statements.push(`INSERT INTO exam_questions (exam_id, question_id, position, score, section) VALUES (${sqlLiteral(examId)}, ${sqlLiteral(questionId)}, ${index + 1}, ${asFiniteNumber(question.score)}, '') ON CONFLICT (exam_id, question_id) DO NOTHING;`);
     question.__legacyQuestionId = questionId;
     question.__legacySnapshot = { ...snapshot, legacySourceKey: question.legacySourceKey };
