@@ -22,8 +22,8 @@ node scripts/preview-question-csv.js docs/question-bank-drafts/coffee-questions.
 ```bash
 cd /opt/t12-online-exams
 test -f package.json && test -f public/question-resources/manifest.json
-git pull --ff-only origin main
-npm ci
+sudo -u codexdeploy -H git -C /opt/t12-online-exams pull --ff-only origin main
+sudo -u codexdeploy -H sh -c 'cd /opt/t12-online-exams && npm ci'
 ```
 
 导入前先备份 PostgreSQL（不会修改答卷）：
