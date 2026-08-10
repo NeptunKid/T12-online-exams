@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心 - 管理员阅卷后台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810-2">
+  <link rel="stylesheet" href="/styles.css?v=20260810-3">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -84,14 +84,17 @@
       <div class="admin-dialog-head">
         <div>
           <h2>题库维护</h2>
-          <p class="brand-sub">编辑现有试题</p>
+          <p class="brand-sub">手动录入与编辑试题</p>
         </div>
-        <button class="btn secondary compact-btn" id="closeQuestionManagerBtn" type="button">关闭</button>
+        <div class="admin-dialog-actions">
+          <button class="btn primary compact-btn" id="newQuestionBtn" type="button">新增题目</button>
+          <button class="btn secondary compact-btn" id="closeQuestionManagerBtn" type="button">关闭</button>
+        </div>
       </div>
       <div class="question-manager-layout">
         <aside class="question-manager-list-panel">
           <div class="field question-exam-picker">
-            <label for="questionExamFilter">试卷</label>
+            <label for="questionExamFilter">分类</label>
             <select id="questionExamFilter"></select>
           </div>
           <div class="brand-sub question-count" id="questionCount"></div>
@@ -106,7 +109,7 @@
   </dialog>
 
   <script src="/question-format.js?v=20260809-2"></script>
-  <script src="/question-admin-model.js?v=20260809-1"></script>
-  <script src="/admin.js?v=20260810-2"></script>
+  <script src="/question-admin-model.js?v=20260810-1"></script>
+  <script src="/admin.js?v=20260810-3"></script>
 </body>
 </html>

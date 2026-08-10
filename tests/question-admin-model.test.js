@@ -2,8 +2,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   choiceAnswerText,
+  filterQuestions,
   filterQuestionsByExam,
   listQuestionExams,
+  listQuestionFilters,
   parseChoiceAnswer
 } = require("../public/question-admin-model");
 
@@ -17,6 +19,22 @@ test("题库先按试卷去重分类再筛选对应题目", () => {
   assert.deepEqual(listQuestionExams(questions).map((exam) => exam.id), ["exam-fire", "exam-it"]);
   assert.deepEqual(filterQuestionsByExam(questions, "exam-fire").map((question) => question.id), ["q-1", "q-3"]);
   assert.deepEqual(filterQuestionsByExam(questions, "exam-it", "共用").map((question) => question.id), ["q-3"]);
+});
+
+test("题库维护可以在试卷和题库两个维度切换", () => {
+  const banks = [
+    { id: "bank-fire", name: "消防题库" },
+    { id: "bank-unused", name: "待组卷题库" }
+  ];
+  const withBankIds = questions.map((question, index) => ({
+    ...question,
+    bankId: index === 1 ? "bank-it" : "bank-fire"
+  }));
+  const filters = listQuestionFilters(withBankIds, banks);
+  assert.deepEqual(filters.exams.map((exam) => exam.value), ["exam:exam-fire", "exam:exam-it"]);
+  assert.deepEqual(filters.banks.map((bank) => bank.value).sort(), ["bank:bank-fire", "bank:bank-unused"]);
+  assert.deepEqual(filterQuestions(withBankIds, "exam:exam-fire").map((question) => question.id), ["q-1", "q-3"]);
+  assert.deepEqual(filterQuestions(withBankIds, "bank:bank-fire").map((question) => question.id), ["q-1", "q-3"]);
 });
 
 test("选择题参考答案使用单个文本框格式读写", () => {

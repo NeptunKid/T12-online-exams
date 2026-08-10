@@ -6,7 +6,7 @@ const { createDingtalkProvider, createFeishuProvider } = require("./src/auth/oau
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
-const { listQuestions, updateQuestion } = require("./src/db/question-repository");
+const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 
 function loadEnvFile() {
@@ -704,9 +704,23 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
     try {
-      return json(res, 200, { questions: await listQuestions(pool) });
+      const [questions, banks] = await Promise.all([listQuestions(pool), listQuestionBanks(pool)]);
+      return json(res, 200, { questions, banks });
     } catch (_) {
       return json(res, 503, { error: "题库数据库暂不可用" });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/admin/questions") {
+    if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
+    try {
+      const body = await readBody(req);
+      const question = await createQuestion(pool, body, adminAccess.userId);
+      return json(res, 201, { question });
+    } catch (error) {
+      return json(res, 400, { error: error.message || "题目录入失败" });
     }
   }
 

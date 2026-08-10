@@ -1,7 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  createQuestion,
   mapQuestion,
+  normalizeQuestionCreate,
   normalizeQuestionEdit,
   updateQuestion
 } = require("../src/db/question-repository");
@@ -21,6 +23,57 @@ test("题目编辑校验答案必须来自现有选项", () => {
   assert.throws(() => normalizeQuestionEdit(existing, {
     stem: "题干", options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }], answer: "C", explanation: ""
   }), /参考答案必须来自现有选项/);
+});
+
+test("手动录题校验题库、题型、分值、选项和答案", () => {
+  const created = normalizeQuestionCreate({
+    bankId: "bank-1",
+    externalId: " manual-1 ",
+    type: "multi",
+    stem: "哪些选项正确？",
+    options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }],
+    answer: ["B", "A"],
+    explanation: "解析",
+    score: "2.5"
+  });
+  assert.equal(created.externalId, "manual-1");
+  assert.equal(created.score, 2.5);
+  assert.deepEqual(created.answer, ["A", "B"]);
+  assert.throws(() => normalizeQuestionCreate({ ...created, bankId: "" }), /请选择题库/);
+  assert.throws(() => normalizeQuestionCreate({ ...created, score: -1 }), /默认分值/);
+});
+
+test("手动新增题目写入题库和审计日志但不加入试卷", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes("FROM question_banks") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ id: "bank-1", name: "测试题库" }] };
+      }
+      if (sql.includes("LEFT JOIN LATERAL")) {
+        return { rows: [{
+          id: params[0], bank_id: "bank-1", bank_name: "测试题库", external_id: "manual-1",
+          type: "single", stem: "题干", options_json: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }],
+          answer_json: "A", explanation: "解析", score: "1", version: "1", status: "active", exam_refs: []
+        }] };
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const question = await createQuestion({ connect: async () => client }, {
+    bankId: "bank-1", externalId: "manual-1", type: "single", stem: "题干",
+    options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }],
+    answer: "A", explanation: "解析", score: 1
+  }, "admin-1");
+
+  assert.equal(question.bankId, "bank-1");
+  assert.deepEqual(question.exams, []);
+  assert.equal(calls.some((call) => call.sql.includes("INSERT INTO questions")), true);
+  assert.equal(calls.some((call) => call.sql.includes("'create_question'")), true);
+  assert.equal(calls.some((call) => call.sql.includes("INSERT INTO exam_questions")), false);
+  assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
 test("只有图片的既有选项可以在编辑时保留空文本", () => {
