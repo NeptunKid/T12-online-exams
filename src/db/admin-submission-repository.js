@@ -37,12 +37,38 @@ function normalizeQuestionOptions(rawOptions) {
   return { options, optionImages };
 }
 
+function comparableQuestion(question) {
+  return {
+    type: question.type || "",
+    text: question.text || "",
+    options: question.options || {},
+    images: question.images || { stem: [], options: {} },
+    answer: question.answer ?? null,
+    explanation: question.explanation || "",
+    score: asNumber(question.score)
+  };
+}
+
+function changedQuestionFields(snapshot, current) {
+  const labels = {
+    text: "题干",
+    options: "选项",
+    images: "图片",
+    answer: "标准答案",
+    explanation: "解析",
+    score: "分值",
+    type: "题型"
+  };
+  return Object.keys(labels).filter((key) => JSON.stringify(snapshot[key]) !== JSON.stringify(current[key]))
+    .map((key) => labels[key]);
+}
+
 function mapAdminQuestion(row) {
   const snapshot = row.snapshot_json || {};
   const sourceId = snapshot.sourceId || snapshot.legacySourceKey || row.external_id || snapshot.id || row.question_id;
   const rawOptions = snapshot.options ?? row.current_options ?? [];
   const { options, optionImages } = normalizeQuestionOptions(rawOptions);
-  return {
+  const question = {
     id: row.question_id || snapshot.id,
     sourceId: String(sourceId ?? ""),
     no: asNumber(row.position),
@@ -61,6 +87,27 @@ function mapAdminQuestion(row) {
     automaticScore: row.automatic_score === null ? null : asNumber(row.automatic_score),
     manuallyAdjusted: Boolean(row.manually_adjusted)
   };
+  const hasCurrentQuestion = Boolean(row.current_question_id || row.current_type);
+  const currentActive = hasCurrentQuestion && row.current_status !== "archived";
+  if (!currentActive) {
+    return { ...question, referenceStatus: hasCurrentQuestion ? "deleted" : "unavailable", changedFields: [] };
+  }
+  const currentOptionData = normalizeQuestionOptions(row.current_options || []);
+  const current = {
+    type: row.current_type || "",
+    text: row.current_stem || "",
+    options: currentOptionData.options,
+    images: {
+      stem: mapQuestionImages(row.current_images || []),
+      options: currentOptionData.optionImages
+    },
+    answer: row.current_answer,
+    explanation: row.current_explanation || "",
+    score: asNumber(row.current_score),
+    version: asNumber(row.current_version, 1)
+  };
+  const changedFields = changedQuestionFields(comparableQuestion(question), comparableQuestion(current));
+  return { ...question, current, referenceStatus: changedFields.length ? "modified" : "unchanged", changedFields };
 }
 
 async function listAdminSubmissions(pool) {
@@ -89,7 +136,8 @@ async function loadAdminQuestions(queryable, submissionId, examId, lock = false)
   const result = await queryable.query(`
     SELECT sq.question_id, sq.position, sq.snapshot_json, sq.answer_json,
       sq.earned_score, sq.automatic_score, sq.manually_adjusted,
-      q.external_id, q.type AS current_type, q.stem AS current_stem,
+      q.id AS current_question_id, q.external_id, q.status AS current_status, q.version AS current_version,
+      q.type AS current_type, q.stem AS current_stem,
       q.options_json AS current_options, q.images_json AS current_images,
       q.answer_json AS current_answer,
       q.explanation AS current_explanation, eq.score AS current_score
@@ -127,7 +175,9 @@ async function getAdminSubmission(pool, submissionId) {
   const objectiveDetail = {};
   const qaScores = {};
   const storedDetail = row.scores_json?.objectiveDetail || {};
+  const reviewReferences = row.scores_json?.reviewReferences || {};
   for (const question of questions) {
+    question.reviewSource = reviewReferences[question.id]?.source || "snapshot";
     answers[question.id] = question.submittedAnswer;
     if (question.type === "qa") {
       qaScores[question.id] = question.earnedScore;
@@ -182,6 +232,29 @@ function scoreInput(value, maxScore, label, required) {
   return Math.max(0, Math.min(maxScore, score));
 }
 
+function sameAnswer(actual, expected) {
+  if (Array.isArray(actual) || Array.isArray(expected)) {
+    if (!Array.isArray(actual) || !Array.isArray(expected)) return false;
+    return actual.length === expected.length && [...actual].sort().every((item, index) => item === [...expected].sort()[index]);
+  }
+  return actual === expected;
+}
+
+function automaticScore(question) {
+  if (question.type === "qa") return null;
+  const answer = question.submittedAnswer ?? (question.type === "multi" ? [] : "");
+  const expected = question.answer;
+  if (question.type === "fill") {
+    const actual = String(answer).trim().toLocaleLowerCase();
+    const accepted = (Array.isArray(expected) ? expected : [expected]).map((item) => String(item).trim().toLocaleLowerCase());
+    return actual && accepted.includes(actual) ? question.score : 0;
+  }
+  if (sameAnswer(answer, expected)) return question.score;
+  if (question.type === "multi" && Array.isArray(answer) && Array.isArray(expected)
+    && answer.length > 0 && answer.every((item) => expected.includes(item))) return question.score / 2;
+  return 0;
+}
+
 async function gradeAdminSubmission(pool, submissionId, input, grader) {
   const client = await pool.connect();
   try {
@@ -197,15 +270,25 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
     const questions = await loadAdminQuestions(client, submissionId, submission.exam_id, true);
     const objectiveDetail = {};
     const qaScores = {};
+    const reviewReferences = {};
+    const requestedCurrentIds = new Set(Array.isArray(input.useCurrentQuestionIds)
+      ? input.useCurrentQuestionIds.map((value) => String(value))
+      : []);
     let objectiveScore = 0;
     let qaScore = 0;
 
     for (const question of questions) {
-      const isQa = question.type === "qa";
+      const useCurrent = requestedCurrentIds.has(String(question.id));
+      if (useCurrent && question.referenceStatus !== "modified") {
+        throw new Error(`题目 ${question.no} 不存在可采用的当前题库版本`);
+      }
+      const gradingQuestion = useCurrent ? { ...question, ...question.current } : question;
+      const isQa = gradingQuestion.type === "qa";
       const raw = isQa ? input.qaScores?.[question.id] : input.objectiveScores?.[question.id];
-      const requested = scoreInput(raw, question.score, `${isQa ? "问答题" : "客观题"} ${question.no}`, isQa);
-      const earned = requested === null ? question.earnedScore : requested;
-      const automatic = question.automaticScore ?? question.earnedScore;
+      const requested = scoreInput(raw, gradingQuestion.score, `${isQa ? "问答题" : "客观题"} ${question.no}`, isQa);
+      const recalculated = useCurrent && !isQa ? automaticScore(gradingQuestion) : null;
+      const automatic = recalculated ?? question.automaticScore ?? question.earnedScore;
+      const earned = useCurrent && !isQa ? automatic : requested === null ? question.earnedScore : requested;
       await client.query(`
         UPDATE submission_questions
         SET earned_score = $3,
@@ -219,7 +302,7 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
       } else {
         objectiveDetail[question.id] = {
           answer: question.submittedAnswer,
-          correctAnswer: question.answer,
+          correctAnswer: gradingQuestion.answer,
           earned,
           automaticEarned: automatic,
           manuallyAdjusted: earned !== automatic,
@@ -227,13 +310,17 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
         };
         objectiveScore += earned;
       }
+      reviewReferences[question.id] = {
+        source: useCurrent ? "current" : "snapshot",
+        currentQuestionVersion: useCurrent ? gradingQuestion.version : null
+      };
     }
 
     const totalMax = asNumber(submission.total_score);
     const requestedPass = scoreInput(input.passScore ?? submission.pass_score, totalMax, "通过分数", true);
     const totalScore = objectiveScore + qaScore;
     const gradedAt = new Date().toISOString();
-    const scores = { ...(submission.scores_json || {}), objectiveDetail, qaScores };
+    const scores = { ...(submission.scores_json || {}), objectiveDetail, qaScores, reviewReferences };
     await client.query(`
       UPDATE submissions
       SET status = 'graded', objective_score = $2, qa_score = $3,
@@ -272,10 +359,12 @@ async function grantRetakePermission(pool, submissionId, grantedBy) {
 }
 
 module.exports = {
+  automaticScore,
   getAdminSubmission,
   gradeAdminSubmission,
   grantRetakePermission,
   listAdminSubmissions,
+  changedQuestionFields,
   mapAdminListItem,
   mapAdminQuestion,
   scoreInput

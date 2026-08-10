@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心</title>
-  <link rel="stylesheet" href="/styles.css?v=20260809-3">
+  <link rel="stylesheet" href="/styles.css?v=20260810-1">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -21,15 +21,17 @@
 
   <div id="dashboardPage" class="hidden">
     <header class="topbar">
-      <div class="topbar-inner">
+      <div class="topbar-inner dashboard-topbar">
         <div class="brand">
           <div class="brand-title">T12学习考核中心</div>
           <div class="brand-sub">我的学习与考核</div>
         </div>
-        <div class="btn-row">
-          <span class="brand-sub" id="dashboardUser"></span>
-          <button class="btn secondary" id="dashboardRefreshBtn" type="button">刷新</button>
-          <button class="btn danger" id="studentLogoutBtn" type="button">退出登录</button>
+        <div class="dashboard-actions">
+          <span class="brand-sub dashboard-user" id="dashboardUser"></span>
+          <div class="btn-row dashboard-buttons">
+            <button class="btn secondary" id="dashboardRefreshBtn" type="button">刷新</button>
+            <button class="btn danger" id="studentLogoutBtn" type="button">退出登录</button>
+          </div>
         </div>
       </div>
     </header>
@@ -109,6 +111,6 @@
   </div>
 
   <script src="/question-format.js?v=20260809-2"></script>
-  <script src="/exam.js?v=20260809-2"></script>
+  <script src="/exam.js?v=20260810-1"></script>
 </body>
 </html>

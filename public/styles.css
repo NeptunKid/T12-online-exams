@@ -84,6 +84,20 @@ button {
   color: var(--muted);
 }
 
+.dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dashboard-user {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timer {
   min-width: 92px;
   height: 38px;
@@ -902,6 +916,38 @@ select:focus {
   background: #fbfcfe;
 }
 
+.question-version-notice {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #f4d37a;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: #76520f;
+  font-size: 13px;
+}
+
+.question-version-notice.deleted {
+  border-color: #f2a3ab;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.use-current-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.use-current-question input {
+  width: auto;
+  margin-top: 3px;
+}
+
 .objective-review-card.answer-incorrect {
   border: 2px solid #e98590;
   background: #fff7f8;
@@ -1359,6 +1405,43 @@ select:focus {
 
   .topbar-inner {
     padding: 0 12px;
+  }
+
+  .dashboard-topbar {
+    height: auto;
+    min-height: 64px;
+    align-items: flex-start;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .dashboard-topbar .brand {
+    flex: 1 1 auto;
+    padding-top: 1px;
+  }
+
+  .dashboard-actions {
+    flex: 0 1 auto;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .dashboard-user {
+    max-width: 44vw;
+    text-align: right;
+  }
+
+  .dashboard-buttons {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .dashboard-buttons .btn {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
   }
 
   .meta-grid,

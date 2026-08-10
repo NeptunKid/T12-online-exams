@@ -119,10 +119,10 @@ function getAttemptInfo(store, user) {
   const usesExtraPermission = nextAttempt > 2;
   const available = !awaitingGrade && (nextAttempt <= 2 || retake.remainingExtraAttempts > 0);
 
-  let message = "本次为首次考核。";
+  let message = "本次为第1次考核，仅有一次补考机会。";
   if (awaitingGrade) message = "上一份答卷正在阅卷，阅卷完成后才能参加补考。";
-  else if (nextAttempt === 2) message = "本次为一次免费补考。";
-  else if (usesExtraPermission && available) message = `管理员已额外开放补考，本次为第 ${nextAttempt} 次考核。`;
+  else if (nextAttempt === 2) message = "本次为补考。";
+  else if (usesExtraPermission && available) message = `本次为第${nextAttempt - 2}次额外补考。`;
   else if (usesExtraPermission) message = "已完成首次考核和一次免费补考，请联系管理员开放额外补考权限。";
 
   return {
