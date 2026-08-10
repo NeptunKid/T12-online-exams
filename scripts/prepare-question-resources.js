@@ -33,7 +33,15 @@ function main() {
   const outputDir = path.resolve(args.outputDir);
   const extractionDir = path.join(outputDir, "extraction");
   fs.mkdirSync(extractionDir, { recursive: true });
-  const resources = {};
+  let resources = {};
+  const manifestPath = path.join(outputDir, "manifest.json");
+  if (fs.existsSync(manifestPath)) {
+    try {
+      resources = JSON.parse(fs.readFileSync(manifestPath, "utf8")).resources || {};
+    } catch (_) {
+      resources = {};
+    }
+  }
   for (const [sourceName, resourceId] of ALLOWED) {
     const source = path.join(sourceDir, sourceName);
     if (!fs.existsSync(source)) throw new Error(`缺少图片资源：${source}`);
@@ -54,8 +62,8 @@ function main() {
     };
   }
   const manifest = { version: 1, generatedAt: new Date().toISOString(), resources };
-  fs.writeFileSync(path.join(outputDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-  console.log(`已建立 ${Object.keys(resources).length} 个受控资源映射：${path.join(outputDir, "manifest.json")}`);
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  console.log(`已建立 ${Object.keys(resources).length} 个受控资源映射：${manifestPath}`);
 }
 
 try {

@@ -10,16 +10,21 @@ function mapExam(row) {
   };
 }
 
-const { mapQuestionOptions } = require("../resources/question-resources");
+const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
 
 function mapQuestion(row) {
+  const options = mapQuestionOptions(row.options_json || []);
   return {
     id: row.question_id,
     sourceId: row.external_id || row.question_id,
     no: Number(row.position),
     type: row.type,
     stem: row.stem,
-    options: mapQuestionOptions(row.options_json || []),
+    options,
+    images: {
+      stem: mapQuestionImages(row.images_json || []),
+      options: Object.fromEntries(options.filter((option) => option.image).map((option) => [option.label, option.image]))
+    },
     score: Number(row.score)
   };
 }
@@ -88,6 +93,7 @@ async function getPublishedExam(pool, examId, unionId) {
         LIMIT 1
       ), '') AS stem,
       q.options_json,
+      q.images_json,
       eq.position,
       eq.score
     FROM exams e
@@ -100,10 +106,11 @@ async function getPublishedExam(pool, examId, unionId) {
 
   if (!result.rows.length) return null;
   const exam = mapExam(result.rows[0]);
+  const questions = result.rows.map(mapQuestion);
   return {
     ...exam,
-    images: {},
-    questions: result.rows.map(mapQuestion)
+    images: Object.fromEntries(questions.map((question) => [question.id, question.images])),
+    questions
   };
 }
 
@@ -171,7 +178,7 @@ async function createSubmission(pool, examId, unionId, input = {}) {
           ORDER BY sq.created_at
           LIMIT 1
         ), '') AS stem,
-        q.options_json, q.answer_json, q.explanation,
+        q.options_json, q.images_json, q.answer_json, q.explanation,
         eq.position, eq.score, ci.user_id
       FROM exams e
       CROSS JOIN current_identity ci
@@ -236,7 +243,8 @@ async function createSubmission(pool, examId, unionId, input = {}) {
       const snapshot = {
         id: row.question_id, sourceId: row.external_id || row.question_id,
         type: row.type, stem: row.stem, options: mapQuestionOptions(row.options_json || []),
-        answer: row.answer_json, explanation: row.explanation || "", score: Number(row.score), position: Number(row.position)
+        images: row.images_json || [], answer: row.answer_json, explanation: row.explanation || "",
+        score: Number(row.score), position: Number(row.position)
       };
       const detail = grading.objectiveDetail[row.question_id];
       await client.query(`
@@ -366,6 +374,10 @@ function mapStudentQuestion(row, graded) {
     type: snapshot.type || row.current_type || "",
     stem: snapshot.stem || snapshot.text || row.current_stem || "",
     options: mapQuestionOptions(snapshot.options || row.current_options || []),
+    images: {
+      stem: mapQuestionImages(snapshot.images || row.current_images || []),
+      options: {}
+    },
     score: Number(snapshot.score ?? row.current_score ?? 0),
     submittedAnswer: row.answer_json,
     ...(graded ? {
@@ -392,6 +404,7 @@ async function getStudentSubmission(pool, submissionId, unionId) {
     SELECT sq.question_id, sq.position, sq.snapshot_json, sq.answer_json, sq.earned_score,
       sq.automatic_score, sq.manually_adjusted, q.external_id,
       q.type AS current_type, q.stem AS current_stem, q.options_json AS current_options,
+      q.images_json AS current_images,
       q.answer_json AS current_answer, q.explanation AS current_explanation,
       eq.score AS current_score
     FROM submission_questions sq

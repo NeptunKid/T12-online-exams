@@ -8,7 +8,7 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
     async query(sql) {
       queries.push(sql);
       if (sql.includes("FROM exams e")) {
-        return { rows: [{ id: "exam-1", title: "测试考试", status: "published", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1, question_id: "q-1", type: "single", stem: "题目", options_json: [{ label: "A", text: "选项" }], position: 1, score: "100" }] };
+        return { rows: [{ id: "exam-1", title: "测试考试", status: "published", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1, question_id: "q-1", type: "single", stem: "题目", options_json: [{ label: "A", text: "选项" }], images_json: ["resource:coffee-siphon"], position: 1, score: "100" }] };
       }
       return { rows: [{ id: "exam-1", title: "测试考试", status: "published", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1 }] };
     }
@@ -18,6 +18,7 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
   assert.deepEqual(exams[0], { id: "exam-1", title: "测试考试", status: "published", duration: 600, totalScore: 100, passScore: 60, version: 1 });
   const exam = await getPublishedExam(pool, "exam-1", "u1");
   assert.equal(exam.questions[0].score, 100);
+  assert.deepEqual(exam.images["q-1"].stem, ["/question-resources/coffee/coffee-siphon.jpeg"]);
   assert.equal(Object.hasOwn(exam.questions[0], "answer"), false);
   assert.equal(Object.hasOwn(exam.questions[0], "explanation"), false);
   assert.equal(queries.some((sql) => sql.includes("answer_json") || sql.includes("explanation")), false);
@@ -69,7 +70,7 @@ test("发布考试交卷只保存服务端快照并自动计算客观题", async
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.includes("FROM exams e")) {
-        return { rows: [{ id: "exam-1", title: "测试考试", version: 1, pass_score: "60", total_score: "100", user_id: "user-1", question_id: "q-1", type: "single", stem: "题目", options_json: [{ label: "A", text: "选项" }], answer_json: "A", explanation: "答案解析", position: 1, score: "100" }] };
+        return { rows: [{ id: "exam-1", title: "测试考试", version: 1, pass_score: "60", total_score: "100", user_id: "user-1", question_id: "q-1", type: "single", stem: "题目", options_json: [{ label: "A", text: "选项" }], images_json: ["resource:coffee-siphon"], answer_json: "A", explanation: "答案解析", position: 1, score: "100" }] };
       }
       if (sql.includes("MAX(attempt_no)")) return { rows: [{ attempt_no: "1" }] };
       return { rows: [] };
@@ -85,6 +86,8 @@ test("发布考试交卷只保存服务端快照并自动计算客观题", async
   assert.deepEqual(result, { id: "submission-1", status: "pending", objectiveScore: 100, attemptNo: 1 });
   assert.equal(Object.hasOwn(result, "answer"), false);
   assert.equal(calls.at(-1).sql, "COMMIT");
+  const snapshotInsert = calls.find((call) => call.sql.includes("INSERT INTO submission_questions"));
+  assert.deepEqual(JSON.parse(snapshotInsert.params[3]).images, ["resource:coffee-siphon"]);
 });
 
 test("交卷时拒绝与当前试卷版本不一致的旧页面", async () => {

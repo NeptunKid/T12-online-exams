@@ -76,19 +76,21 @@ async function ensureBank(client, bank, questions) {
     const id = `question-${bank.key}-${question.externalId}`;
     const options = questionOptions(question);
     const answer = question.answer;
+    const images = question.imageUrls || [];
     const existingQuestion = await client.query(
-      "SELECT bank_id, external_id, type, stem, options_json, answer_json, explanation, score, status FROM questions WHERE id = $1",
+      "SELECT bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, score, status FROM questions WHERE id = $1",
       [id]
     );
     if (!existingQuestion.rows.length) {
       await client.query(`
-        INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, answer_json, explanation, score, version, status)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, 1, 'active')`,
-      [id, bank.bankId, question.externalId, question.type, question.stem, JSON.stringify(options), JSON.stringify(answer), question.explanation, question.score]);
+        INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, score, version, status)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, 1, 'active')`,
+      [id, bank.bankId, question.externalId, question.type, question.stem, JSON.stringify(options), JSON.stringify(images), JSON.stringify(answer), question.explanation, question.score]);
     } else {
       const row = existingQuestion.rows[0];
       if (row.bank_id !== bank.bankId || row.external_id !== question.externalId || row.type !== question.type || row.stem !== question.stem
-        || !sameJson(row.options_json || [], options) || !sameJson(row.answer_json, answer) || row.explanation !== question.explanation
+        || !sameJson(row.options_json || [], options) || !sameJson(row.images_json || [], images)
+        || !sameJson(row.answer_json, answer) || row.explanation !== question.explanation
         || Number(row.score) !== Number(question.score) || row.status !== "active") {
         throw new Error(`题目 ${id} 已存在但内容不一致，拒绝覆盖`);
       }

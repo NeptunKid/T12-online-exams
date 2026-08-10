@@ -22,6 +22,8 @@ test("coffee basics draft contains 100 one-point questions", () => {
   assert.equal(preview.validRows, 100);
   assert.equal(preview.questions.reduce((sum, question) => sum + question.score, 0), 100);
   assert.deepEqual(counts, { single: 33, multi: 12, judge: 31, fill: 4, qa: 20 });
+  assert.deepEqual(preview.questions.find((question) => question.externalId === "coffee-078").imageUrls, ["resource:coffee-cherry-structure"]);
+  assert.deepEqual(preview.questions.find((question) => question.externalId === "coffee-084").imageUrls, ["resource:coffee-siphon"]);
 });
 
 test("coffee basics exam is published for 60 minutes with an 85 percent pass score", async () => {
