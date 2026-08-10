@@ -9,6 +9,7 @@ const {
   getAttemptInfo,
   roleForUnionId,
   healthStatus,
+  publicUser,
   matchesFillAnswer
 } = require("../server");
 
@@ -69,6 +70,14 @@ test("阅卷角色和普通考生角色分离", () => {
 
 test("健康检查不暴露配置或凭证", () => {
   assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
+});
+
+test("浏览器用户信息不暴露 provider subject", () => {
+  assert.deepEqual(publicUser({
+    provider: "feishu", providerSubject: "ou_private", unionId: "on_current", name: "飞书员工", roles: ["student"]
+  }), {
+    provider: "feishu", unionId: "on_current", name: "飞书员工", roles: ["student"]
+  });
 });
 
 test("补考状态兼容旧答卷", () => {

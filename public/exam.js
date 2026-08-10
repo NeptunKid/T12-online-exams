@@ -117,7 +117,8 @@ async function loadDashboard() {
 
 function renderDashboard() {
   const { user, exams, submissions } = dashboardData;
-  document.getElementById("dashboardUser").textContent = `钉钉账号：${user.name}`;
+  const providerLabel = user.provider === "feishu" ? "飞书账号" : "钉钉账号";
+  document.getElementById("dashboardUser").textContent = `${providerLabel}：${user.name}`;
 
   document.getElementById("examCatalog").innerHTML = exams.map((item) => {
     const attempt = item.attempt;
@@ -467,9 +468,12 @@ async function initialize() {
   const [authRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
   const auth = await authRes.json();
   const me = await meRes.json();
+  const dingtalkEnabled = auth.providers?.dingtalk?.enabled ?? auth.enabled;
+  const feishuEnabled = Boolean(auth.providers?.feishu?.enabled);
+  document.getElementById("dingtalkLogin").classList.toggle("hidden", !dingtalkEnabled);
+  document.getElementById("feishuLogin").classList.toggle("hidden", !feishuEnabled);
   if (!auth.enabled) {
-    document.getElementById("loginSub").textContent = "钉钉登录尚未配置，请联系系统管理员。";
-    document.getElementById("dingtalkLogin").classList.add("hidden");
+    document.getElementById("loginSub").textContent = "登录服务尚未配置，请联系系统管理员。";
     return;
   }
   if (!me.user) return;

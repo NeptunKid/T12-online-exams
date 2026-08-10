@@ -2,11 +2,12 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { createDingtalkProvider, createFeishuProvider } = require("./src/auth/oauth-providers");
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const { listQuestions, updateQuestion } = require("./src/db/question-repository");
-const { ensureBootstrapAdmin, getAdminAccess, listAdminUsers, setAdminRole, upsertDingtalkUser } = require("./src/db/user-repository");
+const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 
 function loadEnvFile() {
   const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
@@ -34,6 +35,9 @@ const HOST = process.env.HOST || "127.0.0.1";
 const DINGTALK_CLIENT_ID = process.env.DINGTALK_CLIENT_ID || "";
 const DINGTALK_CLIENT_SECRET = process.env.DINGTALK_CLIENT_SECRET || "";
 const DINGTALK_REDIRECT_URI = process.env.DINGTALK_REDIRECT_URI || "";
+const FEISHU_APP_ID = process.env.FEISHU_APP_ID || "";
+const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || "";
+const FEISHU_REDIRECT_URI = process.env.FEISHU_REDIRECT_URI || "";
 const GRADER_UNION_IDS = new Set(
   (process.env.DINGTALK_GRADER_UNION_IDS || "").split(",").map((value) => value.trim()).filter(Boolean)
 );
@@ -42,6 +46,8 @@ const SESSIONS = new Map();
 const SESSION_COOKIE = "exam_dingtalk_session";
 const OAUTH_STATE_TTL = 10 * 60 * 1000;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
+const DINGTALK_PROVIDER = createDingtalkProvider({ clientId: DINGTALK_CLIENT_ID, clientSecret: DINGTALK_CLIENT_SECRET, redirectUri: DINGTALK_REDIRECT_URI });
+const FEISHU_PROVIDER = createFeishuProvider({ appId: FEISHU_APP_ID, appSecret: FEISHU_APP_SECRET, redirectUri: FEISHU_REDIRECT_URI });
 let POSTGRES_POOL = null;
 
 const ROOT = __dirname;
@@ -192,19 +198,28 @@ function getSession(req) {
 function currentUser(req) {
   const session = getSession(req);
   if (!session) return null;
+  const provider = session.provider || "dingtalk";
   return {
     unionId: session.unionId,
+    provider,
+    providerSubject: session.providerSubject || session.openId || session.unionId,
     name: session.name,
     avatarUrl: session.avatarUrl,
     role: session.roles?.includes("system_admin")
       ? "system_admin"
       : session.roles?.includes("exam_admin")
         ? "exam_admin"
-        : session.roles?.includes("grader") || GRADER_UNION_IDS.has(session.unionId)
+        : session.roles?.includes("grader") || (provider === "dingtalk" && GRADER_UNION_IDS.has(session.unionId))
           ? "grader"
           : "student",
     roles: session.roles || []
   };
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  const { providerSubject, ...safeUser } = user;
+  return safeUser;
 }
 
 function roleForUnionId(unionId, graderIds = GRADER_UNION_IDS) {
@@ -212,7 +227,11 @@ function roleForUnionId(unionId, graderIds = GRADER_UNION_IDS) {
 }
 
 function isDingtalkReady() {
-  return Boolean(DINGTALK_CLIENT_ID && DINGTALK_CLIENT_SECRET && DINGTALK_REDIRECT_URI);
+  return DINGTALK_PROVIDER.enabled;
+}
+
+function isFeishuReady() {
+  return FEISHU_PROVIDER.enabled;
 }
 
 function getPostgresPool() {
@@ -229,33 +248,6 @@ function cleanExpiredAuth() {
   const now = Date.now();
   for (const [key, item] of AUTH_STATES) if (item.expiresAt < now) AUTH_STATES.delete(key);
   for (const [key, item] of SESSIONS) if (item.expiresAt < now) SESSIONS.delete(key);
-}
-
-async function getDingtalkUser(code) {
-  const tokenResponse = await fetch("https://api.dingtalk.com/v1.0/oauth2/userAccessToken", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      clientId: DINGTALK_CLIENT_ID,
-      clientSecret: DINGTALK_CLIENT_SECRET,
-      code,
-      grantType: "authorization_code"
-    })
-  });
-  const tokenData = await tokenResponse.json().catch(() => ({}));
-  if (!tokenResponse.ok || !tokenData.accessToken) throw new Error(tokenData.message || "未能获取钉钉登录凭证");
-
-  const userResponse = await fetch("https://api.dingtalk.com/v1.0/contact/users/me", {
-    headers: { "x-acs-dingtalk-access-token": tokenData.accessToken }
-  });
-  const user = await userResponse.json().catch(() => ({}));
-  if (!userResponse.ok || !user.unionId) throw new Error(user.message || "未能读取钉钉用户信息");
-  return {
-    unionId: String(user.unionId),
-    openId: String(user.openId || ""),
-    name: String(user.nick || user.name || "钉钉用户").trim() || "钉钉用户",
-    avatarUrl: String(user.avatarUrl || "")
-  };
 }
 
 function readBody(req) {
@@ -281,7 +273,7 @@ function readBody(req) {
 
 function requireUser(req, res) {
   const user = currentUser(req);
-  if (!user) json(res, 401, { error: "请先使用钉钉登录" });
+  if (!user) json(res, 401, { error: "请先登录" });
   return user;
 }
 
@@ -289,9 +281,11 @@ async function requireGrader(req, res) {
   const user = requireUser(req, res);
   if (!user) return null;
   try {
-    const access = await getAdminAccess(getPostgresPool(), user.unionId, GRADER_UNION_IDS);
+    const access = user.provider === "dingtalk"
+      ? await getAdminAccess(getPostgresPool(), user.unionId, GRADER_UNION_IDS)
+      : await getIdentityAccess(getPostgresPool(), user.provider, user.providerSubject);
     if (access.canAccess) return { user, ...access };
-    json(res, 403, { error: "当前钉钉账号没有阅卷权限" });
+    json(res, 403, { error: "当前账号没有阅卷权限" });
     return null;
   } catch (_) {
     json(res, 503, { error: "用户权限数据库暂不可用" });
@@ -489,11 +483,18 @@ function toStudentSubmissionDetail(item) {
 
 async function handleApi(req, res, pathname) {
   if (req.method === "GET" && pathname === "/api/auth/config") {
-    return json(res, 200, { enabled: isDingtalkReady(), loginUrl: "/auth/dingtalk/login?returnTo=/" });
+    return json(res, 200, {
+      enabled: isDingtalkReady() || isFeishuReady(),
+      loginUrl: "/auth/dingtalk/login?returnTo=/",
+      providers: {
+        dingtalk: { enabled: isDingtalkReady(), loginUrl: "/auth/dingtalk/login?returnTo=/" },
+        feishu: { enabled: isFeishuReady(), loginUrl: "/auth/feishu/login?returnTo=/" }
+      }
+    });
   }
 
   if (req.method === "GET" && pathname === "/api/auth/me") {
-    return json(res, 200, { user: currentUser(req) });
+    return json(res, 200, { user: publicUser(currentUser(req)) });
   }
 
   if (req.method === "POST" && pathname === "/api/auth/logout") {
@@ -534,7 +535,7 @@ async function handleApi(req, res, pathname) {
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
       const dashboard = await getStudentDashboard(pool, user.unionId);
-      return json(res, 200, { source: "postgres", user, ...dashboard });
+      return json(res, 200, { source: "postgres", user: publicUser(user), ...dashboard });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
     }
@@ -600,7 +601,7 @@ async function handleApi(req, res, pathname) {
       .map(toStudentSubmission);
     const attempt = getAttemptInfo(store, user);
     return json(res, 200, {
-      user,
+      user: publicUser(user),
       exams: [{
         id: "default",
         title: examData.title,
@@ -924,38 +925,43 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-function handleDingtalkLogin(req, res, url) {
-  if (!isDingtalkReady()) return json(res, 503, { error: "钉钉登录尚未配置，请联系系统管理员。" });
+function handleOAuthLogin(res, url, provider, label) {
+  if (!provider.enabled) return json(res, 503, { error: `${label}登录尚未配置，请联系系统管理员。` });
   cleanExpiredAuth();
   const state = crypto.randomBytes(24).toString("hex");
-  AUTH_STATES.set(state, { returnTo: validReturnTo(url.searchParams.get("returnTo")), expiresAt: Date.now() + OAUTH_STATE_TTL });
-  const authUrl = new URL("https://login.dingtalk.com/oauth2/auth");
-  authUrl.searchParams.set("redirect_uri", DINGTALK_REDIRECT_URI);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("client_id", DINGTALK_CLIENT_ID);
-  authUrl.searchParams.set("scope", "openid");
-  authUrl.searchParams.set("state", state);
-  authUrl.searchParams.set("prompt", "consent");
-  res.writeHead(302, { Location: authUrl.toString() });
+  AUTH_STATES.set(state, {
+    provider: provider.name,
+    returnTo: validReturnTo(url.searchParams.get("returnTo")),
+    expiresAt: Date.now() + OAUTH_STATE_TTL
+  });
+  res.writeHead(302, { Location: provider.getAuthorizationUrl(state) });
   res.end();
 }
 
-async function handleDingtalkCallback(req, res, url) {
+async function handleOAuthCallback(res, url, provider, label) {
   cleanExpiredAuth();
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const pending = state ? AUTH_STATES.get(state) : null;
-  if (!code || !pending) return json(res, 400, { error: "钉钉登录校验失败，请重新发起登录。" });
+  if (!code || !pending || pending.provider !== provider.name) {
+    return json(res, 400, { error: `${label}登录校验失败，请重新发起登录。` });
+  }
   AUTH_STATES.delete(state);
   try {
-    const user = await getDingtalkUser(code);
+    const user = await provider.exchangeCode(code);
     let roles = [];
     const pool = getPostgresPool();
     if (pool) {
       try {
-        const userId = await upsertDingtalkUser(pool, user);
-        if (GRADER_UNION_IDS.has(user.unionId)) await ensureBootstrapAdmin(pool, userId);
-        roles = (await getAdminAccess(pool, user.unionId, GRADER_UNION_IDS)).roles;
+        const userId = provider.name === "dingtalk"
+          ? await upsertDingtalkUser(pool, user)
+          : await upsertFeishuUser(pool, user);
+        if (provider.name === "dingtalk" && GRADER_UNION_IDS.has(user.unionId)) {
+          await ensureBootstrapAdmin(pool, userId);
+        }
+        roles = provider.name === "dingtalk"
+          ? (await getAdminAccess(pool, user.unionId, GRADER_UNION_IDS)).roles
+          : (await getIdentityAccess(pool, provider.name, user.providerSubject)).roles;
       } catch (_) {
         throw new Error("用户权限数据库暂不可用");
       }
@@ -966,7 +972,7 @@ async function handleDingtalkCallback(req, res, url) {
     res.writeHead(302, { Location: pending.returnTo });
     res.end();
   } catch (err) {
-    json(res, 502, { error: err.message || "钉钉登录失败" });
+    json(res, 502, { error: err.message || `${label}登录失败` });
   }
 }
 
@@ -977,9 +983,13 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "GET" && url.pathname === "/readyz") {
     readinessStatus().then((status) => json(res, status.status === "ready" ? 200 : 503, status));
   } else if (url.pathname === "/auth/dingtalk/login") {
-    handleDingtalkLogin(req, res, url);
+    handleOAuthLogin(res, url, DINGTALK_PROVIDER, "钉钉");
   } else if (url.pathname === "/auth/dingtalk/callback") {
-    handleDingtalkCallback(req, res, url);
+    handleOAuthCallback(res, url, DINGTALK_PROVIDER, "钉钉");
+  } else if (url.pathname === "/auth/feishu/login") {
+    handleOAuthLogin(res, url, FEISHU_PROVIDER, "飞书");
+  } else if (url.pathname === "/auth/feishu/callback") {
+    handleOAuthCallback(res, url, FEISHU_PROVIDER, "飞书");
   } else if (url.pathname.startsWith("/api/")) {
     handleApi(req, res, url.pathname).catch((err) => json(res, 500, { error: err.message || "服务器错误" }));
   } else {
@@ -1004,5 +1014,6 @@ module.exports = {
   roleForUnionId,
   healthStatus,
   readinessStatus,
-  matchesFillAnswer
+  matchesFillAnswer,
+  publicUser
 };
