@@ -12,7 +12,8 @@ const BANKS = [
   { key: "extraction", file: "extraction-questions.csv", bankId: "bank-extraction-principle", examId: "exam-extraction-principle", title: "萃取原理考试", duration: 50 },
   { key: "fire", file: "fire-questions.csv", bankId: "bank-fire-basics", examId: "exam-fire-basics", title: "消防基础考试", duration: 30 },
   { key: "it", file: "it-questions.csv", bankId: "bank-it-basics", examId: "exam-it-basics", title: "IT基础考试", duration: 30 },
-  { key: "coffee", file: "coffee-questions.csv", bankId: "bank-coffee-basics", examId: "exam-coffee-basics", title: "咖啡基础知识", duration: 60 }
+  { key: "coffee", file: "coffee-questions.csv", bankId: "bank-coffee-basics", examId: "exam-coffee-basics", title: "咖啡基础知识", duration: 60 },
+  { key: "legal", file: "legal-questions.csv", bankId: "bank-legal-regulations", examId: "exam-legal-regulations", title: "餐饮相关法律法规", duration: 40 }
 ];
 
 function parseArgs(argv) {
