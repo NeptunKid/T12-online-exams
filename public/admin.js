@@ -219,6 +219,7 @@ function renderQuestionEditor() {
         <span class="brand-sub">版本 ${question.version} · ${question.score} 分</span>
       </div>
       <div class="brand-sub">引用考试：${esc(examNames)}</div>
+      <div class="notice">保存会更新后续考生看到的题目版本；已提交答卷及其原有判分不会改变。重新阅卷时，管理员可在答卷中逐题选择是否采用本次修改。</div>
       <div class="field">
         <label for="questionStem">题干</label>
         <textarea id="questionStem" required>${esc(question.stem)}</textarea>
@@ -418,6 +419,20 @@ function objectiveAnswerLabel(status) {
   return { correct: "回答正确", partial: "部分正确", incorrect: "回答错误" }[status];
 }
 
+function questionVersionNotice(question) {
+  if (question.referenceStatus === "deleted" || question.referenceStatus === "unavailable") {
+    return `<div class="question-version-notice deleted"><strong>题库版本提示：</strong>该题已在题库中删除或无法找到，将继续按考生交卷时的题目与答案阅卷。</div>`;
+  }
+  if (question.referenceStatus !== "modified") return "";
+  const currentAnswer = answerDisplay(question.current?.answer || question.current?.explanation || "未提供");
+  return `
+    <div class="question-version-notice modified">
+      <strong>题库版本提示：</strong>题库已修改${question.changedFields?.length ? `（${esc(question.changedFields.join("、"))}）` : ""}；默认仍使用交卷时快照，不影响已产生的答卷和原自动判分。
+      <label class="use-current-question"><input class="use-current-question-input" type="checkbox" data-qid="${esc(question.id)}" ${question.reviewSource === "current" ? "checked" : ""}> 采用当前题库内容重新阅卷</label>
+      <span class="brand-sub">当前标准答案：${esc(currentAnswer)}。客观题采用后会按当前标准答案重新自动判分并覆盖该题手动分；问答题供人工按当前参考内容评分。</span>
+    </div>`;
+}
+
 function renderObjectiveReview(submission, exam) {
   const allQuestions = exam.questions.filter((q) => q.type !== "qa");
   const wrongCount = allQuestions.filter((q) => objectiveAnswerStatus(submission.objectiveDetail?.[q.id] || {}) !== "correct").length;
@@ -443,6 +458,7 @@ function renderObjectiveReview(submission, exam) {
                 <div><div class="question-text">${questionText(q.text)}</div><div class="brand-sub">${typeLabel(q.type)} · 满分 ${q.score} 分</div></div>
                 <span class="review-answer-status ${status}">${objectiveAnswerLabel(status)}</span>
               </div>
+              ${questionVersionNotice(q)}
               ${reviewImages(images.stem || [])}
               <div class="meta-label">考生作答</div>
               ${renderOptionReview(q, detail, images)}
@@ -471,6 +487,7 @@ function renderQaReview(submission, exam) {
         ${qa.map((q, index) => `
           <article class="qa-review-card">
             <h3>${index + 1}. ${questionText(q.text)} <span class="brand-sub">满分 ${q.score} 分</span></h3>
+            ${questionVersionNotice(q)}
             ${reviewImages(getImageSet(exam, q).stem || [])}
             <div class="meta-label">考生答案</div>
             <div class="answer-box">${esc(submission.answers?.[q.id] || "未作答")}</div>
@@ -572,8 +589,10 @@ async function saveGrade() {
   if (!currentDetail) return;
   const qaScores = {};
   const objectiveScores = {};
+  const useCurrentQuestionIds = [];
   for (const input of document.querySelectorAll(".qa-score")) qaScores[input.dataset.qid] = input.value;
   for (const input of document.querySelectorAll(".objective-score")) objectiveScores[input.dataset.qid] = input.value;
+  for (const input of document.querySelectorAll(".use-current-question-input:checked")) useCurrentQuestionIds.push(input.dataset.qid);
 
   const saveMsg = document.getElementById("saveMsg");
   saveMsg.textContent = "正在保存";
@@ -583,6 +602,7 @@ async function saveGrade() {
       body: JSON.stringify({
         objectiveScores,
         qaScores,
+        useCurrentQuestionIds,
         passScore: document.getElementById("passScore").value,
         graderComment: document.getElementById("graderComment").value
       })

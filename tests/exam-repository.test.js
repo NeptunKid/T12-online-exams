@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, gradePublishedQuestions, listPublishedExams, listStudentSubmissions } = require("../src/db/exam-repository");
+const { attemptInfo, createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, gradePublishedQuestions, listPublishedExams, listStudentSubmissions } = require("../src/db/exam-repository");
 
 test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async () => {
   const queries = [];
@@ -118,6 +118,23 @@ test("交卷时拒绝与当前试卷版本不一致的旧页面", async () => {
   assert.equal(calls.includes("ROLLBACK"), true);
 });
 
+test("额外补考交卷会在同一事务中扣减授权次数", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes("FROM exams e")) return { rows: [{ id: "exam-1", title: "测试考试", version: 1, pass_score: "60", total_score: "100", user_id: "user-1", question_id: "q-1", type: "single", stem: "题目", options_json: [{ label: "A", text: "选项" }], images_json: [], answer_json: "A", explanation: "", position: 1, score: "100" }] };
+      if (sql.includes("MAX(attempt_no)")) return { rows: [{ attempt_no: "3" }] };
+      if (sql.includes("SELECT remaining_count")) return { rows: [{ remaining_count: "1" }] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const result = await createSubmission({ connect: async () => client }, "exam-1", "u1", { submissionId: "extra-1", examVersion: 1, answers: { "q-1": "A" } });
+  assert.equal(result.attemptNo, 3);
+  assert.equal(calls.some((call) => call.sql.includes("remaining_count = remaining_count - 1")), true);
+});
+
 test("发布考试客观题评分兼容多选漏选半分", () => {
   const result = gradePublishedQuestions([
     { question_id: "q-1", type: "multi", answer_json: ["A", "B"], score: "20" }
@@ -186,5 +203,13 @@ test("考生工作台映射授权考试和补考状态", async () => {
   assert.equal(dashboard.exams[0].studyStatus, "考核已开放");
   assert.equal(dashboard.exams[0].attempt.attemptNo, 2);
   assert.equal(dashboard.exams[0].attempt.available, true);
+  assert.equal(dashboard.exams[0].attempt.message, "本次为补考。");
   assert.equal(dashboard.submissions.length, 1);
+});
+
+test("补考提示区分首次、正常补考和额外补考", () => {
+  assert.equal(attemptInfo(0, false, 0).message, "本次为第1次考核，仅有一次补考机会。");
+  assert.equal(attemptInfo(1, false, 0).message, "本次为补考。");
+  assert.equal(attemptInfo(2, false, 1).message, "本次为第1次额外补考。");
+  assert.equal(attemptInfo(3, false, 1).message, "本次为第2次额外补考。");
 });

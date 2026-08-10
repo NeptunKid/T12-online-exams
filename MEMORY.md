@@ -15,3 +15,5 @@
 2026-08-09 [Codex] 在 `fix/question-bank-layout-placeholders` 将题库维护改为先选试卷再显示对应题目，选择题当前答案在选项区高亮且统一通过单个文本框编辑；题干仅将内容为空白的 `【】`、`「」`、`[]` 转换为带下划线格式的连续空白字符，含文字括号保持原样，完整质量门 70 项测试通过。
 2026-08-09 [Codex] 在 `feature/coffee-basics-exam` 从本地《咖啡基础知识》XLSX 生成 100 题 CSV 审阅稿，配置 `exam-coffee-basics` 为 60 分钟、总分 100、通过分 85，并沿用发布后全员有效钉钉用户授权；源表第 39 行跳号选项已无损压缩，另有 1 道问答题缺少源图片并列为上线风险。阶段进度估算约 65%，完整质量门 72 项测试通过；尚未导入生产 PostgreSQL。
 2026-08-10 [Codex] 用户提供咖啡题库图片 `8-1.jpeg`、`36-1.jpeg`；在 `fix/coffee-question-images` 增加受控资源、副本最长边 1600px、`0005_question_stem_images` 可回滚迁移，并让题库导入、考生试卷、阅卷页和答卷快照保存题干图片；完整质量门 74 项测试通过。生产服务器此前因未拉取 PR #31 使用旧脚本，`--only` 报错但数据库备份成功且未写入；下一步在 Workbench 拉取最新 main、执行迁移后再导入 coffee。
+2026-08-10 [Codex] 生产部署再次暴露用户混用：admin 在 codexdeploy 所有的仓库运行 npm ci，因无法 unlink `node_modules/.package-lock.json` 报 EACCES；随后迁移仅列出 0001-0004，说明服务器仍未拉到含 0005 的 `70a5f35`。固定修复为恢复仓库所有权并统一以 codexdeploy 执行 Git/npm，迁移与服务操作再由 admin sudo 执行。
+2026-08-10 [Codex] 在 `feature/legal-cleaning-question-repair` 完成移动端工作台顶部栏自适应、首次/补考/额外补考文案和 PostgreSQL 额外授权事务扣减；阅卷页默认保留交卷快照，并可逐题提示题库变更后选择采用当前版本重新阅卷，评分依据保存到 `scores_json.reviewReferences`。本机质量门 78 项测试、语法检查和敏感信息扫描全部通过；未修改数据库结构或历史答卷。

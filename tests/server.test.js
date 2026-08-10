@@ -76,6 +76,7 @@ test("补考状态兼容旧答卷", () => {
   const examTitle = examData.title;
   const empty = { submissions: [] };
   assert.equal(getAttemptInfo(empty, user).available, true);
+  assert.equal(getAttemptInfo(empty, user).message, "本次为第1次考核，仅有一次补考机会。");
 
   const pending = { submissions: [{ dingtalkUnionId: user.unionId, examTitle, status: "pending" }] };
   assert.equal(getAttemptInfo(pending, user).available, false);
@@ -83,4 +84,14 @@ test("补考状态兼容旧答卷", () => {
   const graded = { submissions: [{ dingtalkUnionId: user.unionId, examTitle, status: "graded" }] };
   assert.equal(getAttemptInfo(graded, user).attemptNo, 2);
   assert.equal(getAttemptInfo(graded, user).available, true);
+  assert.equal(getAttemptInfo(graded, user).message, "本次为补考。");
+
+  const extra = {
+    submissions: [
+      { dingtalkUnionId: user.unionId, examTitle, status: "graded" },
+      { dingtalkUnionId: user.unionId, examTitle, status: "graded" }
+    ],
+    retakePermissions: { [`${user.unionId}:${examTitle}`]: { remainingExtraAttempts: 1 } }
+  };
+  assert.equal(getAttemptInfo(extra, user).message, "本次为第1次额外补考。");
 });

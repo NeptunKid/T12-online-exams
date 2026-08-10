@@ -222,6 +222,18 @@ async function createSubmission(pool, examId, unionId, input = {}) {
       [examId, userId]
     );
     const attemptNo = Number(attemptResult.rows[0].attempt_no);
+    if (attemptNo > 2) {
+      const retakeResult = await client.query(
+        "SELECT remaining_count FROM retake_permissions WHERE exam_id = $1 AND user_id = $2 FOR UPDATE",
+        [examId, userId]
+      );
+      const remaining = Number(retakeResult.rows[0]?.remaining_count || 0);
+      if (remaining < 1) throw new Error("已完成可用考核次数，请联系管理员开放额外补考权限");
+      await client.query(
+        "UPDATE retake_permissions SET remaining_count = remaining_count - 1 WHERE exam_id = $1 AND user_id = $2",
+        [examId, userId]
+      );
+    }
     const grading = gradePublishedQuestions(rows, input.answers);
     const status = "pending";
     const totalScore = null;
@@ -280,6 +292,25 @@ function mapStudentSubmission(row) {
     attemptNo: Number(row.attempt_no),
     gradedAt: row.graded_at,
     graderName: row.grader_name || ""
+  };
+}
+
+function attemptInfo(completedAttempts, awaitingGrade, remainingExtraAttempts) {
+  const attemptNo = Number(completedAttempts) + 1;
+  const remaining = Math.max(0, Number(remainingExtraAttempts));
+  const available = !awaitingGrade && (attemptNo <= 2 || remaining > 0);
+  let message = "本次为第1次考核，仅有一次补考机会。";
+  if (awaitingGrade) message = "上一份答卷正在阅卷，阅卷完成后才能参加补考。";
+  else if (attemptNo === 2) message = "本次为补考。";
+  else if (attemptNo > 2 && available) message = `本次为第${attemptNo - 2}次额外补考。`;
+  else if (attemptNo > 2) message = "已完成可用考核次数，请联系管理员开放额外补考权限。";
+  return {
+    attemptNo,
+    completedAttempts: Number(completedAttempts),
+    available,
+    awaitingGrade: Boolean(awaitingGrade),
+    remainingExtraAttempts: remaining,
+    message
   };
 }
 
@@ -342,13 +373,7 @@ async function getStudentDashboard(pool, unionId) {
     const completedAttempts = Number(row.completed_attempts);
     const awaitingGrade = Boolean(row.awaiting_grade);
     const remainingExtraAttempts = Number(row.remaining_extra_attempts);
-    const attemptNo = completedAttempts + 1;
-    const available = !awaitingGrade && (attemptNo <= 2 || remainingExtraAttempts > 0);
-    let message = "本次为首次考核。";
-    if (awaitingGrade) message = "上一份答卷正在阅卷，阅卷完成后才能参加补考。";
-    else if (attemptNo === 2) message = "本次为一次免费补考。";
-    else if (available) message = `管理员已额外开放补考，本次为第 ${attemptNo} 次考核。`;
-    else message = "已完成可用考核次数，请联系管理员开放额外补考权限。";
+    const attempt = attemptInfo(completedAttempts, awaitingGrade, remainingExtraAttempts);
     return {
       id: row.id,
       title: row.title,
@@ -357,7 +382,7 @@ async function getStudentDashboard(pool, unionId) {
       passScore: Number(row.pass_score),
       version: Number(row.version),
       studyStatus: "考核已开放",
-      attempt: { attemptNo, completedAttempts, available, awaitingGrade, remainingExtraAttempts, message }
+      attempt
     };
   });
   return { exams, submissions: await listStudentSubmissions(pool, unionId) };
@@ -419,6 +444,7 @@ async function getStudentSubmission(pool, submissionId, unionId) {
 }
 
 module.exports = {
+  attemptInfo,
   createSubmission,
   getStudentDashboard,
   getPublishedExam,
