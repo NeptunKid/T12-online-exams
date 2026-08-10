@@ -11,6 +11,13 @@ let currentQuestionId = "";
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
 
+function setAdminWorkspace(view) {
+  const layout = document.querySelector(".admin-layout");
+  if (!layout) return;
+  layout.classList.toggle("show-detail", view === "detail");
+  if (window.matchMedia("(max-width: 820px)").matches) window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -535,6 +542,9 @@ function renderDetail() {
   const totalText = submission.totalScore === null ? "待批阅" : `${submission.totalScore} 分`;
 
   document.getElementById("detailPanel").innerHTML = `
+    <div class="admin-detail-mobile-nav">
+      <button class="btn secondary" id="backToSubmissionsBtn" type="button">返回答卷列表</button>
+    </div>
     <div class="submission-line">
       <div><h1>${esc(submission.studentName || "未命名")}</h1><p class="brand-sub">${esc(submission.examTitle)} · ${fmtTime(submission.submittedAt)}</p></div>
       ${badge(submission.status)}
@@ -566,6 +576,7 @@ function renderDetail() {
   `;
 
   document.getElementById("saveGradeBtn").addEventListener("click", saveGrade);
+  document.getElementById("backToSubmissionsBtn").addEventListener("click", () => setAdminWorkspace("list"));
   const wrongOnlyButton = document.getElementById("wrongOnlyBtn");
   if (wrongOnlyButton) wrongOnlyButton.addEventListener("click", () => {
     showWrongOnly = !showWrongOnly;
@@ -579,6 +590,7 @@ async function loadDetail(id) {
   currentId = id;
   gradeSaveNotice = "";
   showWrongOnly = false;
+  setAdminWorkspace("detail");
   renderList();
   document.getElementById("detailPanel").innerHTML = `<div class="empty-state">正在载入答卷</div>`;
   currentDetail = await api(`/api/admin/submissions/${encodeURIComponent(id)}`);
@@ -650,6 +662,7 @@ async function initializeAdmin() {
     applyAdminAccess(access);
     document.getElementById("loginPage").classList.add("hidden");
     document.getElementById("adminPage").classList.remove("hidden");
+    setAdminWorkspace("list");
     await loadList();
     startAdminSessionMonitoring();
   } catch (err) {

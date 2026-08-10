@@ -29,51 +29,72 @@ function mapQuestion(row) {
   };
 }
 
-function assignmentFilter(identityParameter) {
+function identityValues(identity) {
+  if (identity && typeof identity === "object") {
+    const provider = String(identity.provider || "dingtalk");
+    return {
+      provider,
+      providerSubject: String(identity.providerSubject || identity.openId || identity.unionId || ""),
+      unionId: String(identity.unionId || "")
+    };
+  }
+  const value = String(identity || "");
+  return { provider: "dingtalk", providerSubject: value, unionId: value };
+}
+
+function currentIdentityCte(providerParameter, subjectParameter, unionParameter) {
+  return `
+    current_identity AS (
+      SELECT ui.user_id, ui.provider
+      FROM user_identities ui
+      JOIN users u ON u.id = ui.user_id
+      WHERE u.status = 'active'
+        AND (
+          (ui.provider = ${providerParameter} AND ui.provider_subject = ${subjectParameter})
+          OR (${providerParameter} = 'dingtalk'
+            AND ui.provider IN ('dingtalk', 'legacy')
+            AND ui.union_id = ${unionParameter})
+        )
+      ORDER BY (ui.provider = ${providerParameter} AND ui.provider_subject = ${subjectParameter}) DESC,
+        (ui.provider = 'dingtalk') DESC, ui.created_at
+      LIMIT 1
+    )`;
+}
+
+function activeAssignmentFilter() {
   return `
       AND EXISTS (
-        SELECT 1
-        FROM exam_assignments ea
+        SELECT 1 FROM exam_assignments ea
         WHERE ea.exam_id = e.id
           AND (ea.starts_at IS NULL OR ea.starts_at <= CURRENT_TIMESTAMP)
           AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
           AND (
-            (ea.subject_type = 'user' AND EXISTS (
-              SELECT 1
-              FROM user_identities ui
-              JOIN users u ON u.id = ui.user_id
-              WHERE ui.user_id = ea.subject_id
-                AND ui.union_id = ${identityParameter}
-                AND ui.provider IN ('dingtalk', 'legacy')
-                AND u.status = 'active'
-            ))
-            OR
-            (ea.subject_type = 'group'
+            (ea.subject_type = 'user' AND ea.subject_id = ci.user_id)
+            OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-users')
+            OR (ea.subject_type = 'group'
               AND ea.subject_id = 'all-active-dingtalk-users'
-              AND EXISTS (
-                SELECT 1
-                FROM user_identities ui
-                JOIN users u ON u.id = ui.user_id
-                WHERE ui.union_id = ${identityParameter}
-                  AND ui.provider IN ('dingtalk', 'legacy')
-                  AND u.status = 'active'
-              ))
+              AND ci.provider IN ('dingtalk', 'legacy'))
           )
       )`;
 }
 
-async function listPublishedExams(pool, unionId) {
+async function listPublishedExams(pool, identity) {
+  const current = identityValues(identity);
   const result = await pool.query(`
+    WITH ${currentIdentityCte("$1", "$2", "$3")}
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score, e.version
     FROM exams e
+    CROSS JOIN current_identity ci
     WHERE e.status IN ('scheduled', 'published', 'paused')
-      ${assignmentFilter("$1")}
-    ORDER BY e.created_at, e.id;`, [unionId]);
+      ${activeAssignmentFilter()}
+    ORDER BY e.created_at, e.id;`, [current.provider, current.providerSubject, current.unionId]);
   return result.rows.map(mapExam);
 }
 
-async function getPublishedExam(pool, examId, unionId) {
+async function getPublishedExam(pool, examId, identity) {
+  const current = identityValues(identity);
   const result = await pool.query(`
+    WITH ${currentIdentityCte("$2", "$3", "$4")}
     SELECT
       e.id,
       e.title,
@@ -97,12 +118,13 @@ async function getPublishedExam(pool, examId, unionId) {
       eq.position,
       eq.score
     FROM exams e
+    CROSS JOIN current_identity ci
     JOIN exam_questions eq ON eq.exam_id = e.id
     JOIN questions q ON q.id = eq.question_id
     WHERE e.id = $1
       AND e.status IN ('scheduled', 'published', 'paused')
-      ${assignmentFilter("$2")}
-    ORDER BY eq.position;`, [examId, unionId]);
+      ${activeAssignmentFilter()}
+    ORDER BY eq.position;`, [examId, current.provider, current.providerSubject, current.unionId]);
 
   if (!result.rows.length) return null;
   const exam = mapExam(result.rows[0]);
@@ -151,24 +173,16 @@ function gradePublishedQuestions(rows, answers) {
   return { objectiveScore, objectiveDetail, qaMaxScore };
 }
 
-async function createSubmission(pool, examId, unionId, input = {}) {
+async function createSubmission(pool, examId, identity, input = {}) {
   if (!input.answers || typeof input.answers !== "object" || Array.isArray(input.answers)) {
     throw new Error("answers 必须是对象");
   }
   const client = await pool.connect();
+  const current = identityValues(identity);
   try {
     await client.query("BEGIN");
     const examResult = await client.query(`
-      WITH current_identity AS (
-        SELECT ui.user_id
-        FROM user_identities ui
-        JOIN users u ON u.id = ui.user_id
-        WHERE ui.union_id = $2
-          AND ui.provider IN ('dingtalk', 'legacy')
-          AND u.status = 'active'
-        ORDER BY (ui.provider = 'dingtalk') DESC, ui.created_at
-        LIMIT 1
-      )
+      WITH ${currentIdentityCte("$2", "$3", "$4")}
       SELECT e.id, e.title, e.version, e.pass_score, e.total_score,
         q.id AS question_id, q.external_id, q.type,
         COALESCE(NULLIF(q.stem, ''), (
@@ -194,10 +208,13 @@ async function createSubmission(pool, examId, unionId, input = {}) {
             AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
             AND (
               (ea.subject_type = 'user' AND ea.subject_id = ci.user_id)
-              OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-dingtalk-users')
+              OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-users')
+              OR (ea.subject_type = 'group'
+                AND ea.subject_id = 'all-active-dingtalk-users'
+                AND ci.provider IN ('dingtalk', 'legacy'))
             )
         )
-      ORDER BY eq.position;`, [examId, unionId]);
+      ORDER BY eq.position;`, [examId, current.provider, current.providerSubject, current.unionId]);
     if (!examResult.rows.length) {
       await client.query("ROLLBACK");
       return null;
@@ -314,38 +331,25 @@ function attemptInfo(completedAttempts, awaitingGrade, remainingExtraAttempts) {
   };
 }
 
-const STUDENT_IDENTITY_FILTER = `
-      EXISTS (
-        SELECT 1 FROM user_identities ui
-        WHERE ui.user_id = s.user_id
-          AND ui.union_id = $1
-          AND ui.provider IN ('dingtalk', 'legacy')
-      )`;
-
-async function listStudentSubmissions(pool, unionId) {
+async function listStudentSubmissions(pool, identity) {
+  const current = identityValues(identity);
   const result = await pool.query(`
+    WITH ${currentIdentityCte("$1", "$2", "$3")}
     SELECT s.id, s.exam_id, e.title AS exam_title, s.submitted_at, s.status,
       s.objective_score, s.qa_score, s.total_score, s.pass, s.pass_score,
       s.attempt_no, s.graded_at, s.grader_name
     FROM submissions s
     JOIN exams e ON e.id = s.exam_id
-    WHERE ${STUDENT_IDENTITY_FILTER}
-    ORDER BY s.submitted_at DESC, s.id DESC;`, [unionId]);
+    CROSS JOIN current_identity ci
+    WHERE s.user_id = ci.user_id
+    ORDER BY s.submitted_at DESC, s.id DESC;`, [current.provider, current.providerSubject, current.unionId]);
   return result.rows.map(mapStudentSubmission);
 }
 
-async function getStudentDashboard(pool, unionId) {
+async function getStudentDashboard(pool, identity) {
+  const current = identityValues(identity);
   const examResult = await pool.query(`
-    WITH current_identity AS (
-      SELECT ui.user_id
-      FROM user_identities ui
-      JOIN users u ON u.id = ui.user_id
-      WHERE ui.union_id = $1
-        AND ui.provider IN ('dingtalk', 'legacy')
-        AND u.status = 'active'
-      ORDER BY (ui.provider = 'dingtalk') DESC, ui.created_at
-      LIMIT 1
-    )
+    WITH ${currentIdentityCte("$1", "$2", "$3")}
     SELECT e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version,
       COUNT(s.id)::integer AS completed_attempts,
       COALESCE(bool_or(s.status = 'pending'), false) AS awaiting_grade,
@@ -363,11 +367,14 @@ async function getStudentDashboard(pool, unionId) {
           AND (ea.ends_at IS NULL OR ea.ends_at > CURRENT_TIMESTAMP)
           AND (
             (ea.subject_type = 'user' AND ea.subject_id = ci.user_id)
-            OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-dingtalk-users')
+            OR (ea.subject_type = 'group' AND ea.subject_id = 'all-active-users')
+            OR (ea.subject_type = 'group'
+              AND ea.subject_id = 'all-active-dingtalk-users'
+              AND ci.provider IN ('dingtalk', 'legacy'))
           )
       )
     GROUP BY e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version, rp.remaining_count
-    ORDER BY e.created_at, e.id;`, [unionId]);
+    ORDER BY e.created_at, e.id;`, [current.provider, current.providerSubject, current.unionId]);
 
   const exams = examResult.rows.map((row) => {
     const completedAttempts = Number(row.completed_attempts);
@@ -385,7 +392,7 @@ async function getStudentDashboard(pool, unionId) {
       attempt
     };
   });
-  return { exams, submissions: await listStudentSubmissions(pool, unionId) };
+  return { exams, submissions: await listStudentSubmissions(pool, current) };
 }
 
 function mapStudentQuestion(row, graded) {
@@ -415,14 +422,19 @@ function mapStudentQuestion(row, graded) {
   };
 }
 
-async function getStudentSubmission(pool, submissionId, unionId) {
+async function getStudentSubmission(pool, submissionId, identity) {
+  const current = identityValues(identity);
   const submissionResult = await pool.query(`
+    WITH ${currentIdentityCte("$2", "$3", "$4")}
     SELECT s.id, s.exam_id, e.title AS exam_title, s.submitted_at, s.status,
       s.objective_score, s.qa_score, s.total_score, s.pass, s.pass_score,
       s.attempt_no, s.graded_at, s.grader_name
     FROM submissions s
     JOIN exams e ON e.id = s.exam_id
-    WHERE s.id = $1 AND ${STUDENT_IDENTITY_FILTER.replace('$1', '$2')};`, [submissionId, unionId]);
+    CROSS JOIN current_identity ci
+    WHERE s.id = $1 AND s.user_id = ci.user_id;`, [
+    submissionId, current.provider, current.providerSubject, current.unionId
+  ]);
   if (!submissionResult.rows.length) return null;
   const submission = mapStudentSubmission(submissionResult.rows[0]);
   const questionsResult = await pool.query(`
@@ -450,6 +462,7 @@ module.exports = {
   getPublishedExam,
   getStudentSubmission,
   gradePublishedQuestions,
+  identityValues,
   listPublishedExams,
   listStudentSubmissions,
   mapExam,

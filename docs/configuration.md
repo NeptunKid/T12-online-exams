@@ -25,7 +25,9 @@ DB_PASSWORD=
 DB_SSL=false
 ```
 
-飞书登录回调地址为 `https://exam.t12group.com/auth/feishu/callback`。飞书应用需要启用网页 OAuth 登录，并将该地址添加到应用的重定向 URL；服务器域名白名单按飞书开放平台页面要求填写 `exam.t12group.com`。本步骤只完成飞书考生身份登记，身份绑定、跨平台考试授权和飞书管理员入口在后续 Sprint 单独实施。
+飞书登录回调地址为 `https://exam.t12group.com/auth/feishu/callback`。飞书应用需要启用网页 OAuth 登录，并将该地址添加到应用的重定向 URL；服务器域名白名单按飞书开放平台页面要求填写 `exam.t12group.com`。登录接口必须返回员工真实姓名 `name`，系统不会用飞书昵称或英文昵称自动合并身份。
+
+钉钉登录会优先使用 OAuth 用户信息中的真实姓名；如果该接口只返回 `nick`，服务会通过企业通讯录用户接口补取真实姓名。若登录提示“未能读取钉钉通讯录真实姓名”，请在钉钉开放平台为应用开启对应的通讯录/用户只读权限，再重新登录。系统只保存真实姓名，不把平台昵称写入用户显示名。
 
 真实凭证只允许出现在本地 `.env`、部署 Secret 或 GitHub Actions Secret。不要写入 README、测试样例、日志或开发总结。
 

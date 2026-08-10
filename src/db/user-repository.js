@@ -7,6 +7,45 @@ function stableId(prefix, value) {
   return `${prefix}_${crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 32)}`;
 }
 
+function normalizeRealName(value) {
+  return String(value || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-CN");
+}
+
+function requireRealName(value) {
+  const name = String(value || "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  if (!name) throw new Error("平台未返回员工真实姓名，无法建立考试账号");
+  return name;
+}
+
+async function findCrossPlatformUser(client, provider, realName) {
+  const counterpartProviders = provider === "feishu" ? ["dingtalk", "legacy"] : ["feishu"];
+  const result = await client.query(`
+    SELECT u.id, u.name
+    FROM users u
+    WHERE u.status = 'active'
+      AND EXISTS (
+        SELECT 1 FROM user_identities ui
+        WHERE ui.user_id = u.id AND ui.provider = ANY($1::text[])
+      )
+    ORDER BY u.created_at, u.id
+    FOR UPDATE;`, [counterpartProviders]);
+  const normalized = normalizeRealName(realName);
+  const candidates = result.rows.filter((row) => normalizeRealName(row.name) === normalized);
+  if (candidates.length > 1) {
+    throw new Error(`发现多名真实姓名为“${realName}”的跨平台用户，已停止自动合并，请由管理员核对`);
+  }
+  return candidates[0]?.id || null;
+}
+
+async function recordAutomaticIdentityLink(client, userId, provider, providerSubject, realName) {
+  await client.query(`
+    INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+    VALUES ($1, $2, 'auto_link_identity_by_real_name', 'user_identity', $3, NULL, $4::jsonb);`, [
+    crypto.randomUUID(), userId, `${provider}:${providerSubject}`,
+    JSON.stringify({ userId, provider, realName })
+  ]);
+}
+
 function maskIdentity(value) {
   const text = String(value || "");
   if (!text) return "未记录";
@@ -31,6 +70,7 @@ function mapAdminUser(row) {
 async function upsertDingtalkUser(pool, user) {
   const unionId = String(user.unionId || "").trim();
   if (!unionId) throw new Error("钉钉用户缺少 unionId");
+  const realName = requireRealName(user.name);
   let providerSubject = String(user.openId || unionId).trim();
   const fallbackUserId = stableId("user", `dingtalk:${unionId}`);
   let identityId = stableId("identity", `dingtalk:${providerSubject}`);
@@ -43,7 +83,8 @@ async function upsertDingtalkUser(pool, user) {
       WHERE union_id = $1 AND provider IN ('dingtalk', 'legacy')
       ORDER BY (provider = 'dingtalk') DESC, created_at
       LIMIT 1;`, [unionId]);
-    const userId = existing.rows[0]?.user_id || fallbackUserId;
+    const matchedUserId = existing.rows[0]?.user_id || await findCrossPlatformUser(client, "dingtalk", realName);
+    const userId = matchedUserId || fallbackUserId;
     if (existing.rows[0]?.provider === "dingtalk") {
       identityId = existing.rows[0].id;
       providerSubject = existing.rows[0].provider_subject;
@@ -51,7 +92,7 @@ async function upsertDingtalkUser(pool, user) {
     await client.query(`
       INSERT INTO users (id, name)
       VALUES ($1, $2)
-      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP;`, [userId, user.name]);
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP;`, [userId, realName]);
     await client.query(`
       INSERT INTO user_identities (id, user_id, provider, provider_subject, union_id, open_id)
       VALUES ($1, $2, 'dingtalk', $3, $4, $5)
@@ -64,6 +105,9 @@ async function upsertDingtalkUser(pool, user) {
       INSERT INTO user_roles (user_id, role_code)
       VALUES ($1, 'student')
       ON CONFLICT (user_id, role_code) DO NOTHING;`, [userId]);
+    if (!existing.rows[0] && matchedUserId) {
+      await recordAutomaticIdentityLink(client, userId, "dingtalk", providerSubject, realName);
+    }
     await client.query("COMMIT");
     return userId;
   } catch (error) {
@@ -77,16 +121,24 @@ async function upsertDingtalkUser(pool, user) {
 async function upsertFeishuUser(pool, user) {
   const providerSubject = String(user.providerSubject || user.openId || "").trim();
   if (!providerSubject) throw new Error("飞书用户缺少 open_id");
+  const realName = requireRealName(user.name);
   const unionId = String(user.unionId || "").trim() || null;
-  const userId = stableId("user", `feishu:${providerSubject}`);
+  const fallbackUserId = stableId("user", `feishu:${providerSubject}`);
   const identityId = stableId("identity", `feishu:${providerSubject}`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const existing = await client.query(`
+      SELECT id, user_id
+      FROM user_identities
+      WHERE provider = 'feishu' AND provider_subject = $1
+      LIMIT 1;`, [providerSubject]);
+    const matchedUserId = existing.rows[0]?.user_id || await findCrossPlatformUser(client, "feishu", realName);
+    const userId = matchedUserId || fallbackUserId;
     await client.query(`
       INSERT INTO users (id, name)
       VALUES ($1, $2)
-      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP;`, [userId, user.name]);
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP;`, [userId, realName]);
     await client.query(`
       INSERT INTO user_identities (id, user_id, provider, provider_subject, union_id, open_id)
       VALUES ($1, $2, 'feishu', $3, $4, $3)
@@ -99,6 +151,9 @@ async function upsertFeishuUser(pool, user) {
       INSERT INTO user_roles (user_id, role_code)
       VALUES ($1, 'student')
       ON CONFLICT (user_id, role_code) DO NOTHING;`, [userId]);
+    if (!existing.rows[0] && matchedUserId) {
+      await recordAutomaticIdentityLink(client, userId, "feishu", providerSubject, realName);
+    }
     await client.query("COMMIT");
     return userId;
   } catch (error) {
@@ -266,6 +321,7 @@ module.exports = {
   listAdminUsers,
   mapAdminUser,
   maskIdentity,
+  normalizeRealName,
   setAdminRole,
   stableId,
   upsertDingtalkUser,

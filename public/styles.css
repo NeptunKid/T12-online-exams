@@ -1066,6 +1066,10 @@ select:focus {
   padding: 18px;
 }
 
+.admin-detail-mobile-nav {
+  display: none;
+}
+
 .login-card {
   width: min(460px, 100%);
   padding: 28px;
@@ -1407,6 +1411,42 @@ select:focus {
     padding: 0 12px;
   }
 
+  .admin-topbar-inner {
+    height: auto;
+    min-height: 96px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    gap: 7px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .admin-topbar .brand-title {
+    font-size: 17px;
+    white-space: nowrap;
+  }
+
+  .admin-topbar .brand-sub {
+    line-height: 1.3;
+  }
+
+  .admin-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  .admin-actions .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 6px 4px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
   .dashboard-topbar {
     height: auto;
     min-height: 64px;
@@ -1453,6 +1493,20 @@ select:focus {
 
   .admin-layout {
     gap: 12px;
+  }
+
+  .admin-layout:not(.show-detail) #detailPanel,
+  .admin-layout.show-detail #submissionPanel {
+    display: none;
+  }
+
+  .admin-detail-mobile-nav {
+    display: flex;
+    margin-bottom: 14px;
+  }
+
+  .admin-detail-mobile-nav .btn {
+    width: 100%;
   }
 
   .submission-list {
