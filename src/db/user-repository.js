@@ -74,6 +74,41 @@ async function upsertDingtalkUser(pool, user) {
   }
 }
 
+async function upsertFeishuUser(pool, user) {
+  const providerSubject = String(user.providerSubject || user.openId || "").trim();
+  if (!providerSubject) throw new Error("飞书用户缺少 open_id");
+  const unionId = String(user.unionId || "").trim() || null;
+  const userId = stableId("user", `feishu:${providerSubject}`);
+  const identityId = stableId("identity", `feishu:${providerSubject}`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`
+      INSERT INTO users (id, name)
+      VALUES ($1, $2)
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP;`, [userId, user.name]);
+    await client.query(`
+      INSERT INTO user_identities (id, user_id, provider, provider_subject, union_id, open_id)
+      VALUES ($1, $2, 'feishu', $3, $4, $3)
+      ON CONFLICT (provider, provider_subject) DO UPDATE
+      SET user_id = EXCLUDED.user_id,
+          union_id = EXCLUDED.union_id,
+          open_id = EXCLUDED.open_id,
+          updated_at = CURRENT_TIMESTAMP;`, [identityId, userId, providerSubject, unionId]);
+    await client.query(`
+      INSERT INTO user_roles (user_id, role_code)
+      VALUES ($1, 'student')
+      ON CONFLICT (user_id, role_code) DO NOTHING;`, [userId]);
+    await client.query("COMMIT");
+    return userId;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function ensureBootstrapAdmin(pool, userId) {
   const result = await pool.query(`
     INSERT INTO user_roles (user_id, role_code)
@@ -108,7 +143,8 @@ async function getAdminAccess(pool, unionId, bootstrapUnionIds = new Set()) {
     FROM users u
     JOIN user_identities ui ON ui.user_id = u.id
     LEFT JOIN user_roles ur ON ur.user_id = u.id
-    WHERE ui.union_id = $1 AND ui.provider IN ('dingtalk', 'legacy')
+    WHERE (ui.union_id = $1 OR ui.provider_subject = $1 OR ui.open_id = $1)
+      AND ui.provider IN ('dingtalk', 'legacy')
     GROUP BY u.id
     ORDER BY bool_or(ui.provider = 'dingtalk') DESC
     LIMIT 1;`, [unionId]);
@@ -120,6 +156,31 @@ async function getAdminAccess(pool, unionId, bootstrapUnionIds = new Set()) {
     canAccess: bootstrap || roles.some((role) => ACCESS_ROLES.has(role)),
     canManageAdmins: bootstrap || roles.includes("system_admin"),
     canManageQuestions: bootstrap || roles.includes("system_admin") || roles.includes("exam_admin")
+  };
+}
+
+async function getIdentityAccess(pool, provider, providerSubject) {
+  if (!pool) {
+    return { userId: null, roles: [], canAccess: false, canManageAdmins: false, canManageQuestions: false };
+  }
+  const result = await pool.query(`
+    SELECT u.id,
+      COALESCE(array_agg(DISTINCT ur.role_code ORDER BY ur.role_code)
+        FILTER (WHERE ur.role_code IS NOT NULL), ARRAY[]::text[]) AS roles
+    FROM users u
+    JOIN user_identities ui ON ui.user_id = u.id
+    LEFT JOIN user_roles ur ON ur.user_id = u.id
+    WHERE ui.provider = $1 AND ui.provider_subject = $2
+    GROUP BY u.id
+    LIMIT 1;`, [provider, providerSubject]);
+  const row = result.rows[0];
+  const roles = Array.isArray(row?.roles) ? row.roles.filter(Boolean) : [];
+  return {
+    userId: row?.id || null,
+    roles,
+    canAccess: roles.some((role) => ACCESS_ROLES.has(role)),
+    canManageAdmins: roles.includes("system_admin"),
+    canManageQuestions: roles.includes("system_admin") || roles.includes("exam_admin")
   };
 }
 
@@ -201,10 +262,12 @@ module.exports = {
   ADMIN_ROLES,
   ensureBootstrapAdmin,
   getAdminAccess,
+  getIdentityAccess,
   listAdminUsers,
   mapAdminUser,
   maskIdentity,
   setAdminRole,
   stableId,
-  upsertDingtalkUser
+  upsertDingtalkUser,
+  upsertFeishuUser
 };

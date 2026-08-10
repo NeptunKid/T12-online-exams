@@ -25,6 +25,8 @@ DB_PASSWORD=
 DB_SSL=false
 ```
 
+飞书登录回调地址为 `https://exam.t12group.com/auth/feishu/callback`。飞书应用需要启用网页 OAuth 登录，并将该地址添加到应用的重定向 URL；服务器域名白名单按飞书开放平台页面要求填写 `exam.t12group.com`。本步骤只完成飞书考生身份登记，身份绑定、跨平台考试授权和飞书管理员入口在后续 Sprint 单独实施。
+
 真实凭证只允许出现在本地 `.env`、部署 Secret 或 GitHub Actions Secret。不要写入 README、测试样例、日志或开发总结。
 
 ## 首位管理员

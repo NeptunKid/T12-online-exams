@@ -2,10 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   getAdminAccess,
+  getIdentityAccess,
   mapAdminUser,
   maskIdentity,
   setAdminRole,
-  upsertDingtalkUser
+  upsertDingtalkUser,
+  upsertFeishuUser
 } = require("../src/db/user-repository");
 
 test("管理员用户映射会遮蔽钉钉身份标识", () => {
@@ -65,6 +67,35 @@ test("钉钉登录会复用相同 unionId 的历史用户", async () => {
   const identityInsert = calls.find((call) => call.sql.includes("INSERT INTO user_identities"));
   assert.equal(identityInsert.params[1], "legacy-user");
   assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("飞书登录按 open_id 建立独立身份且不按姓名自动合并", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const userId = await upsertFeishuUser({ connect: async () => client }, {
+    providerSubject: "ou_feishu_1", openId: "ou_feishu_1", unionId: "on_feishu_1", name: "同名员工"
+  });
+  const identityInsert = calls.find((call) => call.sql.includes("INSERT INTO user_identities"));
+
+  assert.match(userId, /^user_[a-f0-9]{32}$/);
+  assert.equal(identityInsert.params[2], "ou_feishu_1");
+  assert.equal(identityInsert.params[3], "on_feishu_1");
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("飞书身份可以读取数据库角色但不使用钉钉引导名单", async () => {
+  const pool = { query: async () => ({ rows: [{ id: "user-feishu", roles: ["student"] }] }) };
+  const access = await getIdentityAccess(pool, "feishu", "ou_feishu_1");
+
+  assert.equal(access.userId, "user-feishu");
+  assert.equal(access.canAccess, false);
+  assert.deepEqual(access.roles, ["student"]);
 });
 
 test("授予管理员同时写入角色和审计日志", async () => {

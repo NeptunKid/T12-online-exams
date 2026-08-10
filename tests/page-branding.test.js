@@ -13,6 +13,12 @@ test("考生首页使用 T12 主标题和学习考核副标题", () => {
   assert.match(html, /<div class="brand-sub">我的学习与考核<\/div>/);
 });
 
+test("考生首页提供独立的钉钉和飞书 OAuth 入口", () => {
+  const html = fs.readFileSync(path.join(publicDir, "exam.html"), "utf8");
+  assert.match(html, /id="dingtalkLogin" href="\/auth\/dingtalk\/login\?returnTo=\/"/);
+  assert.match(html, /id="feishuLogin" href="\/auth\/feishu\/login\?returnTo=\/"/);
+});
+
 test("管理员页面以 T12 学习考核中心作为主标题", () => {
   const html = fs.readFileSync(path.join(publicDir, "admin.html"), "utf8");
   assert.match(html, /<title>T12学习考核中心 - 管理员阅卷后台<\/title>/);
