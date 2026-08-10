@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-10T00:00:00.000Z",
+  "generatedAt": "2026-08-10T09:42:25.074Z",
   "resources": {
     "resource:extraction-17-a": {
       "file": "extraction/extraction-17-a.png",
@@ -78,6 +78,335 @@
       "mediaType": "image/jpeg",
       "bytes": 340254,
       "sha256": "e896e8a584d30e28fd7ad9f2b743b40aa3fc3227c4ac1218dd879d3579cc6f13"
+    },
+    "resource:cleaning-1-1": {
+      "file": "cleaning/cleaning-1-1.png",
+      "url": "/question-resources/cleaning/cleaning-1-1.png",
+      "mediaType": "image/png",
+      "bytes": 3626754,
+      "sha256": "7a947f7e78a6fb77a29bbdd8a1fa4a077898011d7aeed20328599dffc86b6010"
+    },
+    "resource:cleaning-1-2": {
+      "file": "cleaning/cleaning-1-2.jpeg",
+      "url": "/question-resources/cleaning/cleaning-1-2.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 9813,
+      "sha256": "a55be629c468ab04be89a947daa946c9a1a777cde68e69f7b25276f2c021e2c5"
+    },
+    "resource:cleaning-12-1": {
+      "file": "cleaning/cleaning-12-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-12-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 2880,
+      "sha256": "02d7e2a4a3263400c824b922e25ebe488999477c370af9f8dfd85564de0ac53f"
+    },
+    "resource:cleaning-14-1": {
+      "file": "cleaning/cleaning-14-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-14-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-14-2": {
+      "file": "cleaning/cleaning-14-2.jpeg",
+      "url": "/question-resources/cleaning/cleaning-14-2.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 556566,
+      "sha256": "c49a98c986c94630ebab40cf026c74c711cf89134e7cb6fabc7ce787d083f1cc"
+    },
+    "resource:cleaning-15-1": {
+      "file": "cleaning/cleaning-15-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-15-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 312890,
+      "sha256": "700a67e1953d6a9ba6ee284702f72f4bcef24f89951484a232b2066a2306c03d"
+    },
+    "resource:cleaning-16-1": {
+      "file": "cleaning/cleaning-16-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-16-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 988595,
+      "sha256": "5ee8d263183969865de2a3199bfcd8ef15e4ef0dad22eb2a01b9220d7cc4d499"
+    },
+    "resource:cleaning-17-1": {
+      "file": "cleaning/cleaning-17-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-17-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 109578,
+      "sha256": "33bfb53aaf803d9fa5e5442284aee6a5faba376c5b86f62ebdabd9de5ee73b2a"
+    },
+    "resource:cleaning-17-2": {
+      "file": "cleaning/cleaning-17-2.jpeg",
+      "url": "/question-resources/cleaning/cleaning-17-2.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 273981,
+      "sha256": "c3316bef12c1586425231cae27158d0b0bf00adedc1c395c19bc30fb0e5a63c8"
+    },
+    "resource:cleaning-18-1": {
+      "file": "cleaning/cleaning-18-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-18-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 813519,
+      "sha256": "cbb6dc182ccf43b1b08e686d4a5fd252e687d0d7bb320cc4a5fe83ac6d045878"
+    },
+    "resource:cleaning-19-1": {
+      "file": "cleaning/cleaning-19-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-19-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 1054887,
+      "sha256": "ede433126967ed0cf01336a6a299b3e8ded9d2ace84021ea3b18c70b1027988e"
+    },
+    "resource:cleaning-2-a": {
+      "file": "cleaning/cleaning-2-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-2-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 556566,
+      "sha256": "c49a98c986c94630ebab40cf026c74c711cf89134e7cb6fabc7ce787d083f1cc"
+    },
+    "resource:cleaning-2-b": {
+      "file": "cleaning/cleaning-2-b.jpeg",
+      "url": "/question-resources/cleaning/cleaning-2-b.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 902733,
+      "sha256": "895327a2496fef14480e8929443d4af6e965c3a013a02a3bae5d2a5ee0836c34"
+    },
+    "resource:cleaning-2-c": {
+      "file": "cleaning/cleaning-2-c.jpeg",
+      "url": "/question-resources/cleaning/cleaning-2-c.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 813519,
+      "sha256": "cbb6dc182ccf43b1b08e686d4a5fd252e687d0d7bb320cc4a5fe83ac6d045878"
+    },
+    "resource:cleaning-2-d": {
+      "file": "cleaning/cleaning-2-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-2-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-20-1": {
+      "file": "cleaning/cleaning-20-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-20-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 316850,
+      "sha256": "1dd9efd0c60451f4f30efacc61e379383ea5563a68267ac65ce7317eb0b5b64b"
+    },
+    "resource:cleaning-21-1": {
+      "file": "cleaning/cleaning-21-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-21-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 217852,
+      "sha256": "6d2cea68a2537a6d55e1e43af9835634e25a0462228d42c742d2b9237a8a51f6"
+    },
+    "resource:cleaning-22-1": {
+      "file": "cleaning/cleaning-22-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-22-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 10789,
+      "sha256": "ac270866f88e61ba69b355dceffe3499634c9221b72c62227917afc6ea304d94"
+    },
+    "resource:cleaning-23-1": {
+      "file": "cleaning/cleaning-23-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-23-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 72857,
+      "sha256": "189dda15223263176787cd2041a9c57b32fb41ed2d76ea68bc92c42a8fa0d380"
+    },
+    "resource:cleaning-23-a": {
+      "file": "cleaning/cleaning-23-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-23-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 15470,
+      "sha256": "a2c724a5a92c659fd439b18f27f6f0ec70ba702f2034345e4087552d858bb03e"
+    },
+    "resource:cleaning-23-d": {
+      "file": "cleaning/cleaning-23-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-23-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 2880,
+      "sha256": "02d7e2a4a3263400c824b922e25ebe488999477c370af9f8dfd85564de0ac53f"
+    },
+    "resource:cleaning-23-e": {
+      "file": "cleaning/cleaning-23-e.jpeg",
+      "url": "/question-resources/cleaning/cleaning-23-e.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 922931,
+      "sha256": "99815ec93f961a194d0a561aa815ef1e5ee884ff448eed90409dc4bb0e230264"
+    },
+    "resource:cleaning-24-a": {
+      "file": "cleaning/cleaning-24-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-24-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-24-b": {
+      "file": "cleaning/cleaning-24-b.jpeg",
+      "url": "/question-resources/cleaning/cleaning-24-b.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 922931,
+      "sha256": "99815ec93f961a194d0a561aa815ef1e5ee884ff448eed90409dc4bb0e230264"
+    },
+    "resource:cleaning-24-c": {
+      "file": "cleaning/cleaning-24-c.jpeg",
+      "url": "/question-resources/cleaning/cleaning-24-c.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 509751,
+      "sha256": "6321d939f7fc96bda1dfb8a343292559566470ebe985d87b5a9ba29ebd5a8fd2"
+    },
+    "resource:cleaning-24-d": {
+      "file": "cleaning/cleaning-24-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-24-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 814825,
+      "sha256": "d73c783c688a39bda9c9b14f182e3046f249ee178891303f02826825d4d4c84e"
+    },
+    "resource:cleaning-3-a": {
+      "file": "cleaning/cleaning-3-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-3-b": {
+      "file": "cleaning/cleaning-3-b.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-b.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 460635,
+      "sha256": "a181c504e37116ecc8e59f2c54627e1db3ef47225e97bc60fe89b20125e48ac2"
+    },
+    "resource:cleaning-3-c": {
+      "file": "cleaning/cleaning-3-c.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-c.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 556566,
+      "sha256": "c49a98c986c94630ebab40cf026c74c711cf89134e7cb6fabc7ce787d083f1cc"
+    },
+    "resource:cleaning-3-d": {
+      "file": "cleaning/cleaning-3-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 813519,
+      "sha256": "cbb6dc182ccf43b1b08e686d4a5fd252e687d0d7bb320cc4a5fe83ac6d045878"
+    },
+    "resource:cleaning-3-e": {
+      "file": "cleaning/cleaning-3-e.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-e.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 401808,
+      "sha256": "3e8dcad4bfa619b55c307a8957dd5e5f87aad286ac6dc853eba59afaa6cea0da"
+    },
+    "resource:cleaning-3-f": {
+      "file": "cleaning/cleaning-3-f.jpeg",
+      "url": "/question-resources/cleaning/cleaning-3-f.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 922931,
+      "sha256": "99815ec93f961a194d0a561aa815ef1e5ee884ff448eed90409dc4bb0e230264"
+    },
+    "resource:cleaning-5-1": {
+      "file": "cleaning/cleaning-5-1.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-1.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 510471,
+      "sha256": "9f118440016bde7ea741541f0c4b29ee269b449c6cea6a976578832e26421eeb"
+    },
+    "resource:cleaning-5-a": {
+      "file": "cleaning/cleaning-5-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 273981,
+      "sha256": "c3316bef12c1586425231cae27158d0b0bf00adedc1c395c19bc30fb0e5a63c8"
+    },
+    "resource:cleaning-5-b": {
+      "file": "cleaning/cleaning-5-b.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-b.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 460635,
+      "sha256": "a181c504e37116ecc8e59f2c54627e1db3ef47225e97bc60fe89b20125e48ac2"
+    },
+    "resource:cleaning-5-c": {
+      "file": "cleaning/cleaning-5-c.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-c.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 813519,
+      "sha256": "cbb6dc182ccf43b1b08e686d4a5fd252e687d0d7bb320cc4a5fe83ac6d045878"
+    },
+    "resource:cleaning-5-d": {
+      "file": "cleaning/cleaning-5-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 311037,
+      "sha256": "fa8a90f76f2ba90c9de438ef4c887dc3006873689aa9f9e95d58975a1e03455b"
+    },
+    "resource:cleaning-5-e": {
+      "file": "cleaning/cleaning-5-e.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-e.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-5-f": {
+      "file": "cleaning/cleaning-5-f.jpeg",
+      "url": "/question-resources/cleaning/cleaning-5-f.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 922931,
+      "sha256": "99815ec93f961a194d0a561aa815ef1e5ee884ff448eed90409dc4bb0e230264"
+    },
+    "resource:cleaning-6-a": {
+      "file": "cleaning/cleaning-6-a.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-a.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 556566,
+      "sha256": "c49a98c986c94630ebab40cf026c74c711cf89134e7cb6fabc7ce787d083f1cc"
+    },
+    "resource:cleaning-6-b": {
+      "file": "cleaning/cleaning-6-b.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-b.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 785774,
+      "sha256": "a47874791b2373b4cc466b597722cfbae5c8d767d7f35809c21c1e274af21f86"
+    },
+    "resource:cleaning-6-c": {
+      "file": "cleaning/cleaning-6-c.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-c.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 243236,
+      "sha256": "25994ac37f3f30d516eb02f9d8b652a296eb6a944542cbc6f5821d51348bf1b3"
+    },
+    "resource:cleaning-6-d": {
+      "file": "cleaning/cleaning-6-d.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-d.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 922931,
+      "sha256": "99815ec93f961a194d0a561aa815ef1e5ee884ff448eed90409dc4bb0e230264"
+    },
+    "resource:cleaning-6-e": {
+      "file": "cleaning/cleaning-6-e.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-e.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 813519,
+      "sha256": "cbb6dc182ccf43b1b08e686d4a5fd252e687d0d7bb320cc4a5fe83ac6d045878"
+    },
+    "resource:cleaning-6-f": {
+      "file": "cleaning/cleaning-6-f.jpeg",
+      "url": "/question-resources/cleaning/cleaning-6-f.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 401808,
+      "sha256": "3e8dcad4bfa619b55c307a8957dd5e5f87aad286ac6dc853eba59afaa6cea0da"
+    },
+    "resource:cleaning-7-1": {
+      "file": "cleaning/cleaning-7-1.png",
+      "url": "/question-resources/cleaning/cleaning-7-1.png",
+      "mediaType": "image/png",
+      "bytes": 144892,
+      "sha256": "4b1b7b8b858c6c6fcca003582de1e323119394fe770bbdda8294b03d2b0ff4a3"
+    },
+    "resource:cleaning-8-1": {
+      "file": "cleaning/cleaning-8-1.png",
+      "url": "/question-resources/cleaning/cleaning-8-1.png",
+      "mediaType": "image/png",
+      "bytes": 57657,
+      "sha256": "b7bc87898a1f9e0142ed26f703db11dab2232626704c28a8e363a40032fe9b70"
     }
   }
 }

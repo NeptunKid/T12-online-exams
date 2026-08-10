@@ -17,3 +17,5 @@
 2026-08-10 [Codex] 用户提供咖啡题库图片 `8-1.jpeg`、`36-1.jpeg`；在 `fix/coffee-question-images` 增加受控资源、副本最长边 1600px、`0005_question_stem_images` 可回滚迁移，并让题库导入、考生试卷、阅卷页和答卷快照保存题干图片；完整质量门 74 项测试通过。生产服务器此前因未拉取 PR #31 使用旧脚本，`--only` 报错但数据库备份成功且未写入；下一步在 Workbench 拉取最新 main、执行迁移后再导入 coffee。
 2026-08-10 [Codex] 生产部署再次暴露用户混用：admin 在 codexdeploy 所有的仓库运行 npm ci，因无法 unlink `node_modules/.package-lock.json` 报 EACCES；随后迁移仅列出 0001-0004，说明服务器仍未拉到含 0005 的 `70a5f35`。固定修复为恢复仓库所有权并统一以 codexdeploy 执行 Git/npm，迁移与服务操作再由 admin sudo 执行。
 2026-08-10 [Codex] 在 `feature/legal-cleaning-question-repair` 完成移动端工作台顶部栏自适应、首次/补考/额外补考文案和 PostgreSQL 额外授权事务扣减；阅卷页默认保留交卷快照，并可逐题提示题库变更后选择采用当前版本重新阅卷，评分依据保存到 `scores_json.reviewReferences`。本机质量门 78 项测试、语法检查和敏感信息扫描全部通过；未修改数据库结构或历史答卷。
+2026-08-10 [Codex] 清洁卫生题库修复准备完成：由两份原始 Excel 生成 36 题来源数据，新增 47 个受控图片资源及默认 dry-run 的 PostgreSQL 修复脚本。脚本仅补当前题库空字段、记录审计并递增题目/考试版本；拒绝题目数或历史标识不一致，不更新分值、题型、授权、`data/submissions.json` 或任何历史答卷快照。质量门 83 项测试、语法检查与敏感信息扫描全部通过；生产执行前必须 `pg_dump -Fc` 备份。
+2026-08-10 [Codex] 用户明确要求减少流程卡顿：后续 GitHub 外部网络操作（`git push`、`gh pr create`、PR checks/merge）优先由用户在本机终端执行；Codex 只准备代码、提交与最短命令。不得因网络问题反复等待或重试；如需代理或连接异常，立即暂停并说明。每条服务器命令须明确执行位置（本机终端或阿里云 Workbench）。

@@ -79,3 +79,37 @@ sudo -u postgres psql -d t12_exams -c \
 ```
 
 预期题目数和分值为：萃取原理 `43 / 101 / 85.85`，消防基础 `32 / 100 / 85`，IT 基础 `34 / 86 / 73.10`，咖啡基础知识 `100 / 100 / 85`，且咖啡考试时长为 `3600` 秒。两个咖啡图片地址应返回 HTTP 200。任何一项不一致都应停止验收，保留数据库备份并联系管理员处理。
+
+## 清洁卫生题库修复
+
+执行位置：阿里云 Workbench。本步骤只补现网清洁卫生题库的空字段，保留已有管理员编辑、分值、题型、考试授权和全部历史答卷快照。
+
+先拉取已合并的 `main`。仓库归 `codexdeploy` 所有，Git 操作必须使用该账户：
+
+```bash
+sudo -u codexdeploy -H git -C /opt/t12-online-exams pull --ff-only origin main
+```
+
+在写数据库前备份，并先运行只读预览。预览输出应为 36 道题中的待补字段清单；若出现题目数量或历史标识不一致，停止，不执行下一步：
+
+```bash
+sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
+T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-cleaning-repair-$(date +%Y%m%d%H%M%S).dump"
+sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
+sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
+
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node /opt/t12-online-exams/scripts/repair-cleaning-question-bank.js
+```
+
+确认备份和预览均成功后，执行事务修复并重启服务：
+
+```bash
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node /opt/t12-online-exams/scripts/repair-cleaning-question-bank.js --apply
+
+sudo systemctl restart t12-exams
+curl -fsS http://127.0.0.1:3001/readyz
+```
+
+预期最后输出 `{"status":"ready","database":"ok"}`。修复结果会逐题写入 `audit_logs`，回滚优先使用上述 PostgreSQL 备份；代码回滚不应删除已产生的答卷快照。
