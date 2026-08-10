@@ -12,6 +12,22 @@ test("管理员后台默认只筛选待批阅答卷", () => {
   assert.match(html, /<option value="pending" selected>待批阅<\/option>/);
 });
 
+test("管理员统计按钮与状态下拉筛选同步", () => {
+  assert.match(html, /data-status-filter="all"[^>]*aria-pressed="false"/);
+  assert.match(html, /data-status-filter="pending"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-status-filter="graded"[^>]*aria-pressed="false"/);
+  assert.match(script, /select\.value = status;\s*renderList\(\);/);
+  assert.match(script, /button\.setAttribute\("aria-pressed", String\(button\.dataset\.statusFilter === status\)\)/);
+  assert.match(script, /button\.addEventListener\("click", \(\) => setStatusFilter\(button\.dataset\.statusFilter\)\)/);
+});
+
+test("统计筛选按钮支持键盘焦点和手机三列布局", () => {
+  assert.match(css, /\.stat-filter:focus-visible/);
+  assert.match(css, /\.stat-filter\[aria-pressed="true"\]/);
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.stats \{\s*gap: 6px;/);
+});
+
 test("手机端答卷列表与当前阅卷详情互斥显示", () => {
   assert.match(html, /id="submissionPanel"/);
   assert.match(script, /setAdminWorkspace\("detail"\)/);

@@ -561,9 +561,24 @@ function reviewImages(paths) {
   return `<div class="review-image-row">${paths.map((src) => `<img src="/${esc(src)}" alt="题目图片" loading="lazy">`).join("")}</div>`;
 }
 
+function updateStatusFilterButtons(status) {
+  for (const button of document.querySelectorAll(".stat-filter")) {
+    button.setAttribute("aria-pressed", String(button.dataset.statusFilter === status));
+  }
+}
+
+function setStatusFilter(status) {
+  const select = document.getElementById("statusFilter");
+  const supported = Array.from(select.options).some((option) => option.value === status);
+  if (!supported) return;
+  select.value = status;
+  renderList();
+}
+
 function renderList() {
   const query = document.getElementById("searchInput").value.trim().toLowerCase();
   const status = document.getElementById("statusFilter").value;
+  updateStatusFilterButtons(status);
   const list = submissions.filter((item) => {
     const hit = [item.studentName, item.examTitle]
       .some((value) => String(value || "").toLowerCase().includes(query));
@@ -898,6 +913,9 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 });
 document.getElementById("searchInput").addEventListener("input", renderList);
 document.getElementById("statusFilter").addEventListener("change", renderList);
+for (const button of document.querySelectorAll(".stat-filter")) {
+  button.addEventListener("click", () => setStatusFilter(button.dataset.statusFilter));
+}
 window.addEventListener("pageshow", verifyAdminSession);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") verifyAdminSession();

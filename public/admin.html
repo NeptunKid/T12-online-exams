@@ -38,10 +38,16 @@
     <main class="shell admin-layout">
       <aside class="panel admin-card" id="submissionPanel">
         <div class="toolbar">
-          <div class="stats">
-            <div class="stat"><span class="meta-label">总提交</span><strong id="statTotal">0</strong></div>
-            <div class="stat"><span class="meta-label">待批阅</span><strong id="statPending">0</strong></div>
-            <div class="stat"><span class="meta-label">已批阅</span><strong id="statGraded">0</strong></div>
+          <div class="stats" role="group" aria-label="按批阅状态筛选答卷">
+            <button class="stat stat-filter" type="button" data-status-filter="all" aria-controls="submissionList" aria-pressed="false">
+              <span class="meta-label">总提交</span><strong id="statTotal">0</strong>
+            </button>
+            <button class="stat stat-filter" type="button" data-status-filter="pending" aria-controls="submissionList" aria-pressed="true">
+              <span class="meta-label">待批阅</span><strong id="statPending">0</strong>
+            </button>
+            <button class="stat stat-filter" type="button" data-status-filter="graded" aria-controls="submissionList" aria-pressed="false">
+              <span class="meta-label">已批阅</span><strong id="statGraded">0</strong>
+            </button>
           </div>
           <input id="searchInput" placeholder="搜索考生姓名">
           <select id="statusFilter">
