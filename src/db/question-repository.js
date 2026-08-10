@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 
 const OPTION_TYPES = new Set(["single", "multi", "judge"]);
+const QUESTION_TYPES = new Set(["single", "multi", "judge", "fill", "qa"]);
 
 function normalizeStoredOptions(options) {
   const source = Array.isArray(options)
@@ -63,6 +64,25 @@ async function listQuestions(pool) {
   return result.rows.map(mapQuestion);
 }
 
+async function listQuestionBanks(pool) {
+  const result = await pool.query(`
+    SELECT qb.id, qb.name, qb.description, qb.status, qb.owner_id,
+      count(q.id)::integer AS question_count
+    FROM question_banks qb
+    LEFT JOIN questions q ON q.bank_id = qb.id AND q.status = 'active'
+    WHERE qb.status = 'active'
+    GROUP BY qb.id
+    ORDER BY qb.name, qb.id;`);
+  return result.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    status: row.status,
+    ownerId: row.owner_id || "",
+    questionCount: Number(row.question_count || 0)
+  }));
+}
+
 function normalizeEditedOptions(type, options, existingOptions) {
   if (!OPTION_TYPES.has(type)) return [];
   if (!Array.isArray(options) || options.length < 2) throw new Error("选择题至少需要两个选项");
@@ -118,6 +138,20 @@ function normalizeQuestionEdit(existing, input) {
   const options = normalizeEditedOptions(existing.type, input?.options, existing.options_json);
   const answer = normalizeEditedAnswer(existing.type, input?.answer, options);
   return { stem, options, answer, explanation };
+}
+
+function normalizeQuestionCreate(input) {
+  const bankId = String(input?.bankId || "").trim();
+  if (!bankId) throw new Error("请选择题库");
+  const type = String(input?.type || "").trim();
+  if (!QUESTION_TYPES.has(type)) throw new Error("不支持的题型");
+  const externalId = String(input?.externalId || "").trim();
+  if (externalId.length > 200) throw new Error("题目编号内容过长");
+  const score = Number(input?.score);
+  if (!Number.isFinite(score) || score < 0 || score > 100_000) throw new Error("默认分值必须是有效的非负数字");
+  const base = { type, options_json: [] };
+  const edited = normalizeQuestionEdit(base, input);
+  return { bankId, type, externalId: externalId || null, score, ...edited };
 }
 
 async function getQuestion(client, questionId) {
@@ -189,11 +223,69 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
   }
 }
 
+async function createQuestion(pool, input, actorUserId) {
+  const created = normalizeQuestionCreate(input);
+  const questionId = `question_manual_${crypto.randomUUID()}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const bank = await client.query(`
+      SELECT id, name
+      FROM question_banks
+      WHERE id = $1 AND status = 'active'
+      FOR UPDATE;`, [created.bankId]);
+    if (!bank.rows.length) throw new Error("未找到可用题库");
+    await client.query(`
+      INSERT INTO questions (
+        id, bank_id, external_id, type, stem, options_json, answer_json,
+        explanation, score, version, status
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, 1, 'active');`, [
+      questionId,
+      created.bankId,
+      created.externalId,
+      created.type,
+      created.stem,
+      JSON.stringify(created.options),
+      JSON.stringify(created.answer),
+      created.explanation,
+      created.score
+    ]);
+    await client.query(`
+      INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+      VALUES ($1, $2, 'create_question', 'question', $3, '{}'::jsonb, $4::jsonb);`, [
+      crypto.randomUUID(),
+      actorUserId,
+      questionId,
+      JSON.stringify({
+        bankId: created.bankId,
+        externalId: created.externalId,
+        type: created.type,
+        score: created.score,
+        version: 1,
+        status: "active",
+        examIds: []
+      })
+    ]);
+    const question = await getQuestion(client, questionId);
+    await client.query("COMMIT");
+    return question;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23505") throw new Error("当前题库中已存在相同题目编号");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
+  createQuestion,
   listQuestions,
+  listQuestionBanks,
   mapQuestion,
   normalizeEditedAnswer,
   normalizeEditedOptions,
+  normalizeQuestionCreate,
   normalizeQuestionEdit,
   normalizeStoredOptions,
   updateQuestion

@@ -7,8 +7,7 @@ const path = require("node:path");
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_SUMMARY = path.join(ROOT, "docs", "development-summary", "2026-08-08-project-progress.md");
 
-function loadEnvFile() {
-  const envPath = path.join(ROOT, ".env");
+function loadEnvFile(envPath = process.env.T12_ENV_FILE || path.join(ROOT, ".env")) {
   if (!fs.existsSync(envPath)) return;
   for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
     const line = rawLine.trim();

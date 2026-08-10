@@ -6,8 +6,10 @@ let showWrongOnly = false;
 let adminUsers = [];
 let currentAdminUserId = "";
 let adminQuestions = [];
-let currentQuestionExamId = "";
+let adminQuestionBanks = [];
+let currentQuestionFilterId = "";
 let currentQuestionId = "";
+let newQuestionDraft = null;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
 
@@ -171,9 +173,10 @@ async function updateAdminRole(button) {
 
 function renderQuestionList() {
   const query = document.getElementById("questionSearch").value.trim().toLowerCase();
-  const filtered = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId, query);
+  const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId, query);
   const list = document.getElementById("questionList");
-  document.getElementById("questionCount").textContent = `当前试卷 ${filtered.length} 道题`;
+  const category = currentQuestionFilterId.startsWith("bank:") ? "当前题库" : "当前试卷";
+  document.getElementById("questionCount").textContent = `${category} ${filtered.length} 道题`;
   list.innerHTML = filtered.length ? filtered.map((question) => `
     <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
       <span class="question-list-stem">${questionText(question.stem)}</span>
@@ -185,12 +188,15 @@ function renderQuestionList() {
   }
 }
 
-function renderQuestionExamFilter() {
-  const exams = window.QuestionAdminModel.listQuestionExams(adminQuestions);
+function renderQuestionFilter() {
+  const filters = window.QuestionAdminModel.listQuestionFilters(adminQuestions, adminQuestionBanks);
   const select = document.getElementById("questionExamFilter");
-  select.innerHTML = exams.map((exam) => `<option value="${esc(exam.id)}">${esc(exam.title)}</option>`).join("");
-  if (!exams.some((exam) => exam.id === currentQuestionExamId)) currentQuestionExamId = exams[0]?.id || "";
-  select.value = currentQuestionExamId;
+  select.innerHTML = `
+    ${filters.exams.length ? `<optgroup label="按试卷">${filters.exams.map((exam) => `<option value="${esc(exam.value)}">${esc(exam.title)}</option>`).join("")}</optgroup>` : ""}
+    ${filters.banks.length ? `<optgroup label="按题库">${filters.banks.map((bank) => `<option value="${esc(bank.value)}">${esc(bank.name)}</option>`).join("")}</optgroup>` : ""}`;
+  const values = [...filters.exams, ...filters.banks].map((item) => item.value);
+  if (!values.includes(currentQuestionFilterId)) currentQuestionFilterId = values[0] || "";
+  select.value = currentQuestionFilterId;
 }
 
 function currentAnswerLabels(question) {
@@ -209,7 +215,171 @@ function answerEditor(question) {
   return `<div class="field"><label for="questionAnswerText">${label}</label><textarea id="questionAnswerText">${esc(answer || "")}</textarea></div>`;
 }
 
+function selectedQuestionBankId() {
+  if (currentQuestionFilterId.startsWith("bank:")) return currentQuestionFilterId.slice(5);
+  const current = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId)[0];
+  return current?.bankId || adminQuestionBanks[0]?.id || "";
+}
+
+function defaultNewQuestion(type = "single", bankId = selectedQuestionBankId()) {
+  const choiceOptions = ["A", "B", "C", "D"].map((label) => ({ label, text: "" }));
+  return {
+    bankId,
+    externalId: "",
+    type,
+    stem: "",
+    options: type === "judge"
+      ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
+      : ["single", "multi"].includes(type) ? choiceOptions : [],
+    answer: type === "multi" ? ["A"] : type === "fill" ? [] : type === "qa" ? "" : "A",
+    explanation: "",
+    score: 1
+  };
+}
+
+function renderNewQuestionEditor() {
+  const draft = newQuestionDraft;
+  const editor = document.getElementById("questionEditor");
+  const optionTypes = ["single", "multi", "judge"].includes(draft.type);
+  const answer = Array.isArray(draft.answer)
+    ? (draft.type === "fill" ? draft.answer.join("\n") : draft.answer.join("|"))
+    : draft.answer;
+  editor.innerHTML = `
+    <form id="newQuestionForm" class="question-editor-form">
+      <div class="question-editor-meta">
+        <span class="badge pending">新题目</span>
+        <span class="brand-sub">保存后进入题库，但不会自动加入任何试卷</span>
+      </div>
+      <div class="notice">新题只供后续组卷使用，不会改变已发布考试、已有答卷或判分。</div>
+      <div class="question-create-grid">
+        <div class="field">
+          <label for="newQuestionBank">题库</label>
+          <select id="newQuestionBank" required>${adminQuestionBanks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === draft.bankId ? "selected" : ""}>${esc(bank.name)}</option>`).join("")}</select>
+        </div>
+        <div class="field">
+          <label for="newQuestionType">题型</label>
+          <select id="newQuestionType">
+            ${Object.entries({ single: "单选题", multi: "多选题", judge: "判断题", fill: "填空题", qa: "问答题" }).map(([value, label]) => `<option value="${value}" ${value === draft.type ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label for="newQuestionExternalId">题目编号（可选）</label>
+          <input id="newQuestionExternalId" value="${esc(draft.externalId)}" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="newQuestionScore">默认分值</label>
+          <input id="newQuestionScore" type="number" min="0" max="100000" step="0.01" value="${esc(draft.score)}" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="questionStem">题干</label>
+        <textarea id="questionStem" required>${esc(draft.stem)}</textarea>
+      </div>
+      ${optionTypes ? `
+        <div class="field">
+          <div class="question-option-toolbar">
+            <label>选项</label>
+            ${draft.type !== "judge" ? `<button class="icon-action" id="addQuestionOptionBtn" type="button" title="添加选项" aria-label="添加选项" ${draft.options.length >= 10 ? "disabled" : ""}>+</button>` : ""}
+          </div>
+          <div class="question-option-editor">
+            ${draft.options.map((option, index) => `
+              <div class="question-option-row" data-option-label="${esc(option.label)}">
+                <div class="question-option-label">${esc(option.label)}.</div>
+                <textarea class="new-question-option-text" data-label="${esc(option.label)}" required ${draft.type === "judge" ? "readonly" : ""}>${esc(option.text)}</textarea>
+                ${draft.type !== "judge" ? `<button class="icon-action remove-option-btn" type="button" data-index="${index}" title="删除选项" aria-label="删除选项" ${draft.options.length <= 2 ? "disabled" : ""}>−</button>` : ""}
+              </div>`).join("")}
+          </div>
+        </div>` : ""}
+      ${answerEditor({ type: draft.type, answer })}
+      <div class="field">
+        <label for="questionExplanation">题目解析</label>
+        <textarea id="questionExplanation">${esc(draft.explanation)}</textarea>
+      </div>
+      <div class="question-save-row">
+        <button class="btn success" id="saveQuestionBtn" type="submit">保存到题库</button>
+        <button class="btn secondary" id="cancelNewQuestionBtn" type="button">取消</button>
+        <span class="brand-sub" id="questionSaveMsg"></span>
+      </div>
+    </form>`;
+  document.getElementById("newQuestionForm").addEventListener("submit", saveNewQuestion);
+  document.getElementById("cancelNewQuestionBtn").addEventListener("click", cancelNewQuestion);
+  document.getElementById("newQuestionType").addEventListener("change", changeNewQuestionType);
+  document.getElementById("addQuestionOptionBtn")?.addEventListener("click", addNewQuestionOption);
+  for (const button of document.querySelectorAll(".remove-option-btn")) {
+    button.addEventListener("click", () => removeNewQuestionOption(Number(button.dataset.index)));
+  }
+  if (optionTypes) document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(draft));
+  updateChoiceAnswerHighlight(draft);
+}
+
+function readNewQuestionDraft() {
+  if (!newQuestionDraft || !document.getElementById("newQuestionForm")) return;
+  const answerText = document.getElementById("questionAnswerText").value;
+  newQuestionDraft = {
+    ...newQuestionDraft,
+    bankId: document.getElementById("newQuestionBank").value,
+    externalId: document.getElementById("newQuestionExternalId").value,
+    type: document.getElementById("newQuestionType").value,
+    stem: document.getElementById("questionStem").value,
+    options: Array.from(document.querySelectorAll(".new-question-option-text")).map((input) => ({
+      label: input.dataset.label,
+      text: input.value
+    })),
+    answer: newQuestionDraft.type === "multi"
+      ? window.QuestionAdminModel.parseChoiceAnswer("multi", answerText)
+      : newQuestionDraft.type === "fill"
+        ? answerText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+        : answerText,
+    explanation: document.getElementById("questionExplanation").value,
+    score: document.getElementById("newQuestionScore").value
+  };
+}
+
+function startNewQuestion() {
+  if (!adminQuestionBanks.length) {
+    document.getElementById("questionEditor").innerHTML = `<div class="notice error">当前没有可用题库，请先通过题库导入流程创建题库。</div>`;
+    return;
+  }
+  currentQuestionId = "";
+  newQuestionDraft = defaultNewQuestion();
+  renderQuestionList();
+  renderNewQuestionEditor();
+}
+
+function cancelNewQuestion() {
+  newQuestionDraft = null;
+  const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
+  currentQuestionId = filtered[0]?.id || "";
+  renderQuestionList();
+  renderQuestionEditor();
+}
+
+function changeNewQuestionType(event) {
+  readNewQuestionDraft();
+  const bankId = newQuestionDraft.bankId;
+  const preserved = { stem: newQuestionDraft.stem, externalId: newQuestionDraft.externalId, explanation: newQuestionDraft.explanation, score: newQuestionDraft.score };
+  newQuestionDraft = { ...defaultNewQuestion(event.target.value, bankId), ...preserved };
+  renderNewQuestionEditor();
+}
+
+function addNewQuestionOption() {
+  readNewQuestionDraft();
+  if (newQuestionDraft.options.length >= 10) return;
+  const label = String.fromCharCode(65 + newQuestionDraft.options.length);
+  newQuestionDraft.options.push({ label, text: "" });
+  renderNewQuestionEditor();
+}
+
+function removeNewQuestionOption(index) {
+  readNewQuestionDraft();
+  if (newQuestionDraft.options.length <= 2) return;
+  newQuestionDraft.options.splice(index, 1);
+  newQuestionDraft.options = newQuestionDraft.options.map((option, optionIndex) => ({ ...option, label: String.fromCharCode(65 + optionIndex) }));
+  renderNewQuestionEditor();
+}
+
 function renderQuestionEditor() {
+  if (newQuestionDraft) return renderNewQuestionEditor();
   const question = adminQuestions.find((item) => item.id === currentQuestionId);
   const editor = document.getElementById("questionEditor");
   if (!question) {
@@ -270,6 +440,7 @@ function updateChoiceAnswerHighlight(question) {
 }
 
 function selectQuestion(questionId) {
+  newQuestionDraft = null;
   currentQuestionId = questionId;
   renderQuestionList();
   renderQuestionEditor();
@@ -279,11 +450,40 @@ async function loadQuestions() {
   document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
   const data = await api("/api/admin/questions");
   adminQuestions = data.questions;
-  renderQuestionExamFilter();
-  const examQuestions = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId);
-  if (!examQuestions.some((question) => question.id === currentQuestionId)) currentQuestionId = examQuestions[0]?.id || "";
+  adminQuestionBanks = data.banks || [];
+  renderQuestionFilter();
+  const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
+  if (!filtered.some((question) => question.id === currentQuestionId)) currentQuestionId = filtered[0]?.id || "";
   renderQuestionList();
   renderQuestionEditor();
+}
+
+async function saveNewQuestion(event) {
+  event.preventDefault();
+  readNewQuestionDraft();
+  const button = document.getElementById("saveQuestionBtn");
+  const message = document.getElementById("questionSaveMsg");
+  button.disabled = true;
+  message.textContent = "正在保存";
+  try {
+    const data = await api("/api/admin/questions", {
+      method: "POST",
+      body: JSON.stringify(newQuestionDraft)
+    });
+    adminQuestions.push(data.question);
+    const bank = adminQuestionBanks.find((item) => item.id === data.question.bankId);
+    if (bank) bank.questionCount += 1;
+    newQuestionDraft = null;
+    currentQuestionId = data.question.id;
+    currentQuestionFilterId = `bank:${data.question.bankId}`;
+    renderQuestionFilter();
+    renderQuestionList();
+    renderQuestionEditor();
+    document.getElementById("questionSaveMsg").textContent = "已保存到题库，尚未加入试卷。";
+  } catch (error) {
+    message.textContent = error.message || "题目录入失败";
+    button.disabled = false;
+  }
 }
 
 async function openQuestionManager() {
@@ -674,6 +874,7 @@ async function initializeAdmin() {
 document.getElementById("refreshBtn").addEventListener("click", loadList);
 document.getElementById("manageAdminsBtn").addEventListener("click", openAdminManager);
 document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
+document.getElementById("newQuestionBtn").addEventListener("click", startNewQuestion);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
   document.getElementById("adminManagerDialog").close();
 });
@@ -683,9 +884,10 @@ document.getElementById("closeQuestionManagerBtn").addEventListener("click", () 
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("questionExamFilter").addEventListener("change", (event) => {
-  currentQuestionExamId = event.target.value;
-  const examQuestions = window.QuestionAdminModel.filterQuestionsByExam(adminQuestions, currentQuestionExamId);
-  currentQuestionId = examQuestions[0]?.id || "";
+  currentQuestionFilterId = event.target.value;
+  newQuestionDraft = null;
+  const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
+  currentQuestionId = filtered[0]?.id || "";
   document.getElementById("questionSearch").value = "";
   renderQuestionList();
   renderQuestionEditor();
