@@ -26,6 +26,60 @@ test("coffee basics draft contains 100 one-point questions", () => {
   assert.deepEqual(preview.questions.find((question) => question.externalId === "coffee-084").imageUrls, ["resource:coffee-siphon"]);
 });
 
+test("legal regulations draft contains 53 questions totaling 100 points", () => {
+  const file = path.join(__dirname, "../docs/question-bank-drafts/legal-questions.csv");
+  const preview = previewQuestionCsv(fs.readFileSync(file, "utf8"));
+  const counts = preview.questions.reduce((result, question) => {
+    result[question.type] = (result[question.type] || 0) + 1;
+    return result;
+  }, {});
+  const scores = preview.questions.reduce((result, question) => {
+    result[question.score] = (result[question.score] || 0) + 1;
+    return result;
+  }, {});
+
+  assert.equal(preview.canCommit, true);
+  assert.equal(preview.validRows, 53);
+  assert.equal(preview.questions.reduce((sum, question) => sum + question.score, 0), 100);
+  assert.deepEqual(counts, { single: 19, multi: 19, judge: 15 });
+  assert.deepEqual(scores, { 1: 34, 3: 10, 4: 9 });
+});
+
+test("legal regulations exam is published for 40 minutes with an 85 percent pass score", async () => {
+  const bank = BANKS.find((item) => item.key === "legal");
+  const inserts = [];
+  const client = {
+    async query(sql, params) {
+      if (sql.startsWith("SELECT id, title")) return { rows: [] };
+      if (sql.startsWith("INSERT INTO exams")) {
+        inserts.push(params);
+        return { rows: [] };
+      }
+      if (sql.startsWith("SELECT score")) return { rows: [] };
+      if (sql.startsWith("INSERT INTO exam_questions")) return { rows: [] };
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+  const questions = Array.from({ length: 53 }, (_, index) => ({
+    id: `question-legal-${String(index + 2).padStart(3, "0")}`,
+    position: index + 1,
+    score: index < 34 ? 1 : index < 44 ? 3 : 4
+  }));
+
+  const result = await ensureExam(client, bank, questions, true);
+
+  assert.deepEqual(bank, {
+    key: "legal",
+    file: "legal-questions.csv",
+    bankId: "bank-legal-regulations",
+    examId: "exam-legal-regulations",
+    title: "餐饮相关法律法规",
+    duration: 40
+  });
+  assert.deepEqual(result, { total: 100, pass: 85, status: "published" });
+  assert.deepEqual(inserts[0], ["exam-legal-regulations", "餐饮相关法律法规", "published", 2400, 85, 100]);
+});
+
 test("coffee basics exam is published for 60 minutes with an 85 percent pass score", async () => {
   const bank = BANKS.find((item) => item.key === "coffee");
   const inserts = [];

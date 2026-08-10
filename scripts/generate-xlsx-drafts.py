@@ -25,6 +25,9 @@ TYPE_MAP = {
     "问答题(人工判分)": "qa",
 }
 
+# 多选题中按题库顺序给前 9 个高复杂度题目 4 分，其余 10 个题目 3 分。
+LEGAL_MULTI_FOUR_POSITIONS = {1, 2, 5, 7, 9, 13, 16, 17, 18}
+
 
 def clean(value):
     return str(value or "").replace("\r\n", "\n").strip()
@@ -42,9 +45,10 @@ def parse_fill_answer(value):
     return list(dict.fromkeys(combined))
 
 
-def iter_source_rows(path):
+def iter_source_rows(path, header_row=None):
     worksheet = load_workbook(path, data_only=True).active
-    header_row = 1 if "萃取原理" in path.name else 2
+    if header_row is None:
+        header_row = 1 if "萃取原理" in path.name else 2
     for row_number, row in enumerate(worksheet.iter_rows(min_row=header_row + 1, values_only=True), header_row + 1):
         values = list(row) + [None] * (15 - len(row))
         if not clean(values[0]) or not clean(values[1]):
@@ -85,6 +89,8 @@ def build_question(row_number, values, exam_key, score_override=None):
         answer = ""
         tags.append("manual-grading")
 
+    if callable(score_override):
+        score_override = score_override(row_number, type_name, raw_answer)
     score = float(score_override if score_override is not None else (clean(source_score) or 0))
     if score.is_integer():
         score = int(score)
@@ -111,20 +117,25 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
-def generate(source_dir, output_dir):
+def generate(source_dir, output_dir, only=None):
     configs = [
-        ("萃取原理-题库-8d83633f-9faf-440d-83d4-475ae59dbc21.xlsx", "extraction", {"single": 2, "multi": 3, "judge": 2, "fill": 2, "qa": 2.5}, None),
-        ("消防基础知识考试.xlsx", "fire", None, None),
-        ("IT基础考试.xlsx", "it", None, "operation"),
+        ("萃取原理-题库-8d83633f-9faf-440d-83d4-475ae59dbc21.xlsx", "extraction", {"single": 2, "multi": 3, "judge": 2, "fill": 2, "qa": 2.5}, None, None),
+        ("消防基础知识考试.xlsx", "fire", None, None, None),
+        ("IT基础考试.xlsx", "it", None, "operation", None),
+        ("餐饮相关法律法规-题库.xlsx", "legal", legal_score, None, 1),
     ]
+    if only:
+        configs = [config for config in configs if config[1] == only]
+        if not configs:
+            raise ValueError(f"未知题库：{only}")
     results = []
-    for filename, exam_key, score_map, excluded in configs:
+    for filename, exam_key, score_map, excluded, header_row in configs:
         rows = []
-        for row_number, values in iter_source_rows(source_dir / filename):
+        for row_number, values in iter_source_rows(source_dir / filename, header_row):
             stem = clean(values[1])
             if excluded and "操作题" in stem:
                 continue
-            override = score_map.get(TYPE_MAP.get(clean(values[0]))) if score_map else None
+            override = score_map.get(TYPE_MAP.get(clean(values[0]))) if isinstance(score_map, dict) else score_map
             rows.append(build_question(row_number, values, exam_key, override))
         output = output_dir / f"{exam_key}-questions.csv"
         write_csv(output, rows)
@@ -132,12 +143,20 @@ def generate(source_dir, output_dir):
     return results
 
 
+def legal_score(row_number, type_name, _raw_answer):
+    if type_name == "multi":
+        multi_position = row_number - 20
+        return 4 if multi_position in LEGAL_MULTI_FOUR_POSITIONS else 3
+    return 1
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--only", choices=["extraction", "fire", "it", "legal"])
     args = parser.parse_args()
-    for key, count, total, path in generate(args.source_dir, args.output_dir):
+    for key, count, total, path in generate(args.source_dir, args.output_dir, args.only):
         print(f"{key}: {count} 题，总分 {total:g}，输出 {path}")
 
 
