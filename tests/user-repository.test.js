@@ -3,6 +3,7 @@ const test = require("node:test");
 const {
   getAdminAccess,
   getIdentityAccess,
+  listAdminUsers,
   mapAdminUser,
   maskIdentity,
   normalizeRealName,
@@ -11,14 +12,36 @@ const {
   upsertFeishuUser
 } = require("../src/db/user-repository");
 
-test("管理员用户映射会遮蔽钉钉身份标识", () => {
+test("管理员用户映射会遮蔽钉钉和飞书身份标识", () => {
   assert.equal(maskIdentity("union-1234567890"), "unio...7890");
   const user = mapAdminUser({
     id: "user-1", name: "测试用户", employee_no: null, department: "运营",
-    status: "active", union_id: "union-1234567890", roles: ["student", "system_admin"]
+    status: "active",
+    identities: [
+      { provider: "dingtalk", identifier: "union-1234567890" },
+      { provider: "feishu", identifier: "ou-feishu-0987654321" }
+    ],
+    roles: ["student", "system_admin"]
   });
-  assert.equal(user.identityHint, "unio...7890");
+  assert.equal(user.identityHint, "dingtalk: unio...7890 / feishu: ou-f...4321");
+  assert.deepEqual(user.providers, ["dingtalk", "feishu"]);
   assert.equal(user.isAdmin, true);
+});
+
+test("管理员列表包含飞书独立用户且不返回原始身份标识", async () => {
+  let capturedSql = "";
+  const users = await listAdminUsers({
+    async query(sql) {
+      capturedSql = sql;
+      return { rows: [{
+        id: "fei-user", name: "飞书管理员", employee_no: null, department: "运营", status: "active",
+        identities: [{ provider: "feishu", identifier: "ou-feishu-1234567890" }], roles: ["grader"]
+      }] };
+    }
+  });
+  assert.match(capturedSql, /'feishu'/);
+  assert.equal(users[0].identityHint, "feishu: ou-f...7890");
+  assert.equal(JSON.stringify(users).includes("ou-feishu-1234567890"), false);
 });
 
 test("数据库系统管理员和环境引导账号均可管理管理员", async () => {

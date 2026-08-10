@@ -55,13 +55,18 @@ function maskIdentity(value) {
 
 function mapAdminUser(row) {
   const roles = Array.isArray(row.roles) ? row.roles.filter(Boolean) : [];
+  const identities = Array.isArray(row.identities) ? row.identities.map((identity) => ({
+    provider: identity.provider,
+    hint: maskIdentity(identity.identifier)
+  })) : [];
   return {
     id: row.id,
     name: row.name,
     employeeNo: row.employee_no || "",
     department: row.department || "",
     status: row.status,
-    identityHint: maskIdentity(row.union_id),
+    identityHint: identities.map((identity) => `${identity.provider}: ${identity.hint}`).join(" / ") || "未记录",
+    providers: [...new Set(identities.map((identity) => identity.provider))],
     roles,
     isAdmin: roles.includes("system_admin")
   };
@@ -241,19 +246,18 @@ async function getIdentityAccess(pool, provider, providerSubject) {
 
 async function listAdminUsers(pool) {
   const result = await pool.query(`
-    SELECT u.id, u.name, u.employee_no, u.department, u.status, ui.union_id,
-      COALESCE(array_agg(ur.role_code ORDER BY ur.role_code)
+    SELECT u.id, u.name, u.employee_no, u.department, u.status,
+      jsonb_agg(DISTINCT jsonb_build_object(
+        'provider', ui.provider,
+        'identifier', COALESCE(ui.union_id, ui.provider_subject, ui.open_id)
+      )) AS identities,
+      COALESCE(array_agg(DISTINCT ur.role_code ORDER BY ur.role_code)
         FILTER (WHERE ur.role_code IS NOT NULL), ARRAY[]::text[]) AS roles
     FROM users u
-    JOIN LATERAL (
-      SELECT union_id
-      FROM user_identities
-      WHERE user_id = u.id AND provider = 'dingtalk'
-      ORDER BY created_at, id
-      LIMIT 1
-    ) ui ON true
+    JOIN user_identities ui ON ui.user_id = u.id
+      AND ui.provider IN ('dingtalk', 'feishu', 'legacy')
     LEFT JOIN user_roles ur ON ur.user_id = u.id
-    GROUP BY u.id, u.name, u.employee_no, u.department, u.status, ui.union_id
+    GROUP BY u.id, u.name, u.employee_no, u.department, u.status
     ORDER BY u.name, u.id;`);
   return result.rows.map(mapAdminUser);
 }
@@ -265,11 +269,16 @@ async function setAdminRole(pool, targetUserId, enabled, actorUserId) {
     const targetResult = await client.query(`
       SELECT u.id, u.name
       FROM users u
-      JOIN user_identities ui ON ui.user_id = u.id AND ui.provider = 'dingtalk'
       WHERE u.id = $1
+        AND u.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM user_identities ui
+          WHERE ui.user_id = u.id
+            AND ui.provider IN ('dingtalk', 'feishu', 'legacy')
+        )
       FOR UPDATE OF u;`, [targetUserId]);
     const target = targetResult.rows[0];
-    if (!target) throw new Error("未找到该钉钉用户");
+    if (!target) throw new Error("未找到可授权的平台用户");
     const rolesResult = await client.query(
       "SELECT role_code FROM user_roles WHERE user_id = $1 ORDER BY role_code;",
       [targetUserId]

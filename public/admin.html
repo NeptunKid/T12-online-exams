@@ -11,9 +11,10 @@
     <main class="panel login-card">
       <h1>T12学习考核中心</h1>
       <p class="brand-sub">管理员阅卷后台</p>
-      <p>请使用已授予阅卷权限的钉钉账号登录。</p>
+      <p>请使用已授予后台权限的钉钉或飞书账号登录。</p>
       <div class="btn-row" style="margin-top:22px">
         <a class="btn primary" id="dingtalkAdminLogin" href="/auth/dingtalk/login?returnTo=/admin">使用钉钉登录</a>
+        <a class="btn secondary" id="feishuAdminLogin" href="/auth/feishu/login?returnTo=/admin">使用飞书登录</a>
       </div>
       <div id="loginMsg" class="notice error hidden"></div>
     </main>
@@ -75,7 +76,7 @@
       <div class="admin-dialog-head">
         <div>
           <h2>管理员</h2>
-          <p class="brand-sub">钉钉用户与后台权限</p>
+          <p class="brand-sub">钉钉、飞书用户与后台权限</p>
         </div>
         <button class="btn secondary compact-btn" id="closeAdminManagerBtn" type="button">关闭</button>
       </div>

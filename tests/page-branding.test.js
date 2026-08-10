@@ -25,6 +25,8 @@ test("管理员页面以 T12 学习考核中心作为主标题", () => {
   assert.match(html, /<h1>T12学习考核中心<\/h1>/);
   assert.match(html, /<div class="brand-title">T12学习考核中心<\/div>/);
   assert.match(html, /<div class="brand-sub">管理员阅卷后台<\/div>/);
+  assert.match(html, /id="dingtalkAdminLogin" href="\/auth\/dingtalk\/login\?returnTo=\/admin"/);
+  assert.match(html, /id="feishuAdminLogin" href="\/auth\/feishu\/login\?returnTo=\/admin"/);
 });
 
 test("管理员题库提供手动新增题目入口", () => {

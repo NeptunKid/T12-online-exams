@@ -12,6 +12,7 @@ let currentQuestionId = "";
 let newQuestionDraft = null;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
+let adminAuthProviders = { dingtalk: true, feishu: false };
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -51,7 +52,7 @@ async function api(path, options = {}) {
   if (!res.ok) {
     const error = new Error(data.error || "请求失败");
     error.status = res.status;
-    if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉登录。");
+    if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
     throw error;
   }
   return data;
@@ -70,10 +71,15 @@ function lockAdminSession(message) {
   closeOpenAdminDialogs();
   document.getElementById("adminPage").classList.add("hidden");
   document.getElementById("loginPage").classList.remove("hidden");
-  document.getElementById("dingtalkAdminLogin").classList.remove("hidden");
+  updateAdminLoginButtons();
   const msg = document.getElementById("loginMsg");
   msg.textContent = message;
   msg.className = "notice error";
+}
+
+function updateAdminLoginButtons() {
+  document.getElementById("dingtalkAdminLogin").classList.toggle("hidden", !adminAuthProviders.dingtalk);
+  document.getElementById("feishuAdminLogin").classList.toggle("hidden", !adminAuthProviders.feishu);
 }
 
 function applyAdminAccess(access) {
@@ -88,7 +94,7 @@ async function verifyAdminSession() {
   sessionCheckInFlight = api("/api/admin/check")
     .then(applyAdminAccess)
     .catch((error) => {
-      if (error.status === 403) lockAdminSession("当前钉钉账号的后台权限已失效，请重新登录或联系系统管理员。");
+      if (error.status === 403) lockAdminSession("当前账号的后台权限已失效，请重新登录或联系系统管理员。");
     })
     .finally(() => {
       sessionCheckInFlight = null;
@@ -866,9 +872,13 @@ async function initializeAdmin() {
     const [configRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
     const config = await configRes.json();
     const me = await meRes.json();
+    adminAuthProviders = {
+      dingtalk: config.providers?.dingtalk?.enabled ?? config.enabled,
+      feishu: Boolean(config.providers?.feishu?.enabled)
+    };
+    updateAdminLoginButtons();
     if (!config.enabled) {
-      document.getElementById("dingtalkAdminLogin").classList.add("hidden");
-      msg.textContent = "钉钉登录尚未配置，请联系系统管理员。";
+      msg.textContent = "管理员登录服务尚未配置，请联系系统管理员。";
       msg.classList.remove("hidden");
       return;
     }
@@ -881,7 +891,7 @@ async function initializeAdmin() {
     await loadList();
     startAdminSessionMonitoring();
   } catch (err) {
-    msg.textContent = err.message || "当前钉钉账号没有阅卷权限。";
+    msg.textContent = err.message || "当前账号没有阅卷权限。";
     msg.className = "notice error";
   }
 }
