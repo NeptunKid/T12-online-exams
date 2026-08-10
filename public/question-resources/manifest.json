@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-08T18:00:26.465Z",
+  "generatedAt": "2026-08-10T00:00:00.000Z",
   "resources": {
     "resource:extraction-17-a": {
       "file": "extraction/extraction-17-a.png",
@@ -64,6 +64,20 @@
       "mediaType": "image/png",
       "bytes": 18914,
       "sha256": "751e21b16af4f8e76193cef55fa81fb4d846f9d78eb0dfefb7c3d9760f972e55"
+    },
+    "resource:coffee-cherry-structure": {
+      "file": "coffee/coffee-cherry-structure.jpeg",
+      "url": "/question-resources/coffee/coffee-cherry-structure.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 167387,
+      "sha256": "d918bb296d8741d33e9c355b2c42b315024007f40455106680bcf68fac5e03a3"
+    },
+    "resource:coffee-siphon": {
+      "file": "coffee/coffee-siphon.jpeg",
+      "url": "/question-resources/coffee/coffee-siphon.jpeg",
+      "mediaType": "image/jpeg",
+      "bytes": 340254,
+      "sha256": "e896e8a584d30e28fd7ad9f2b743b40aa3fc3227c4ac1218dd879d3579cc6f13"
     }
   }
 }

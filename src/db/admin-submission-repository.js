@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { mapQuestionOptions } = require("../resources/question-resources");
+const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
 
 function asNumber(value, fallback = 0) {
   const number = Number(value);
@@ -52,7 +52,10 @@ function mapAdminQuestion(row) {
     answer: Object.hasOwn(snapshot, "answer") ? snapshot.answer : row.current_answer,
     explanation: Object.hasOwn(snapshot, "explanation") ? snapshot.explanation : (row.current_explanation || ""),
     score: asNumber(snapshot.score ?? row.current_score),
-    images: { stem: [], options: optionImages },
+    images: {
+      stem: mapQuestionImages(snapshot.images || row.current_images || []),
+      options: optionImages
+    },
     submittedAnswer: row.answer_json,
     earnedScore: asNumber(row.earned_score),
     automaticScore: row.automatic_score === null ? null : asNumber(row.automatic_score),
@@ -87,7 +90,8 @@ async function loadAdminQuestions(queryable, submissionId, examId, lock = false)
     SELECT sq.question_id, sq.position, sq.snapshot_json, sq.answer_json,
       sq.earned_score, sq.automatic_score, sq.manually_adjusted,
       q.external_id, q.type AS current_type, q.stem AS current_stem,
-      q.options_json AS current_options, q.answer_json AS current_answer,
+      q.options_json AS current_options, q.images_json AS current_images,
+      q.answer_json AS current_answer,
       q.explanation AS current_explanation, eq.score AS current_score
     FROM submission_questions sq
     LEFT JOIN questions q ON q.id = sq.question_id

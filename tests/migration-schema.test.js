@@ -63,3 +63,12 @@ test("0004 修正清洁卫生时长并建立可回滚的全员授权", () => {
   assert.match(down, /DELETE FROM exam_assignments/);
   assert.match(down, /duration_seconds = 30/);
 });
+
+test("0005 为题干图片建立可回滚的 JSON 数组字段", () => {
+  const migration = listMigrations().find((item) => item.name === "0005_question_stem_images");
+  assert.ok(migration);
+  assert.match(migration.sql, /images_json jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(migration.sql, /jsonb_typeof\(images_json\) = 'array'/);
+  const down = require("node:fs").readFileSync(migration.downPath, "utf8");
+  assert.match(down, /DROP COLUMN images_json/);
+});

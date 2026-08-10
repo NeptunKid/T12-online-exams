@@ -18,6 +18,15 @@ function resourceUrl(resourceId, resources = loadQuestionResourceManifest()) {
   return entry?.url || "";
 }
 
+function mapQuestionImages(images, resources = loadQuestionResourceManifest()) {
+  if (!Array.isArray(images)) return [];
+  return images.map((image) => {
+    if (typeof image !== "string") return "";
+    if (/^\/question-resources\/[A-Za-z0-9_./-]+$/.test(image) && !image.includes("..")) return image;
+    return resourceUrl(image, resources);
+  }).filter(Boolean);
+}
+
 function mapQuestionOptions(options, resources = loadQuestionResourceManifest()) {
   const normalized = Array.isArray(options)
     ? options
@@ -34,4 +43,4 @@ function mapQuestionOptions(options, resources = loadQuestionResourceManifest())
   }));
 }
 
-module.exports = { loadQuestionResourceManifest, mapQuestionOptions, resourceUrl };
+module.exports = { loadQuestionResourceManifest, mapQuestionImages, mapQuestionOptions, resourceUrl };

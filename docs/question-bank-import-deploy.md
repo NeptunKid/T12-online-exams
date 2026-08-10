@@ -24,16 +24,25 @@ cd /opt/t12-online-exams
 test -f package.json && test -f public/question-resources/manifest.json
 git pull --ff-only origin main
 npm ci
-sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env /usr/bin/npm run migrate
 ```
 
 导入前先备份 PostgreSQL（不会修改答卷）：
 
 ```bash
-sudo -u postgres pg_dump -Fc t12_exams > "/var/backups/t12_exams-before-question-import-$(date +%Y%m%d%H%M%S).dump"
+sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
+T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-question-import-$(date +%Y%m%d%H%M%S).dump"
+sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
+sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
 ```
 
-确认备份命令成功后，在同一目录执行事务导入。`--publish` 会将四份考试设为 `published`；`--all-active-dingtalk-users` 会给所有已登录、状态为 `active` 的钉钉用户建立授权：
+确认备份命令成功后，在同一目录执行迁移。迁移会新增可回滚的 `0005_question_stem_images` 字段：
+
+```bash
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/npm run migrate
+```
+
+迁移成功后执行事务导入。`--publish` 会将咖啡考试设为 `published`；`--all-active-dingtalk-users` 会给所有已登录、状态为 `active` 的钉钉用户建立授权：
 
 ```bash
 cd /opt/t12-online-exams
@@ -53,6 +62,8 @@ sudo systemctl restart t12-exams
 curl -fsS http://127.0.0.1:3001/healthz
 curl -fsS http://127.0.0.1:3001/readyz
 curl -I https://exam.t12group.com/question-resources/extraction/extraction-17-a.png
+curl -I https://exam.t12group.com/question-resources/coffee/coffee-cherry-structure.jpeg
+curl -I https://exam.t12group.com/question-resources/coffee/coffee-siphon.jpeg
 sudo -u postgres psql -d t12_exams -c \
   "SELECT e.id, e.title, e.status, count(eq.question_id) AS questions, e.total_score, e.pass_score \
    FROM exams e LEFT JOIN exam_questions eq ON eq.exam_id = e.id \
@@ -67,4 +78,4 @@ sudo -u postgres psql -d t12_exams -c \
    GROUP BY e.id ORDER BY e.id;"
 ```
 
-预期题目数和分值为：萃取原理 `43 / 101 / 85.85`，消防基础 `32 / 100 / 85`，IT 基础 `34 / 86 / 73.10`，咖啡基础知识 `100 / 100 / 85`，且咖啡考试时长为 `3600` 秒。任何一项不一致都应停止验收，保留数据库备份并联系管理员处理。
+预期题目数和分值为：萃取原理 `43 / 101 / 85.85`，消防基础 `32 / 100 / 85`，IT 基础 `34 / 86 / 73.10`，咖啡基础知识 `100 / 100 / 85`，且咖啡考试时长为 `3600` 秒。两个咖啡图片地址应返回 HTTP 200。任何一项不一致都应停止验收，保留数据库备份并联系管理员处理。
