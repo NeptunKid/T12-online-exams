@@ -1,0 +1,1054 @@
+{
+  "title": "清洁卫生入职培训考试",
+  "source": "清洁卫生题库与清洁卫生基础",
+  "questions": [
+    {
+      "sourceRow": 2,
+      "imageNo": 1,
+      "legacyExternalId": "0",
+      "type": "single",
+      "stem": "图1、图2两块百洁布分别的用途是？",
+      "options": [
+        {
+          "label": "A",
+          "text": "通用一般用具清洁 通用准食品接触器具清洁"
+        },
+        {
+          "label": "B",
+          "text": "通用食品接触器具清洁 通用一般用具清洁"
+        },
+        {
+          "label": "C",
+          "text": "通用准食品接触器具清洁 专用一般用具清洁"
+        },
+        {
+          "label": "D",
+          "text": "通用一般用具清洁 通用食品接触器具清洁"
+        },
+        {
+          "label": "E",
+          "text": "专用准食品接触器具清洁 通用食品接触器具清洁"
+        }
+      ],
+      "answer": "D",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 3,
+      "imageNo": 2,
+      "legacyExternalId": "1",
+      "type": "multi",
+      "stem": "下列哪块布可以罩在干净食品器具上作防尘布？",
+      "options": [],
+      "answer": [
+        "A",
+        "D"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 4,
+      "imageNo": 3,
+      "legacyExternalId": "2",
+      "type": "multi",
+      "stem": "以下哪些器具需要每天消毒？",
+      "options": [
+        {
+          "label": "A",
+          "text": "条纹棉质抹布"
+        },
+        {
+          "label": "B",
+          "text": "棕色华夫格抹布"
+        },
+        {
+          "label": "C",
+          "text": "白色棉质抹布"
+        },
+        {
+          "label": "D",
+          "text": "灰色方形抹布"
+        },
+        {
+          "label": "E",
+          "text": "白色方形抹布"
+        },
+        {
+          "label": "F",
+          "text": "棕色抹布"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "explanation": "",
+      "sourceScore": 5
+    },
+    {
+      "sourceRow": 5,
+      "imageNo": 4,
+      "legacyExternalId": "3",
+      "type": "multi",
+      "stem": "营业时间内，咖啡师的食物可以存放在下列哪些场所？",
+      "options": [
+        {
+          "label": "A",
+          "text": "客人不多时放于客座区的茶几或长凳上"
+        },
+        {
+          "label": "B",
+          "text": "吧台内柜子或台面的不显眼处"
+        },
+        {
+          "label": "C",
+          "text": "门店做好标记的“私人物品存放区“"
+        },
+        {
+          "label": "D",
+          "text": "门店做好标记的“食物存放篮“"
+        },
+        {
+          "label": "E",
+          "text": "门店做好标记的员工专用冰箱"
+        }
+      ],
+      "answer": [
+        "C",
+        "D",
+        "E"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 6,
+      "imageNo": 5,
+      "legacyExternalId": "4",
+      "type": "multi",
+      "stem": "图中蓝色桶可以用于浸泡_________ ?",
+      "options": [
+        {
+          "label": "A",
+          "text": "黑色碗刷"
+        },
+        {
+          "label": "B",
+          "text": "咖啡色华夫格布"
+        },
+        {
+          "label": "C",
+          "text": "灰色抹布"
+        },
+        {
+          "label": "D",
+          "text": "蓝色碗刷"
+        },
+        {
+          "label": "E",
+          "text": "条纹抹布"
+        },
+        {
+          "label": "F",
+          "text": "棕色抹布"
+        }
+      ],
+      "answer": [
+        "C",
+        "D"
+      ],
+      "explanation": "准食品接触浸泡桶",
+      "sourceScore": 5
+    },
+    {
+      "sourceRow": 7,
+      "imageNo": 6,
+      "legacyExternalId": "5",
+      "type": "multi",
+      "stem": "下列哪些用具可以用烘干机烘干？",
+      "options": [
+        {
+          "label": "A",
+          "text": "白色棉质抹布"
+        },
+        {
+          "label": "B",
+          "text": "条纹抹布"
+        },
+        {
+          "label": "C",
+          "text": "咖啡色华夫格抹布"
+        },
+        {
+          "label": "D",
+          "text": "棕色方形抹布"
+        },
+        {
+          "label": "E",
+          "text": "灰色方形抹布"
+        },
+        {
+          "label": "F",
+          "text": "白色方形抹布"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "C",
+        "F"
+      ],
+      "explanation": "",
+      "sourceScore": 5
+    },
+    {
+      "sourceRow": 8,
+      "imageNo": 7,
+      "legacyExternalId": "6",
+      "type": "single",
+      "stem": "图中的百洁布可以用于清洁哪些器具？",
+      "options": [
+        {
+          "label": "A",
+          "text": "饮水杯"
+        },
+        {
+          "label": "B",
+          "text": "咖啡机下水盘及格栅"
+        },
+        {
+          "label": "C",
+          "text": "筛粉器"
+        },
+        {
+          "label": "D",
+          "text": "吧台水池内壁"
+        }
+      ],
+      "answer": "B",
+      "explanation": "蓝色百洁布为准食品清洁用具，选项中只有B为准食品接触清洁等级。\nA/C为食品接触级，D为一般清洁级。",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 9,
+      "imageNo": 8,
+      "legacyExternalId": "7",
+      "type": "qa",
+      "stem": "请写出下图中字母所指抹布的名称或作用：",
+      "options": [],
+      "answer": null,
+      "explanation": "食品器具擦干布、通用准清洁抹布、蒸汽棒清洁布、粉碗清洁布",
+      "sourceScore": 4
+    },
+    {
+      "sourceRow": 10,
+      "imageNo": 9,
+      "legacyExternalId": "8",
+      "type": "qa",
+      "stem": "清洁用品有_____、_____、_____ 这三种不同的使用状态。",
+      "options": [],
+      "answer": null,
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 11,
+      "imageNo": 10,
+      "legacyExternalId": "9",
+      "type": "qa",
+      "stem": "清洁用品按照用途可以分为哪几类？",
+      "options": [],
+      "answer": null,
+      "explanation": "食品接触、准食品接触、一般清洁、重度污染清洁、其他（未分级）",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 12,
+      "imageNo": 11,
+      "legacyExternalId": "10",
+      "type": "multi",
+      "stem": "下列哪些区域（或物品）的清洁等级属于“准食品接触类”？",
+      "options": [
+        {
+          "label": "A",
+          "text": "咖啡机下水盘前盖"
+        },
+        {
+          "label": "B",
+          "text": "咖啡机下水盘格栅"
+        },
+        {
+          "label": "C",
+          "text": "冲煮手柄"
+        },
+        {
+          "label": "D",
+          "text": "咖啡出品用木托盘"
+        },
+        {
+          "label": "E",
+          "text": "冷藏柜内腔"
+        },
+        {
+          "label": "F",
+          "text": "电子秤"
+        },
+        {
+          "label": "G",
+          "text": "咖啡机萃取区面板"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "D",
+        "E",
+        "F",
+        "G"
+      ],
+      "explanation": "",
+      "sourceScore": 4
+    },
+    {
+      "sourceRow": 13,
+      "imageNo": 12,
+      "legacyExternalId": "11",
+      "type": "single",
+      "stem": "图中洗碗槽的内侧与外侧分别属于什么清洁等级？",
+      "options": [
+        {
+          "label": "A",
+          "text": "食品接触 准食品接触"
+        },
+        {
+          "label": "B",
+          "text": "食品接触 一般清洁"
+        },
+        {
+          "label": "C",
+          "text": "准食品接触 一般清洁"
+        },
+        {
+          "label": "D",
+          "text": "准食品接触 重度污染"
+        }
+      ],
+      "answer": "C",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 14,
+      "imageNo": 13,
+      "legacyExternalId": "12",
+      "type": "multi",
+      "stem": "“一般清洁抹布”可以清洁哪些区域？",
+      "options": [
+        {
+          "label": "A",
+          "text": "预包装食品存放区"
+        },
+        {
+          "label": "B",
+          "text": "设备的食品接触部位"
+        },
+        {
+          "label": "C",
+          "text": "餐具清洗消毒区"
+        },
+        {
+          "label": "D",
+          "text": "一次性物料存放区"
+        },
+        {
+          "label": "E",
+          "text": "客座区的桌椅和置物架"
+        },
+        {
+          "label": "F",
+          "text": "冷藏/冻柜的外表面"
+        }
+      ],
+      "answer": [
+        "A",
+        "C",
+        "D",
+        "E",
+        "F"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 15,
+      "imageNo": 14,
+      "legacyExternalId": "13",
+      "type": "single",
+      "stem": "图中1/2两块抹布的用途分别是？",
+      "options": [
+        {
+          "label": "A",
+          "text": "1.擦干杯子 2.擦干手"
+        },
+        {
+          "label": "B",
+          "text": "1.擦咖啡机 2.擦干杯子"
+        },
+        {
+          "label": "C",
+          "text": "1.擦干手 2.擦干杯子或做水杯垫布"
+        },
+        {
+          "label": "D",
+          "text": "1.水杯垫布 2.擦干杯子"
+        },
+        {
+          "label": "E",
+          "text": "1/2都可以用于擦杯子、擦干手"
+        }
+      ],
+      "answer": "C",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 16,
+      "imageNo": 15,
+      "legacyExternalId": "14",
+      "type": "single",
+      "stem": "图中的灰色桶可以做什么用？",
+      "options": [
+        {
+          "label": "A",
+          "text": "洗拖把"
+        },
+        {
+          "label": "B",
+          "text": "浸泡擦外场桌椅的抹布"
+        },
+        {
+          "label": "C",
+          "text": "浸泡擦粉碗的布"
+        },
+        {
+          "label": "D",
+          "text": "浸泡待消毒的蒸汽棒清洁布（奶布）"
+        },
+        {
+          "label": "E",
+          "text": "浸泡擦干手的抹布"
+        },
+        {
+          "label": "F",
+          "text": "浸泡擦托盘的布"
+        }
+      ],
+      "answer": "B",
+      "explanation": "灰色浸泡桶为一般清洁用具，不能浸泡清洁 \"食品接触\"和“准食品接触”的抹布等器具。\n也不能用于重度污染的器具的清洁。",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 17,
+      "imageNo": 16,
+      "legacyExternalId": "15",
+      "type": "single",
+      "stem": "下图中的手套的用途是？",
+      "options": [
+        {
+          "label": "A",
+          "text": "洗杯子"
+        },
+        {
+          "label": "B",
+          "text": "清洁重度污染区域"
+        },
+        {
+          "label": "C",
+          "text": "洗咖啡机清洁工具"
+        },
+        {
+          "label": "D",
+          "text": "洗一般清洁用抹布"
+        }
+      ],
+      "answer": "B",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 18,
+      "imageNo": 17,
+      "legacyExternalId": "16",
+      "type": "single",
+      "stem": "以下两把刷子的清洁用途分别为__________、__________。",
+      "options": [
+        {
+          "label": "A",
+          "text": "通用准食品接触器具清洁 通用一般清洁"
+        },
+        {
+          "label": "B",
+          "text": "专用食品接触器具清洁 通用重度污染清洁"
+        },
+        {
+          "label": "C",
+          "text": "通用准食品接触器具清洁 通用重度污染清洁"
+        },
+        {
+          "label": "D",
+          "text": "专用食品接触器具清洁 通用一般清洁"
+        }
+      ],
+      "answer": "B",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 19,
+      "imageNo": 18,
+      "legacyExternalId": "17",
+      "type": "multi",
+      "stem": "下图这块方形抹布的用途是？",
+      "options": [
+        {
+          "label": "A",
+          "text": "粉碗的清洁"
+        },
+        {
+          "label": "B",
+          "text": "下水盘格栅的清洁和擦干"
+        },
+        {
+          "label": "C",
+          "text": "下水盘前盖的清洁擦干"
+        },
+        {
+          "label": "D",
+          "text": "清洁咖啡机下水盘上方的面板"
+        },
+        {
+          "label": "E",
+          "text": "清洁称量浓缩液重的电子秤表面"
+        },
+        {
+          "label": "F",
+          "text": "清洁磨豆机表面"
+        },
+        {
+          "label": "G",
+          "text": "清洁意式咖啡机下方吧台台面"
+        }
+      ],
+      "answer": [
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G"
+      ],
+      "explanation": "灰色正方形抹布为通用准食品接触类清洁用具，可用于咖啡机下水盘的三个表面区域的清洁、准食品吧台的清洁等。\nA为食品接触级",
+      "sourceScore": 5
+    },
+    {
+      "sourceRow": 20,
+      "imageNo": 19,
+      "legacyExternalId": "18",
+      "type": "multi",
+      "stem": "图中厨房湿巾的清洁范围是？",
+      "options": [
+        {
+          "label": "A",
+          "text": "食品接触清洁"
+        },
+        {
+          "label": "B",
+          "text": "准食品接触清洁"
+        },
+        {
+          "label": "C",
+          "text": "一般清洁"
+        },
+        {
+          "label": "D",
+          "text": "重度污染清洁"
+        }
+      ],
+      "answer": [
+        "B",
+        "C",
+        "D"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 21,
+      "imageNo": 20,
+      "legacyExternalId": "19",
+      "type": "multi",
+      "stem": "图中红色刷子可以拿来刷：",
+      "options": [
+        {
+          "label": "A",
+          "text": "水杯、奶缸"
+        },
+        {
+          "label": "B",
+          "text": "咖啡机冲煮头和萃取手柄"
+        },
+        {
+          "label": "C",
+          "text": "粉渣桶的上部"
+        },
+        {
+          "label": "D",
+          "text": "洗拖把的水池"
+        },
+        {
+          "label": "E",
+          "text": "吧台清洗水池"
+        },
+        {
+          "label": "F",
+          "text": "泡洗杯子的橡胶洗碗槽内侧"
+        },
+        {
+          "label": "G",
+          "text": "泡洗杯子的橡胶洗碗槽外侧"
+        }
+      ],
+      "answer": [
+        "E",
+        "G"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 22,
+      "imageNo": 21,
+      "legacyExternalId": "20",
+      "type": "multi",
+      "stem": "图中一次性无纺布的清洁用途包括？",
+      "options": [
+        {
+          "label": "A",
+          "text": "食品接触类清洁"
+        },
+        {
+          "label": "B",
+          "text": "准食品接触类清洁"
+        },
+        {
+          "label": "C",
+          "text": "一般清洁"
+        },
+        {
+          "label": "D",
+          "text": "重度污染清洁"
+        },
+        {
+          "label": "E",
+          "text": "其他（未分类）"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 23,
+      "imageNo": 22,
+      "legacyExternalId": "21",
+      "type": "multi",
+      "stem": "图中这把刷子的具体用途是",
+      "options": [
+        {
+          "label": "A",
+          "text": "清洁咖啡制作区的咖啡粉"
+        },
+        {
+          "label": "B",
+          "text": "清洁咖啡客座吧台上的灰尘"
+        },
+        {
+          "label": "C",
+          "text": "清洁磨豆机上的灰尘"
+        },
+        {
+          "label": "D",
+          "text": "扫除落粉器、粉锤上沾的咖啡粉"
+        }
+      ],
+      "answer": [
+        "A",
+        "C"
+      ],
+      "explanation": "专用准食品接触物品清洁",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 24,
+      "imageNo": 23,
+      "legacyExternalId": "22",
+      "type": "multi",
+      "stem": "图中手套可以用于清洗哪些物品？",
+      "options": [
+        {
+          "label": "A",
+          "text": "出品用杯具"
+        },
+        {
+          "label": "B",
+          "text": "咖啡机上盖的温杯格栅"
+        },
+        {
+          "label": "C",
+          "text": "咖啡机下水盘"
+        },
+        {
+          "label": "D",
+          "text": "橡胶洗碗槽内壁"
+        },
+        {
+          "label": "E",
+          "text": "棕色抹布"
+        },
+        {
+          "label": "F",
+          "text": "烤箱烤盘"
+        },
+        {
+          "label": "G",
+          "text": "吧台清洁水池"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "F"
+      ],
+      "explanation": "该手套用于食品接触与准食品接触清洁\nE/G为一般清洁",
+      "sourceScore": 4
+    },
+    {
+      "sourceRow": 25,
+      "imageNo": 24,
+      "legacyExternalId": "23",
+      "type": "single",
+      "stem": "下列哪些抹布可以用于重度污染的清洁对象？",
+      "options": [],
+      "answer": "D",
+      "explanation": "C为卫生间清洁布，仅用于马桶圈等较为干净的区域。\n剪角的报废抹布可用于重度污染清洁。",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 26,
+      "imageNo": 25,
+      "legacyExternalId": "24",
+      "type": "judge",
+      "stem": "所有仓储中的食品原料都应该明确、准确地标注生产日期与保质期。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 27,
+      "imageNo": 26,
+      "legacyExternalId": "25",
+      "type": "judge",
+      "stem": "食品器具擦干布如果在使用中沾染了污渍，是不能继续使用、必须要立即更换的。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 28,
+      "imageNo": 27,
+      "legacyExternalId": "26",
+      "type": "judge",
+      "stem": "如果食品器具擦干布变得潮湿、无法擦干杯子，可以放在咖啡机上方烘干。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 29,
+      "imageNo": 28,
+      "legacyExternalId": "27",
+      "type": "judge",
+      "stem": "若日常使用中粉碗布整体过分潮湿、无法擦干粉碗，或者表面沾了过多咖啡粉、无法很好地抖落去除时，应及时更换干净的粉碗擦干布。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 30,
+      "imageNo": 29,
+      "legacyExternalId": "28",
+      "type": "judge",
+      "stem": "意式咖啡机的蒸汽棒清洁布还可以用于出品前咖啡杯口的清洁。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 31,
+      "imageNo": 30,
+      "legacyExternalId": "29",
+      "type": "judge",
+      "stem": "非一次性的“更换用”清洁用具需分类存放于专用独立储物盒中，并且需要清洁晾干后再放入，密封保存。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "A",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 32,
+      "imageNo": 31,
+      "legacyExternalId": "30",
+      "type": "multi",
+      "stem": "常见的重度污染清洁对象有：",
+      "options": [
+        {
+          "label": "A",
+          "text": "洗碗池下水口"
+        },
+        {
+          "label": "B",
+          "text": "地板"
+        },
+        {
+          "label": "C",
+          "text": "马桶内部"
+        },
+        {
+          "label": "D",
+          "text": "突发严重污染"
+        },
+        {
+          "label": "E",
+          "text": "橡胶洗碗槽的外侧"
+        },
+        {
+          "label": "F",
+          "text": "咖啡机排水盒"
+        },
+        {
+          "label": "G",
+          "text": "拖把池"
+        }
+      ],
+      "answer": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "F",
+        "G"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 33,
+      "imageNo": 32,
+      "legacyExternalId": "31",
+      "type": "multi",
+      "stem": "如果没有明确规定摆放位置，在摆放清洁用品时应遵循哪些原则？",
+      "options": [
+        {
+          "label": "A",
+          "text": "重度污染类高于一般清洁类，一般清洁类高于准食品接触类，食品接触类最低。"
+        },
+        {
+          "label": "B",
+          "text": "食品接触类高于准食品接触类，准食品接触类高于一般清洁类，重度污染类最低。"
+        },
+        {
+          "label": "C",
+          "text": "干燥的清洁用品摆放高于潮湿的清洁用品"
+        },
+        {
+          "label": "D",
+          "text": "潮湿的清洁用品摆放高于干燥的清洁用品"
+        }
+      ],
+      "answer": [
+        "B",
+        "C"
+      ],
+      "explanation": "",
+      "sourceScore": 3
+    },
+    {
+      "sourceRow": 34,
+      "imageNo": 33,
+      "legacyExternalId": "32",
+      "type": "single",
+      "stem": "清洁用品在什么情况下被认定为“失效”、应废弃？",
+      "options": [
+        {
+          "label": "A",
+          "text": "被清洁对象污染"
+        },
+        {
+          "label": "B",
+          "text": "发生变形"
+        },
+        {
+          "label": "C",
+          "text": "无法达到指定清洁效果"
+        },
+        {
+          "label": "D",
+          "text": "出现了破损"
+        }
+      ],
+      "answer": "C",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 35,
+      "imageNo": 34,
+      "legacyExternalId": "33",
+      "type": "single",
+      "stem": "在碗刷、百洁布、浸泡桶等清洁器具中，蓝色代表着什么？",
+      "options": [
+        {
+          "label": "A",
+          "text": "食品接触"
+        },
+        {
+          "label": "B",
+          "text": "准食品接触"
+        },
+        {
+          "label": "C",
+          "text": "一般清洁"
+        },
+        {
+          "label": "D",
+          "text": "重度污染清洁"
+        }
+      ],
+      "answer": "B",
+      "explanation": "",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 36,
+      "imageNo": 35,
+      "legacyExternalId": "34",
+      "type": "judge",
+      "stem": "磨豆机出粉口属于准食品接触清洁区域。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "B",
+      "explanation": "出粉口属于“食品接触类”",
+      "sourceScore": 2
+    },
+    {
+      "sourceRow": 37,
+      "imageNo": 36,
+      "legacyExternalId": "35",
+      "type": "judge",
+      "stem": "新买的食品接触抹布，如果已经开封但还未加以清洗，则属于更换用清洁用品。",
+      "options": [
+        {
+          "label": "A",
+          "text": "正确"
+        },
+        {
+          "label": "B",
+          "text": "错误"
+        }
+      ],
+      "answer": "B",
+      "explanation": "未清洗消毒的食品接触抹布布不能用于替换【使用中】的清洁用品，所以不属于【更换用】状态，仍旧只能算【库存】清洁用品。",
+      "sourceScore": 2
+    }
+  ]
+}

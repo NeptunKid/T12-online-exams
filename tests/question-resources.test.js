@@ -20,7 +20,7 @@ test("答卷快照中已解析的受控图片地址保持可用", () => {
 
 test("萃取原理图表资源清单包含 17/18 题全部受控图片", () => {
   const resources = loadQuestionResourceManifest();
-  assert.equal(Object.keys(resources).length, 11);
+  assert.equal(Object.keys(resources).filter((id) => id.startsWith("resource:extraction-")).length, 9);
   for (const questionNo of [17, 18]) {
     const count = questionNo === 17 ? 4 : 5;
     for (let index = 0; index < count; index += 1) {
