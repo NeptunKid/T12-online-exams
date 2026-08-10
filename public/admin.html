@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心 - 管理员阅卷后台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810-1">
+  <link rel="stylesheet" href="/styles.css?v=20260810-2">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -20,13 +20,13 @@
   </div>
 
   <div id="adminPage" class="hidden">
-    <header class="topbar">
-      <div class="topbar-inner">
+    <header class="topbar admin-topbar">
+      <div class="topbar-inner admin-topbar-inner">
         <div class="brand">
           <div class="brand-title">T12学习考核中心</div>
           <div class="brand-sub">管理员阅卷后台</div>
         </div>
-        <div class="btn-row">
+        <div class="btn-row admin-actions">
           <button class="btn secondary hidden" id="manageQuestionsBtn" type="button">题库</button>
           <button class="btn secondary hidden" id="manageAdminsBtn" type="button">管理员</button>
           <button class="btn secondary" id="refreshBtn" type="button">刷新</button>
@@ -36,7 +36,7 @@
     </header>
 
     <main class="shell admin-layout">
-      <aside class="panel admin-card">
+      <aside class="panel admin-card" id="submissionPanel">
         <div class="toolbar">
           <div class="stats">
             <div class="stat"><span class="meta-label">总提交</span><strong id="statTotal">0</strong></div>
@@ -45,8 +45,8 @@
           </div>
           <input id="searchInput" placeholder="搜索考生姓名">
           <select id="statusFilter">
+            <option value="pending" selected>待批阅</option>
             <option value="all">全部状态</option>
-            <option value="pending">待批阅</option>
             <option value="graded">已批阅</option>
           </select>
         </div>
@@ -107,6 +107,6 @@
 
   <script src="/question-format.js?v=20260809-2"></script>
   <script src="/question-admin-model.js?v=20260809-1"></script>
-  <script src="/admin.js?v=20260810-1"></script>
+  <script src="/admin.js?v=20260810-2"></script>
 </body>
 </html>

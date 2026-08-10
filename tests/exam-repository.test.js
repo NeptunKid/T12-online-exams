@@ -24,8 +24,24 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
   assert.equal(queries.some((sql) => sql.includes("answer_json") || sql.includes("explanation")), false);
   assert.equal(queries.every((sql) => sql.includes("exam_assignments")), true);
   const detailQuery = queries.find((sql) => sql.includes("q.id AS question_id"));
-  assert.equal((detailQuery.match(/ui\.union_id = \$2/g) || []).length, 2);
-  assert.equal(detailQuery.includes("ui.union_id = $1"), false);
+  assert.match(detailQuery, /ui\.provider = \$2 AND ui\.provider_subject = \$3/);
+  assert.match(detailQuery, /ui\.union_id = \$4/);
+  assert.match(detailQuery, /all-active-users/);
+  assert.match(detailQuery, /all-active-dingtalk-users/);
+});
+
+test("飞书身份按 provider subject 访问跨平台全员考试", async () => {
+  let captured;
+  const pool = {
+    query: async (sql, params) => {
+      captured = { sql, params };
+      return { rows: [{ id: "exam-1", title: "测试考试", status: "published", duration_seconds: "600", total_score: "100", pass_score: "60", version: 1 }] };
+    }
+  };
+  await listPublishedExams(pool, { provider: "feishu", providerSubject: "ou_feishu", unionId: "on_feishu" });
+  assert.deepEqual(captured.params, ["feishu", "ou_feishu", "on_feishu"]);
+  assert.match(captured.sql, /ea\.subject_id = 'all-active-users'/);
+  assert.match(captured.sql, /ci\.provider IN \('dingtalk', 'legacy'\)/);
 });
 
 test("考试 repository 未找到考试时返回 null", async () => {

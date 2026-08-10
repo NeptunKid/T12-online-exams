@@ -159,6 +159,39 @@ curl -fsS https://exam.t12group.com/readyz
 
 预期：首页返回 `200` 或登录跳转；`/healthz` 返回 `{"status":"ok"...}`；`/readyz` 返回 `{"status":"ready","database":"ok"}`。随后使用手机蜂窝网络实际完成钉钉登录、考试读取和交卷验证。
 
+## 8. 双平台用户与历史身份整理
+
+执行位置：阿里云 Workbench。以下步骤用于本次跨平台身份版本首次上线；代码更新和 `0006` 迁移完成后再执行。
+
+```bash
+sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
+T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-cross-platform-$(date +%Y%m%d%H%M%S).dump"
+sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
+sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
+
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node /opt/t12-online-exams/scripts/migrate.js
+```
+
+迁移成功后重启服务。每名员工至少分别用钉钉、飞书登录一次：钉钉登录会更新其真实姓名，飞书登录会使用相同真实姓名寻找唯一的钉钉/历史用户并绑定；同名候选超过一个时会拒绝自动绑定，不会猜测。
+
+如果飞书身份在旧版本已经单独登记，或历史钉钉显示名尚未更新，请先完成两平台登录，再在**阿里云 Workbench**执行默认 dry-run：
+
+```bash
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node /opt/t12-online-exams/scripts/reconcile-cross-platform-users.js
+```
+
+确认输出中 `ambiguous` 为空、`merges` 仅包含正确员工后，才允许显式执行：
+
+```bash
+sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
+  /usr/bin/node /opt/t12-online-exams/scripts/reconcile-cross-platform-users.js --apply
+sudo systemctl restart t12-exams
+```
+
+合并会保留答卷快照、分数和逐题成绩，将身份、角色、个人授权、补考次数归并到钉钉用户，并按提交时间重排合并后的考核次数。`--apply` 没有独立 down migration；需要撤销身份合并时必须停止服务并恢复本节开头的 `pg_dump -Fc` 备份，不能只回滚代码。
+
 ## 回滚
 
 执行位置：阿里云 Workbench。

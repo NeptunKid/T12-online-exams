@@ -6,6 +6,7 @@ const {
   BANKS,
   ensureExam,
   ensureAssignmentsForActiveDingtalkUsers,
+  ensureAssignmentsForActiveUsers,
   parseArgs
 } = require("../scripts/import-question-banks");
 const { previewQuestionCsv } = require("../src/import/question-csv");
@@ -124,9 +125,13 @@ test("parseArgs supports assigning all active DingTalk users", () => {
 });
 
 test("parseArgs requires exactly one assignment mode", () => {
-  assert.throws(() => parseArgs([]), /--union-id 或 --all-active-dingtalk-users/);
+  assert.throws(() => parseArgs([]), /--all-active-users/);
   assert.throws(
     () => parseArgs(["--union-id", "private-id", "--all-active-dingtalk-users"]),
+    /不能同时使用/
+  );
+  assert.throws(
+    () => parseArgs(["--all-active-users", "--all-active-dingtalk-users"]),
     /不能同时使用/
   );
   assert.throws(
@@ -137,6 +142,12 @@ test("parseArgs requires exactly one assignment mode", () => {
     () => parseArgs(["--all-active-dingtalk-users", "--only"]),
     /必须提供题库 key/
   );
+});
+
+test("parseArgs supports assigning every active platform user", () => {
+  const args = parseArgs(["--all-active-users", "--only", "legal", "--publish"]);
+  assert.equal(args.allActiveUsers, true);
+  assert.equal(args.allActiveDingtalkUsers, false);
 });
 
 test("active DingTalk users receive every imported exam idempotently", async () => {
@@ -170,4 +181,19 @@ test("bulk assignment aborts when no active DingTalk user exists", async () => {
     ensureAssignmentsForActiveDingtalkUsers(client, [{ examId: "exam-one" }]),
     /没有找到已登录且状态为 active 的钉钉用户/
   );
+});
+
+test("active DingTalk and Feishu users receive cross-platform group assignments", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT DISTINCT u.id")) return { rows: [{ id: "user-ding" }, { id: "user-feishu" }] };
+      return { rows: [] };
+    }
+  };
+  const users = await ensureAssignmentsForActiveUsers(client, [{ examId: "exam-one" }]);
+  assert.deepEqual(users, ["user-ding", "user-feishu"]);
+  assert.equal(calls[0].sql.includes("'feishu'"), true);
+  assert.equal(calls.some((call) => call.sql.includes("'all-active-users'")), true);
 });

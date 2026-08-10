@@ -27,16 +27,30 @@ test("DingTalk provider exchanges code and normalizes user identity", async () =
   const provider = createDingtalkProvider({ clientId: "id", clientSecret: "secret", redirectUri: "https://exam.test/ding" }, async (url, options) => {
     calls.push({ url, options });
     if (url.includes("userAccessToken")) return response({ accessToken: "access" });
-    return response({ unionId: "union-1", openId: "open-1", nick: "钉钉员工", avatarUrl: "https://avatar.test/ding" });
+    return response({ unionId: "union-1", openId: "open-1", name: "钉钉真实姓名", nick: "平台昵称", avatarUrl: "https://avatar.test/ding" });
   });
 
   const user = await provider.exchangeCode("code-1");
 
   assert.deepEqual(user, {
     provider: "dingtalk", providerSubject: "open-1", unionId: "union-1", openId: "open-1",
-    name: "钉钉员工", avatarUrl: "https://avatar.test/ding"
+    name: "钉钉真实姓名", avatarUrl: "https://avatar.test/ding"
   });
   assert.equal(JSON.parse(calls[0].options.body).code, "code-1");
+});
+
+test("DingTalk provider reads the enterprise directory name instead of the OAuth nickname", async () => {
+  const provider = createDingtalkProvider({ clientId: "id", clientSecret: "secret", redirectUri: "https://exam.test/ding" }, async (url) => {
+    if (url.includes("userAccessToken")) return response({ accessToken: "user-access" });
+    if (url.includes("contact/users/me")) return response({ unionId: "union-2", openId: "open-2", nick: "Neptun Fox" });
+    if (url.includes("oauth2/accessToken")) return response({ accessToken: "app-access" });
+    if (url.includes("getbyunionid")) return response({ errcode: 0, result: { userid: "staff-2" } });
+    if (url.includes("user/get")) return response({ errcode: 0, result: { name: "员工真实姓名" } });
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+
+  const user = await provider.exchangeCode("code-2");
+  assert.equal(user.name, "员工真实姓名");
 });
 
 test("Feishu provider exchanges OAuth v2 code and reads current user", async () => {
@@ -56,4 +70,3 @@ test("Feishu provider exchanges OAuth v2 code and reads current user", async () 
   assert.equal(JSON.parse(calls[0].options.body).client_secret, "app-secret");
   assert.equal(calls[1].options.headers.Authorization, "Bearer access");
 });
-

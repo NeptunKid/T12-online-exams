@@ -23,6 +23,7 @@ function parseArgs(argv) {
     userName: "授权员工",
     publish: false,
     allActiveDingtalkUsers: false,
+    allActiveUsers: false,
     only: ""
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -32,6 +33,7 @@ function parseArgs(argv) {
     else if (value === "--user-name") args.userName = argv[++index] || args.userName;
     else if (value === "--publish") args.publish = true;
     else if (value === "--all-active-dingtalk-users") args.allActiveDingtalkUsers = true;
+    else if (value === "--all-active-users") args.allActiveUsers = true;
     else if (value === "--only") {
       const only = argv[++index];
       if (!only || only.startsWith("--")) throw new Error("--only 必须提供题库 key");
@@ -40,11 +42,12 @@ function parseArgs(argv) {
     else if (value === "--help") return null;
     else throw new Error(`不支持的参数：${value}`);
   }
-  if (args.unionId && args.allActiveDingtalkUsers) {
-    throw new Error("--union-id 与 --all-active-dingtalk-users 不能同时使用");
+  const assignmentModes = [Boolean(args.unionId), args.allActiveDingtalkUsers, args.allActiveUsers].filter(Boolean).length;
+  if (assignmentModes > 1) {
+    throw new Error("--union-id、--all-active-dingtalk-users 与 --all-active-users 不能同时使用");
   }
-  if (!args.unionId && !args.allActiveDingtalkUsers) {
-    throw new Error("必须提供 --union-id 或 --all-active-dingtalk-users");
+  if (assignmentModes === 0) {
+    throw new Error("必须提供 --union-id、--all-active-dingtalk-users 或 --all-active-users");
   }
   if (args.only && !BANKS.some((bank) => bank.key === args.only)) {
     throw new Error(`未知题库：${args.only}`);
@@ -172,10 +175,30 @@ async function ensureAssignmentsForActiveDingtalkUsers(client, exams) {
   return userIds;
 }
 
+async function ensureAssignmentsForActiveUsers(client, exams) {
+  const result = await client.query(`
+    SELECT DISTINCT u.id
+    FROM users u
+    JOIN user_identities ui ON ui.user_id = u.id
+    WHERE u.status = 'active'
+      AND ui.provider IN ('dingtalk', 'feishu', 'legacy')
+    ORDER BY u.id;`);
+  const userIds = result.rows.map((row) => row.id);
+  if (!userIds.length) throw new Error("没有找到已登录且状态为 active 的员工，未写入考试授权");
+  await ensureAssignmentsForUserIds(client, userIds, exams);
+  for (const exam of exams) {
+    await client.query(`INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id)
+      VALUES ($1, $2, 'group', 'all-active-users')
+      ON CONFLICT (exam_id, subject_type, subject_id) DO NOTHING`,
+    [`all_users_assignment_${stableHash(exam.examId)}`, exam.examId]);
+  }
+  return userIds;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) {
-    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users) [--user-name 姓名] [--input-dir 目录] [--only 题库key] [--publish]");
+    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users | --all-active-users) [--user-name 姓名] [--input-dir 目录] [--only 题库key] [--publish]");
     return;
   }
   loadEnvFile();
@@ -195,12 +218,16 @@ async function main() {
       const exam = await ensureExam(client, bank, questionRows, args.publish);
       imported.push({ ...bank, ...exam, questions: questionRows.length });
     }
-    const userIds = args.allActiveDingtalkUsers
-      ? await ensureAssignmentsForActiveDingtalkUsers(client, imported)
-      : [await ensureAssignment(client, args.unionId, args.userName, imported)];
+    const userIds = args.allActiveUsers
+      ? await ensureAssignmentsForActiveUsers(client, imported)
+      : args.allActiveDingtalkUsers
+        ? await ensureAssignmentsForActiveDingtalkUsers(client, imported)
+        : [await ensureAssignment(client, args.unionId, args.userName, imported)];
     await client.query("COMMIT");
     console.log(JSON.stringify({
-      assignmentMode: args.allActiveDingtalkUsers ? "all_active_dingtalk_users" : "single_dingtalk_user",
+      assignmentMode: args.allActiveUsers
+        ? "all_active_users"
+        : args.allActiveDingtalkUsers ? "all_active_dingtalk_users" : "single_dingtalk_user",
       assignmentCount: userIds.length,
       publish: args.publish,
       exams: imported
@@ -226,6 +253,7 @@ module.exports = {
   ensureExam,
   ensureAssignment,
   ensureAssignmentsForActiveDingtalkUsers,
+  ensureAssignmentsForActiveUsers,
   ensureAssignmentsForUserIds,
   parseArgs,
   stableHash

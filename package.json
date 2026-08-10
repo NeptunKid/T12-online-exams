@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test tests/*.test.js",
-    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check public/question-format.js && node --check public/question-admin-model.js && node --check scripts/migrate.js && node --check scripts/import-legacy-submissions.js && node --check scripts/verify-legacy-import.js && node --check scripts/preview-question-csv.js && node --check scripts/prepare-question-resources.js && node --check scripts/prepare-cleaning-question-resources.js && node --check scripts/import-question-banks.js && node --check scripts/repair-cleaning-question-bank.js && node --check src/auth/oauth-providers.js && node --check src/db/postgres-client.js && node --check src/db/exam-repository.js && node --check src/db/admin-submission-repository.js && node --check src/db/question-repository.js && node --check src/db/user-repository.js && node --check src/import/question-csv.js && node --check src/import/cleaning-question-repair.js && node --check src/resources/question-resources.js",
+    "check:syntax": "node --check server.js && node --check public/exam.js && node --check public/admin.js && node --check public/question-format.js && node --check public/question-admin-model.js && node --check scripts/migrate.js && node --check scripts/import-legacy-submissions.js && node --check scripts/verify-legacy-import.js && node --check scripts/preview-question-csv.js && node --check scripts/prepare-question-resources.js && node --check scripts/prepare-cleaning-question-resources.js && node --check scripts/import-question-banks.js && node --check scripts/repair-cleaning-question-bank.js && node --check scripts/reconcile-cross-platform-users.js && node --check src/auth/oauth-providers.js && node --check src/db/postgres-client.js && node --check src/db/exam-repository.js && node --check src/db/admin-submission-repository.js && node --check src/db/question-repository.js && node --check src/db/user-repository.js && node --check src/import/question-csv.js && node --check src/import/cleaning-question-repair.js && node --check src/resources/question-resources.js",
     "check:secrets": "node scripts/check-secrets.js",
     "check": "npm run check:syntax && npm test && npm run check:secrets",
     "migrate": "node scripts/migrate.js",
@@ -17,6 +17,7 @@
     "import:questions:preview": "node scripts/preview-question-csv.js",
     "prepare:question-resources": "node scripts/prepare-question-resources.js",
     "import:question-banks": "node scripts/import-question-banks.js",
+    "reconcile:users": "node scripts/reconcile-cross-platform-users.js",
     "sync:feishu": "node scripts/sync-feishu-document.js"
   },
   "engines": {

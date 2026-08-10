@@ -5,6 +5,7 @@ const {
   getIdentityAccess,
   mapAdminUser,
   maskIdentity,
+  normalizeRealName,
   setAdminRole,
   upsertDingtalkUser,
   upsertFeishuUser
@@ -69,7 +70,11 @@ test("钉钉登录会复用相同 unionId 的历史用户", async () => {
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
-test("飞书登录按 open_id 建立独立身份且不按姓名自动合并", async () => {
+test("真实姓名标准化兼容全角字符和多余空白", () => {
+  assert.equal(normalizeRealName("  Ａlice   张三 "), "alice 张三");
+});
+
+test("飞书登录没有同名钉钉用户时按 open_id 建立独立身份", async () => {
   const calls = [];
   const client = {
     async query(sql, params) {
@@ -87,6 +92,46 @@ test("飞书登录按 open_id 建立独立身份且不按姓名自动合并", as
   assert.equal(identityInsert.params[2], "ou_feishu_1");
   assert.equal(identityInsert.params[3], "on_feishu_1");
   assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("飞书登录只在唯一真实姓名匹配时绑定既有钉钉用户", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes("WHERE provider = 'feishu'")) return { rows: [] };
+      if (sql.includes("ui.provider = ANY")) return { rows: [{ id: "ding-user", name: " 张 三 " }] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const userId = await upsertFeishuUser({ connect: async () => client }, {
+    providerSubject: "ou_feishu_2", name: "张　三"
+  });
+  assert.equal(userId, "ding-user");
+  const identityInsert = calls.find((call) => call.sql.includes("INSERT INTO user_identities"));
+  assert.equal(identityInsert.params[1], "ding-user");
+  assert.equal(calls.some((call) => call.sql.includes("auto_link_identity_by_real_name")), true);
+});
+
+test("同名候选不唯一时拒绝自动绑定并回滚", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes("WHERE provider = 'feishu'")) return { rows: [] };
+      if (sql.includes("ui.provider = ANY")) {
+        return { rows: [{ id: "ding-1", name: "同名员工" }, { id: "ding-2", name: "同名员工" }] };
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await assert.rejects(
+    upsertFeishuUser({ connect: async () => client }, { providerSubject: "ou-3", name: "同名员工" }),
+    /停止自动合并/
+  );
+  assert.equal(calls.includes("ROLLBACK"), true);
 });
 
 test("飞书身份可以读取数据库角色但不使用钉钉引导名单", async () => {

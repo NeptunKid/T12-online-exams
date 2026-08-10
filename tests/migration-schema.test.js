@@ -72,3 +72,13 @@ test("0005 为题干图片建立可回滚的 JSON 数组字段", () => {
   const down = require("node:fs").readFileSync(migration.downPath, "utf8");
   assert.match(down, /DROP COLUMN images_json/);
 });
+
+test("0006 为钉钉和飞书员工建立可回滚的跨平台全员授权", () => {
+  const migration = listMigrations().find((item) => item.name === "0006_cross_platform_exam_assignments");
+  assert.ok(migration);
+  assert.match(migration.sql, /all-active-users/);
+  assert.match(migration.sql, /ON CONFLICT \(exam_id, subject_type, subject_id\) DO NOTHING/);
+  const down = require("node:fs").readFileSync(migration.downPath, "utf8");
+  assert.match(down, /DELETE FROM exam_assignments/);
+  assert.match(down, /all-active-users/);
+});

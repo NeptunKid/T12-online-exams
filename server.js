@@ -510,7 +510,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool, user.unionId) });
+      return json(res, 200, { source: "postgres", exams: await listPublishedExams(pool, user) });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
     }
@@ -522,7 +522,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      return json(res, 200, { source: "postgres", submissions: await listStudentSubmissions(pool, user.unionId) });
+      return json(res, 200, { source: "postgres", submissions: await listStudentSubmissions(pool, user) });
     } catch (_) {
       return json(res, 503, { error: "答卷数据库暂不可用" });
     }
@@ -534,7 +534,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      const dashboard = await getStudentDashboard(pool, user.unionId);
+      const dashboard = await getStudentDashboard(pool, user);
       return json(res, 200, { source: "postgres", user: publicUser(user), ...dashboard });
     } catch (_) {
       return json(res, 503, { error: "考试数据库暂不可用" });
@@ -549,7 +549,7 @@ async function handleApi(req, res, pathname) {
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
       const detail = attachLegacyStudentImages(
-        await getStudentSubmission(pool, decodeURIComponent(studentSubmissionMatch[1]), user.unionId)
+        await getStudentSubmission(pool, decodeURIComponent(studentSubmissionMatch[1]), user)
       );
       if (!detail) return json(res, 404, { error: "未找到该答卷" });
       return json(res, 200, { source: "postgres", ...detail });
@@ -566,7 +566,7 @@ async function handleApi(req, res, pathname) {
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
       const body = await readBody(req);
-      const submission = await createSubmission(pool, decodeURIComponent(submissionMatch[1]), user.unionId, body);
+      const submission = await createSubmission(pool, decodeURIComponent(submissionMatch[1]), user, body);
       if (!submission) return json(res, 404, { error: "未找到已授权的已发布考试" });
       return json(res, 201, { source: "postgres", submission });
     } catch (error) {
@@ -584,7 +584,7 @@ async function handleApi(req, res, pathname) {
     const pool = getPostgresPool();
     if (!pool) return json(res, 503, { error: "考试数据库尚未配置" });
     try {
-      const exam = attachLegacyExamImages(await getPublishedExam(pool, decodeURIComponent(examMatch[1]), user.unionId));
+      const exam = attachLegacyExamImages(await getPublishedExam(pool, decodeURIComponent(examMatch[1]), user));
       if (!exam) return json(res, 404, { error: "未找到已发布考试" });
       return json(res, 200, { source: "postgres", exam });
     } catch (_) {
