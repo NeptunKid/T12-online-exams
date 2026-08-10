@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_SUMMARY = path.join(ROOT, "docs", "development-summary", "2026-08-08-project-progress.md");
+const PLAIN_TEXT_FORMAT_VERSION = "plain-text-v1";
 
 function loadEnvFile(envPath = process.env.T12_ENV_FILE || path.join(ROOT, ".env")) {
   if (!fs.existsSync(envPath)) return;
@@ -23,6 +24,56 @@ function loadEnvFile(envPath = process.env.T12_ENV_FILE || path.join(ROOT, ".env
 
 function checksum(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
+}
+
+function markdownToPlainText(markdown) {
+  const output = [];
+  let inCodeFence = false;
+  for (const sourceLine of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
+    if (/^\s*```/.test(sourceLine)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) {
+      output.push(sourceLine);
+      continue;
+    }
+
+    let line = sourceLine;
+    const trimmed = line.trim();
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) continue;
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      const cells = trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
+      if (cells.length && cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
+      line = cells.join("；");
+    }
+    line = line
+      .replace(/^\s*#{1,6}\s+/, "")
+      .replace(/^(?:\s*>\s*)+/, "")
+      .replace(/^\s*(?:[-+*]|\d+[.)])\s+/, "")
+      .replace(/^\s*\[(?: |x|X)\]\s+/, "")
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, label, url) => `图片：${label || "未命名"}（${url}）`)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => `${label}（${url}）`)
+      .replace(/<((?:https?:\/\/|mailto:)[^>]+)>/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*\*([^*]+)\*\*\*/g, "$1")
+      .replace(/___([^_]+)___/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/~~([^~]+)~~/g, "$1")
+      .replace(/(^|[\s（(])\*([^*\n]+)\*(?=$|[\s，。；：、）)])/g, "$1$2")
+      .replace(/(^|[\s（(])_([^_\n]+)_(?=$|[\s，。；：、）)])/g, "$1$2")
+      .replace(/<br\s*\/?\s*>/gi, "；")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\\([\\`*_[\]{}()#+.!-])/g, "$1")
+      .trimEnd();
+    output.push(line);
+  }
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function plainTextMarker(content) {
+  return checksum(`${PLAIN_TEXT_FORMAT_VERSION}\n${markdownToPlainText(content)}`);
 }
 
 function chunks(content, size = 1000) {
@@ -58,8 +109,9 @@ async function feishuRequest(url, options, label) {
 }
 
 async function syncDocument(summaryPath = DEFAULT_SUMMARY, env = process.env) {
-  const content = fs.readFileSync(path.resolve(summaryPath), "utf8");
-  const marker = checksum(content);
+  const markdown = fs.readFileSync(path.resolve(summaryPath), "utf8");
+  const content = markdownToPlainText(markdown);
+  const marker = plainTextMarker(markdown);
   const required = ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_DOCUMENT_ID"];
   const missing = required.filter((key) => !env[key]);
   if (missing.length) throw new Error(`缺少 Feishu 配置：${missing.join(", ")}`);
@@ -81,7 +133,7 @@ async function syncDocument(summaryPath = DEFAULT_SUMMARY, env = process.env) {
     headers,
     body: JSON.stringify({ children: textBlocks(content, marker), index: -1 })
   }, "追加 Feishu 文档");
-  return { appended: true, marker, blockCount: textBlocks(content, marker).length };
+  return { appended: true, format: PLAIN_TEXT_FORMAT_VERSION, marker, blockCount: textBlocks(content, marker).length };
 }
 
 if (require.main === module) {
@@ -91,4 +143,13 @@ if (require.main === module) {
     .catch((error) => { console.error(error.message); process.exitCode = 1; });
 }
 
-module.exports = { checksum, chunks, loadEnvFile, syncDocument, textBlocks };
+module.exports = {
+  PLAIN_TEXT_FORMAT_VERSION,
+  checksum,
+  chunks,
+  loadEnvFile,
+  markdownToPlainText,
+  plainTextMarker,
+  syncDocument,
+  textBlocks
+};
