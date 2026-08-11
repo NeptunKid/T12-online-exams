@@ -4,14 +4,27 @@ let currentDetail = null;
 let gradeSaveNotice = "";
 let showWrongOnly = false;
 let adminUsers = [];
+let identityMergeCandidates = [];
 let currentAdminUserId = "";
 let adminQuestions = [];
 let adminQuestionBanks = [];
 let currentQuestionFilterId = "";
 let currentQuestionId = "";
 let newQuestionDraft = null;
+let questionImageDraft = null;
+let questionImageUploadBusy = false;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
+let adminAuthProviders = { dingtalk: true, feishu: false };
+let adminExams = [];
+let currentAuthoringExamId = "";
+let currentExamAuthoring = null;
+let examAuthoringBusy = false;
+let examSelectionDirty = false;
+let examSelectAllRequested = false;
+let backupCatalog = { exams: [], banks: [] };
+let backupBusy = false;
+let backupAutomation = { automation: null, runs: [] };
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -51,14 +64,14 @@ async function api(path, options = {}) {
   if (!res.ok) {
     const error = new Error(data.error || "请求失败");
     error.status = res.status;
-    if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉登录。");
+    if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
     throw error;
   }
   return data;
 }
 
 function closeOpenAdminDialogs() {
-  for (const id of ["adminManagerDialog", "questionManagerDialog"]) {
+  for (const id of ["adminManagerDialog", "questionManagerDialog", "examAuthoringDialog", "backupManagerDialog"]) {
     const dialog = document.getElementById(id);
     if (dialog?.open) dialog.close();
   }
@@ -70,16 +83,232 @@ function lockAdminSession(message) {
   closeOpenAdminDialogs();
   document.getElementById("adminPage").classList.add("hidden");
   document.getElementById("loginPage").classList.remove("hidden");
-  document.getElementById("dingtalkAdminLogin").classList.remove("hidden");
+  updateAdminLoginButtons();
   const msg = document.getElementById("loginMsg");
   msg.textContent = message;
   msg.className = "notice error";
 }
 
+function updateAdminLoginButtons() {
+  document.getElementById("dingtalkAdminLogin").classList.toggle("hidden", !adminAuthProviders.dingtalk);
+  document.getElementById("feishuAdminLogin").classList.toggle("hidden", !adminAuthProviders.feishu);
+}
+
 function applyAdminAccess(access) {
   document.getElementById("manageAdminsBtn").classList.toggle("hidden", !access.canManageAdmins);
   document.getElementById("manageQuestionsBtn").classList.toggle("hidden", !access.canManageQuestions);
+  document.getElementById("manageExamsBtn").classList.toggle("hidden", !access.canManageQuestions);
+  document.getElementById("manageBackupsBtn").classList.toggle("hidden", !access.canManageQuestions);
   currentAdminUserId = access.currentUserId || "";
+}
+
+function showBackupMessage(message, tone = "") {
+  const element = document.getElementById("backupManagerMsg");
+  element.textContent = message;
+  element.className = `notice${tone ? ` ${tone}` : ""}`;
+}
+
+function renderBackupCatalog() {
+  const examSelect = document.getElementById("backupExamSelect");
+  const bankSelect = document.getElementById("backupQuestionBankSelect");
+  examSelect.innerHTML = backupCatalog.exams.length
+    ? backupCatalog.exams.map((exam) => `<option value="${esc(exam.id)}">${esc(exam.title || "未命名试卷")}</option>`).join("")
+    : `<option value="">暂无可导出的试卷</option>`;
+  bankSelect.innerHTML = backupCatalog.banks.length
+    ? backupCatalog.banks.map((bank) => `<option value="${esc(bank.id)}">${esc(bank.name || "未命名题库")}</option>`).join("")
+    : `<option value="">暂无可导出的题库</option>`;
+  document.getElementById("exportExamBackupBtn").disabled = backupBusy || !backupCatalog.exams.length;
+  document.getElementById("exportQuestionBankBackupBtn").disabled = backupBusy || !backupCatalog.banks.length;
+}
+
+function backupScopeLabel(run) {
+  if (run.scopeType === "exam") {
+    return backupCatalog.exams.find((item) => item.id === run.scopeId)?.title || run.scopeId;
+  }
+  return backupCatalog.banks.find((item) => item.id === run.scopeId)?.name || run.scopeId;
+}
+
+function renderBackupAutomation() {
+  const automation = backupAutomation.automation;
+  const meta = document.getElementById("backupAutomationMeta");
+  const summary = document.getElementById("backupAutomationSummary");
+  const list = document.getElementById("backupRunList");
+  const runButton = document.getElementById("runBackupAutomationBtn");
+  if (!automation) {
+    meta.textContent = "自动备份状态暂不可用";
+    summary.innerHTML = "";
+    list.innerHTML = `<div class="empty-state">暂无自动备份运行记录</div>`;
+    runButton.disabled = true;
+    return;
+  }
+  const storage = automation.storageType === "filesystem" ? "服务器目录" : "PostgreSQL";
+  meta.textContent = automation.enabled
+    ? `每 ${automation.intervalHours} 小时 · ${storage} · 每个对象保留 ${automation.retentionCount} 份`
+    : "未启用；请通过服务器环境变量配置";
+  const last = automation.lastSummary;
+  summary.innerHTML = `
+    <span class="badge ${automation.enabled ? "graded" : "pending"}">${automation.enabled ? "已启用" : "未启用"}</span>
+    <span>${automation.running ? "正在运行" : automation.nextRunAt ? `下次 ${fmtTime(automation.nextRunAt)}` : "当前空闲"}</span>
+    ${last ? `<span>上次：成功 ${Number(last.succeeded || 0)}，失败 ${Number(last.failed || 0)}${last.cleanupFailed ? `，清理失败 ${Number(last.cleanupFailed)}` : ""}</span>` : ""}
+  `;
+  runButton.disabled = backupBusy || !automation.enabled || automation.running;
+  const runs = backupAutomation.runs || [];
+  list.innerHTML = runs.length ? runs.map((run) => `
+    <div class="backup-run-row">
+      <div class="backup-run-main">
+        <strong>${esc(backupScopeLabel(run))}</strong>
+        <span class="brand-sub">${run.scopeType === "exam" ? "试卷" : "题库"} · ${fmtTime(run.startedAt)}</span>
+        ${run.errorMessage ? `<span class="backup-run-error">${esc(run.errorMessage)}</span>` : ""}
+      </div>
+      <span class="badge ${run.status === "succeeded" ? "graded" : run.status === "failed" ? "danger" : "pending"}">${run.status === "succeeded" ? "成功" : run.status === "failed" ? "失败" : "运行中"}</span>
+      ${run.artifact ? `<button class="btn secondary compact-btn stored-backup-download-btn" type="button" data-artifact-id="${esc(run.artifact.id)}">下载</button>` : ""}
+    </div>
+  `).join("") : `<div class="empty-state">暂无自动备份运行记录</div>`;
+}
+
+async function loadBackupCatalog() {
+  const [examData, questionData] = await Promise.all([
+    api("/api/admin/exams"),
+    api("/api/admin/questions")
+  ]);
+  backupCatalog = {
+    exams: examData.exams || [],
+    banks: questionData.banks || []
+  };
+  renderBackupCatalog();
+}
+
+async function loadBackupAutomation() {
+  backupAutomation = await api("/api/admin/backups/automation");
+  renderBackupAutomation();
+}
+
+async function openBackupManager() {
+  const dialog = document.getElementById("backupManagerDialog");
+  dialog.showModal();
+  document.getElementById("backupManagerMsg").classList.add("hidden");
+  backupCatalog = { exams: [], banks: [] };
+  backupAutomation = { automation: null, runs: [] };
+  renderBackupCatalog();
+  renderBackupAutomation();
+  const results = await Promise.allSettled([loadBackupCatalog(), loadBackupAutomation()]);
+  renderBackupAutomation();
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length) showBackupMessage(failures[0].reason?.message || "备份状态载入失败", "error");
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function backupFilenameFromResponse(response, kind) {
+  const disposition = response.headers.get("content-disposition") || "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  if (encoded) {
+    try { return decodeURIComponent(encoded); } catch (_) { /* use fallback */ }
+  }
+  return plain || `t12-${kind}-backup.t12backup`;
+}
+
+async function exportBackup(kind, id) {
+  if (backupBusy || !id) return;
+  backupBusy = true;
+  renderBackupCatalog();
+  showBackupMessage("正在生成自包含备份包，请勿关闭页面");
+  try {
+    const query = new URLSearchParams({ kind, id });
+    const response = await fetch(`/api/admin/backups/export?${query.toString()}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
+      throw new Error(data.error || "备份导出失败");
+    }
+    downloadBlob(await response.blob(), backupFilenameFromResponse(response, kind));
+    showBackupMessage("备份包已生成并开始下载。", "success");
+  } catch (error) {
+    showBackupMessage(error.message || "备份导出失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupCatalog();
+  }
+}
+
+async function importBackup() {
+  const input = document.getElementById("backupImportFile");
+  const file = input.files?.[0];
+  if (backupBusy || !file) return;
+  backupBusy = true;
+  document.getElementById("importBackupBtn").disabled = true;
+  showBackupMessage("正在校验并导入备份包，请勿关闭页面");
+  try {
+    const form = new FormData();
+    form.append("backup", file, file.name);
+    const response = await fetch("/api/admin/backups/import", { method: "POST", body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
+      throw new Error(data.error || "备份导入失败");
+    }
+    const created = [data.questionBank?.name, data.exam?.title].filter(Boolean).join("、");
+    showBackupMessage(created ? `导入成功，已创建：${created}` : "导入成功，已创建新的题库或试卷。", "success");
+    input.value = "";
+    try {
+      await loadBackupCatalog();
+    } catch (_) {
+      showBackupMessage("导入成功，但备份目录刷新失败；重新打开本窗口即可查看新记录。", "success");
+    }
+  } catch (error) {
+    showBackupMessage(error.message || "备份导入失败", "error");
+  } finally {
+    backupBusy = false;
+    document.getElementById("importBackupBtn").disabled = !input.files?.length;
+    renderBackupCatalog();
+  }
+}
+
+async function triggerAutomaticBackup() {
+  if (backupBusy || !backupAutomation.automation?.enabled) return;
+  backupBusy = true;
+  renderBackupCatalog();
+  renderBackupAutomation();
+  try {
+    await api("/api/admin/backups/automation/run", { method: "POST", body: "{}" });
+    showBackupMessage("自动备份已启动，可稍后刷新查看每个对象的结果。", "success");
+    await loadBackupAutomation();
+  } catch (error) {
+    showBackupMessage(error.message || "自动备份启动失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupCatalog();
+    renderBackupAutomation();
+  }
+}
+
+async function downloadStoredBackup(artifactId) {
+  if (backupBusy || !artifactId) return;
+  backupBusy = true;
+  renderBackupAutomation();
+  try {
+    const response = await fetch(`/api/admin/backups/artifacts/${encodeURIComponent(artifactId)}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "历史备份下载失败");
+    }
+    downloadBlob(await response.blob(), backupFilenameFromResponse(response, "stored"));
+  } catch (error) {
+    showBackupMessage(error.message || "历史备份下载失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupAutomation();
+  }
 }
 
 async function verifyAdminSession() {
@@ -88,7 +317,7 @@ async function verifyAdminSession() {
   sessionCheckInFlight = api("/api/admin/check")
     .then(applyAdminAccess)
     .catch((error) => {
-      if (error.status === 403) lockAdminSession("当前钉钉账号的后台权限已失效，请重新登录或联系系统管理员。");
+      if (error.status === 403) lockAdminSession("当前账号的后台权限已失效，请重新登录或联系系统管理员。");
     })
     .finally(() => {
       sessionCheckInFlight = null;
@@ -137,13 +366,125 @@ async function loadAdminUsers() {
   renderAdminUsers();
 }
 
+function providerLabel(provider) {
+  return { dingtalk: "钉钉", feishu: "飞书", legacy: "历史钉钉" }[provider] || provider;
+}
+
+function mergeCandidateUser(group, userId) {
+  return group.users.find((user) => user.id === userId);
+}
+
+function mergeUserDescription(user) {
+  if (!user) return "未知账号";
+  const providers = (user.providers || []).map(providerLabel).join("+");
+  return `${providers} · ${user.department || "未填写部门"} · ${user.employeeNo || "未填写工号"}`;
+}
+
+function renderMergeCandidates() {
+  const list = document.getElementById("identityMergeList");
+  if (!identityMergeCandidates.length) {
+    list.innerHTML = `<div class="empty-state identity-merge-empty">没有待确认的同名跨平台账号</div>`;
+    return;
+  }
+  list.innerHTML = identityMergeCandidates.map((group) => `
+    <div class="identity-merge-group">
+      <div class="identity-merge-title">
+        <strong>${esc(group.displayName)}</strong>
+        ${group.ambiguous ? `<span class="badge pending">存在歧义，必须逐项核对</span>` : `<span class="badge graded">唯一候选</span>`}
+      </div>
+      ${group.pairs.map((pair) => {
+        const canonical = mergeCandidateUser(group, pair.canonicalUserId);
+        const duplicate = mergeCandidateUser(group, pair.duplicateUserId);
+        const action = group.ambiguous
+          ? `<span class="brand-sub">候选存在歧义，暂不支持合并</span>`
+          : `<button class="btn danger compact-btn identity-merge-btn" type="button"
+              data-name="${esc(group.displayName)}"
+              data-canonical-user-id="${esc(pair.canonicalUserId)}"
+              data-duplicate-user-id="${esc(pair.duplicateUserId)}">核对并合并</button>`;
+        return `<div class="identity-merge-pair">
+          <div class="admin-user-main">
+            <div><strong>保留：</strong>${esc(mergeUserDescription(canonical))}</div>
+            <div><strong>归并：</strong>${esc(mergeUserDescription(duplicate))}</div>
+          </div>
+          ${action}
+        </div>`;
+      }).join("")}
+    </div>
+  `).join("");
+  for (const button of document.querySelectorAll(".identity-merge-btn")) {
+    button.addEventListener("click", () => mergeIdentityPair(button));
+  }
+}
+
+async function loadMergeCandidates() {
+  const list = document.getElementById("identityMergeList");
+  const refreshButton = document.getElementById("refreshMergeCandidatesBtn");
+  list.innerHTML = `<div class="empty-state identity-merge-empty">正在检查同名账号</div>`;
+  refreshButton.disabled = true;
+  try {
+    const data = await api("/api/admin/user-merge-candidates");
+    identityMergeCandidates = data.candidates || [];
+    renderMergeCandidates();
+    return true;
+  } catch (error) {
+    list.innerHTML = `<div class="empty-state identity-merge-empty">候选加载失败，请重新检查</div>`;
+    return false;
+  } finally {
+    refreshButton.disabled = false;
+  }
+}
+
+async function mergeIdentityPair(button) {
+  const group = identityMergeCandidates.find((item) => item.displayName === button.dataset.name
+    && item.pairs.some((pair) => pair.canonicalUserId === button.dataset.canonicalUserId
+      && pair.duplicateUserId === button.dataset.duplicateUserId));
+  if (!group || group.ambiguous) return;
+  const canonical = mergeCandidateUser(group, button.dataset.canonicalUserId);
+  const duplicate = mergeCandidateUser(group, button.dataset.duplicateUserId);
+  const confirmed = window.confirm(
+    `确认将“${group.displayName}”的飞书账号归并到钉钉主账号吗？\n\n保留：${mergeUserDescription(canonical)}\n归并：${mergeUserDescription(duplicate)}\n\n题目快照、作答内容和分数保持不变；账号角色、考试授权、答卷归属、考试次数和补考权限将合并。`
+  );
+  if (!confirmed) return;
+
+  const message = document.getElementById("adminManagerMsg");
+  button.disabled = true;
+  message.textContent = "正在合并账号，请勿关闭页面";
+  message.className = "notice";
+  try {
+    await api("/api/admin/user-merges", {
+      method: "POST",
+      body: JSON.stringify({
+        canonicalUserId: button.dataset.canonicalUserId,
+        duplicateUserId: button.dataset.duplicateUserId,
+        expectedName: group.displayName
+      })
+    });
+    message.textContent = "账号已合并；钉钉和飞书登录将使用同一内部用户";
+    message.className = "notice success";
+    try {
+      const [, candidatesLoaded] = await Promise.all([loadAdminUsers(), loadMergeCandidates()]);
+      if (!candidatesLoaded) {
+        message.textContent = "账号已合并，但候选列表刷新失败；请重新打开管理员设置确认结果";
+        message.className = "notice success";
+      }
+    } catch (_) {
+      message.textContent = "账号已合并，但列表刷新失败；请重新打开管理员设置确认结果";
+      message.className = "notice success";
+    }
+  } catch (error) {
+    message.textContent = error.message || "账号合并失败";
+    message.className = "notice error";
+    button.disabled = false;
+  }
+}
+
 async function openAdminManager() {
   const dialog = document.getElementById("adminManagerDialog");
   const message = document.getElementById("adminManagerMsg");
   message.classList.add("hidden");
   dialog.showModal();
   try {
-    await loadAdminUsers();
+    await Promise.all([loadAdminUsers(), loadMergeCandidates()]);
   } catch (error) {
     message.textContent = error.message || "用户列表载入失败";
     message.className = "notice error";
@@ -171,6 +512,346 @@ async function updateAdminRole(button) {
   }
 }
 
+function examStatusLabel(status) {
+  return {
+    draft: "草稿",
+    published: "已发布",
+    scheduled: "已排期",
+    paused: "已暂停",
+    archived: "已归档"
+  }[status] || status || "未知状态";
+}
+
+function examStatusBadge(status) {
+  const tone = status === "draft" ? "pending" : "graded";
+  return `<span class="badge ${tone}">${esc(examStatusLabel(status))}</span>`;
+}
+
+function normalizeAuthoringQuestion(question, selectedIds = new Set()) {
+  const id = String(question.id || question.questionId || "");
+  const hasPosition = question.position !== null && question.position !== undefined;
+  const hasScore = question.score !== null && question.score !== undefined;
+  const explicitlySelected = question.selected ?? question.inExam ?? question.assigned;
+  return {
+    ...question,
+    id,
+    selected: explicitlySelected === undefined
+      ? selectedIds.has(id) || hasPosition || hasScore
+      : Boolean(explicitlySelected),
+    position: hasPosition ? Number(question.position) : null,
+    score: hasScore ? Number(question.score) : null
+  };
+}
+
+function normalizeExamAuthoring(data) {
+  const payload = data.authoring || data;
+  const selectedSource = payload.selectedQuestions || payload.examQuestions || [];
+  const selectedIds = new Set(selectedSource.map((question) => String(question.id || question.questionId || "")));
+  const availableSource = payload.questions || payload.bankQuestions || [];
+  const byId = new Map();
+  for (const question of availableSource) {
+    const normalized = normalizeAuthoringQuestion(question, selectedIds);
+    if (normalized.id) byId.set(normalized.id, normalized);
+  }
+  for (const question of selectedSource) {
+    const normalized = normalizeAuthoringQuestion({ ...byId.get(String(question.id || question.questionId || "")), ...question, selected: true }, selectedIds);
+    if (normalized.id) byId.set(normalized.id, normalized);
+  }
+  return {
+    exam: payload.exam || data.exam || {},
+    banks: payload.banks || payload.questionBanks || data.banks || [],
+    questions: Array.from(byId.values())
+  };
+}
+
+function selectedAuthoringQuestions() {
+  if (!currentExamAuthoring) return [];
+  return currentExamAuthoring.questions
+    .filter((question) => question.selected)
+    .sort((left, right) => {
+      const leftPosition = Number.isFinite(left.position) ? left.position : Number.MAX_SAFE_INTEGER;
+      const rightPosition = Number.isFinite(right.position) ? right.position : Number.MAX_SAFE_INTEGER;
+      return leftPosition - rightPosition;
+    });
+}
+
+function renderExamAuthoringList() {
+  const list = document.getElementById("examAuthoringList");
+  document.getElementById("examAuthoringCount").textContent = `${adminExams.length} 张试卷`;
+  list.innerHTML = adminExams.length ? adminExams.map((exam) => `
+    <button class="exam-authoring-list-item ${exam.id === currentAuthoringExamId ? "active" : ""}" type="button" data-exam-id="${esc(exam.id)}">
+      <span class="exam-authoring-list-head"><strong>${esc(exam.title || "未命名试卷")}</strong>${examStatusBadge(exam.status)}</span>
+      <span class="brand-sub">${esc(exam.questionBankName || "未绑定题库")} · ${Number(exam.questionCount || 0)} 题 · ${Number(exam.totalScore || 0)} 分</span>
+    </button>
+  `).join("") : `<div class="empty-state admin-user-empty">暂无试卷</div>`;
+  for (const button of document.querySelectorAll(".exam-authoring-list-item")) {
+    button.addEventListener("click", () => loadExamAuthoring(button.dataset.examId));
+  }
+}
+
+function authoringQuestionLabel(question, index) {
+  const reference = question.externalId ? `${question.externalId} · ` : "";
+  const order = question.selected ? `第 ${index + 1} 题 · ` : "";
+  const status = question.status === "active" ? "" : " · 题目已归档";
+  return `${order}${reference}${typeLabel(question.type)}${status}`;
+}
+
+function renderExamAuthoringEditor() {
+  const editor = document.getElementById("examAuthoringEditor");
+  if (!currentExamAuthoring?.exam?.id) {
+    editor.innerHTML = `<div class="empty-state">请选择一张试卷</div>`;
+    return;
+  }
+  const { exam, banks, questions } = currentExamAuthoring;
+  const editable = exam.status === "draft";
+  const selected = selectedAuthoringQuestions();
+  const hasArchivedSelection = selected.some((question) => question.status !== "active");
+  const selectedIndex = new Map(selected.map((question, index) => [question.id, index]));
+  const bankId = exam.questionBankId || exam.question_bank_id || "";
+  const passRate = Number(exam.passRate ?? exam.pass_rate ?? 0);
+  const displayQuestions = [...selected, ...questions.filter((question) => !question.selected)];
+  editor.innerHTML = `
+    <div class="exam-authoring-editor-head">
+      <div>
+        <div class="question-editor-meta">${examStatusBadge(exam.status)}<span class="brand-sub">版本 ${Number(exam.version || 0)}</span></div>
+        <h3>${esc(exam.title || "未命名试卷")}</h3>
+      </div>
+      <div class="exam-score-summary">
+        <span><small>总分</small><strong>${Number(exam.totalScore || 0)}</strong></span>
+        <span><small>通过分</small><strong>${Number(exam.passScore || 0)}</strong></span>
+        <span><small>通过比例</small><strong>${Math.round(passRate * 10000) / 100}%</strong></span>
+      </div>
+    </div>
+    ${editable ? "" : `<div class="notice">已发布、排期或暂停的试卷仅供查看。需要调整时请复制为新的草稿试卷。</div>`}
+    <section class="exam-authoring-section">
+      <div class="exam-authoring-section-head">
+        <div><h3>对应题库</h3><p class="brand-sub">一张试卷只能从一个题库选题</p></div>
+        <div class="exam-bank-controls">
+          <select id="examQuestionBankSelect" aria-label="试卷题库" ${editable && !examAuthoringBusy ? "" : "disabled"}>
+            <option value="">请选择题库</option>
+            ${banks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === bankId ? "selected" : ""}>${esc(bank.name)}（${Number(bank.questionCount || 0)} 题）</option>`).join("")}
+          </select>
+          <button class="btn secondary compact-btn" id="saveExamBankBtn" type="button" ${editable && !examAuthoringBusy ? "" : "disabled"}>绑定题库</button>
+        </div>
+      </div>
+    </section>
+    <section class="exam-authoring-section">
+      <div class="exam-authoring-section-head">
+        <div><h3>试题与分值</h3><p class="brand-sub">已选 ${selected.length} / ${questions.length} 题；勾选保存后再调整顺序和分值</p></div>
+        ${editable && bankId ? `<div class="exam-selection-actions">
+          <button class="btn secondary compact-btn" id="selectAllExamQuestionsBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>全选</button>
+          <button class="btn secondary compact-btn" id="clearExamQuestionsBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>清空</button>
+          <button class="btn primary compact-btn" id="saveExamQuestionsBtn" type="button" ${examAuthoringBusy || !examSelectionDirty ? "disabled" : ""}>保存选题</button>
+        </div>` : ""}
+      </div>
+      ${hasArchivedSelection ? `<div class="notice error">当前试卷包含已归档题目。请取消勾选并保存选题，之后再调整顺序或分值。</div>` : ""}
+      ${editable && selected.length && !examSelectionDirty && !hasArchivedSelection ? `<div class="exam-bulk-score">
+        <label for="examBulkScoreInput">全部已选题统一分值</label>
+        <input id="examBulkScoreInput" type="number" min="0" step="0.5" value="1">
+        <button class="btn secondary compact-btn" id="saveExamBulkScoreBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>批量设置</button>
+      </div>` : ""}
+      <div class="exam-question-list">
+        ${displayQuestions.length ? displayQuestions.map((question) => {
+          const index = selectedIndex.get(question.id);
+          const score = question.score === null ? 0 : question.score;
+          return `<article class="exam-question-row ${question.selected ? "selected" : ""}" data-question-id="${esc(question.id)}">
+            <label class="exam-question-select">
+              <input class="exam-question-checkbox" type="checkbox" data-question-id="${esc(question.id)}" ${question.selected ? "checked" : ""} ${editable && !examAuthoringBusy && (question.status === "active" || question.selected) ? "" : "disabled"}>
+              <span><strong>${questionText(question.stem || "未填写题干")}</strong><small>${esc(authoringQuestionLabel(question, index ?? 0))}</small></span>
+            </label>
+            ${question.selected ? `<div class="exam-question-actions">
+              <button class="icon-action exam-order-btn" type="button" data-direction="up" data-question-id="${esc(question.id)}" title="上移" aria-label="上移" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection && index > 0 ? "" : "disabled"}>↑</button>
+              <button class="icon-action exam-order-btn" type="button" data-direction="down" data-question-id="${esc(question.id)}" title="下移" aria-label="下移" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection && index < selected.length - 1 ? "" : "disabled"}>↓</button>
+              <label class="exam-question-score"><span>分值</span><input class="exam-question-score-input" type="number" min="0" step="0.5" value="${esc(score)}" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection ? "" : "disabled"}></label>
+              <button class="btn secondary compact-btn save-exam-question-score-btn" type="button" data-question-id="${esc(question.id)}" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection ? "" : "disabled"}>保存分值</button>
+            </div>` : ""}
+          </article>`;
+        }).join("") : `<div class="empty-state admin-user-empty">${bankId ? "当前题库没有可用题目" : "请先绑定题库"}</div>`}
+      </div>
+    </section>`;
+
+  document.getElementById("saveExamBankBtn")?.addEventListener("click", saveExamQuestionBank);
+  document.getElementById("selectAllExamQuestionsBtn")?.addEventListener("click", () => setAllExamQuestions(true));
+  document.getElementById("clearExamQuestionsBtn")?.addEventListener("click", () => setAllExamQuestions(false));
+  document.getElementById("saveExamQuestionsBtn")?.addEventListener("click", saveExamQuestionSelection);
+  document.getElementById("saveExamBulkScoreBtn")?.addEventListener("click", saveExamBulkScore);
+  for (const checkbox of document.querySelectorAll(".exam-question-checkbox")) {
+    checkbox.addEventListener("change", () => toggleExamQuestion(checkbox.dataset.questionId, checkbox.checked));
+  }
+  for (const button of document.querySelectorAll(".exam-order-btn")) {
+    button.addEventListener("click", () => moveExamQuestion(button.dataset.questionId, button.dataset.direction));
+  }
+  for (const button of document.querySelectorAll(".save-exam-question-score-btn")) {
+    button.addEventListener("click", () => saveExamQuestionScore(button));
+  }
+}
+
+function showExamAuthoringMessage(message, tone = "") {
+  const element = document.getElementById("examAuthoringMsg");
+  element.textContent = message;
+  element.className = `notice${tone ? ` ${tone}` : ""}`;
+}
+
+function applyExamMutationResponse(data) {
+  const returned = data.authoring ? normalizeExamAuthoring(data) : null;
+  if (returned?.exam?.id) currentExamAuthoring = returned;
+  const exam = data.exam || data.authoring?.exam || null;
+  const version = Number(exam?.version ?? data.version);
+  if (currentExamAuthoring?.exam && Number.isFinite(version)) {
+    currentExamAuthoring.exam = { ...currentExamAuthoring.exam, ...exam, version };
+  }
+  if (exam?.id) {
+    const bankId = exam.questionBankId || exam.question_bank_id || "";
+    const bankName = returned?.banks.find((bank) => bank.id === bankId)?.name;
+    adminExams = adminExams.map((item) => item.id === exam.id
+      ? { ...item, ...exam, ...(bankName ? { questionBankName: bankName } : {}) }
+      : item);
+  }
+}
+
+async function runExamAuthoringMutation(message, request) {
+  if (examAuthoringBusy || !currentExamAuthoring?.exam?.id) return;
+  examAuthoringBusy = true;
+  showExamAuthoringMessage(message);
+  renderExamAuthoringEditor();
+  try {
+    const data = await request();
+    applyExamMutationResponse(data);
+    examSelectionDirty = false;
+    examSelectAllRequested = false;
+    showExamAuthoringMessage("已保存；总分和通过分已按最新分值重新计算。", "success");
+  } catch (error) {
+    showExamAuthoringMessage(error.message || "试卷保存失败", "error");
+  } finally {
+    examAuthoringBusy = false;
+    renderExamAuthoringList();
+    renderExamAuthoringEditor();
+  }
+}
+
+async function loadExamAuthoring(examId, options = {}) {
+  if (examSelectionDirty && examId !== currentAuthoringExamId
+      && !window.confirm("当前选题尚未保存，确认切换试卷吗？")) return;
+  currentAuthoringExamId = examId;
+  currentExamAuthoring = null;
+  examSelectionDirty = false;
+  examSelectAllRequested = false;
+  renderExamAuthoringList();
+  document.getElementById("examAuthoringEditor").innerHTML = `<div class="empty-state">正在载入试卷</div>`;
+  if (!options.preserveMessage) document.getElementById("examAuthoringMsg").classList.add("hidden");
+  try {
+    const data = await api(`/api/admin/exams/${encodeURIComponent(examId)}/authoring`);
+    currentExamAuthoring = normalizeExamAuthoring(data);
+    renderExamAuthoringEditor();
+  } catch (error) {
+    document.getElementById("examAuthoringEditor").innerHTML = `<div class="notice error">${esc(error.message || "试卷载入失败")}</div>`;
+  }
+}
+
+async function loadAdminExams() {
+  const list = document.getElementById("examAuthoringList");
+  list.innerHTML = `<div class="empty-state admin-user-empty">正在载入试卷</div>`;
+  const data = await api("/api/admin/exams");
+  adminExams = data.exams || [];
+  if (!adminExams.some((exam) => exam.id === currentAuthoringExamId)) currentAuthoringExamId = adminExams[0]?.id || "";
+  renderExamAuthoringList();
+  if (currentAuthoringExamId) await loadExamAuthoring(currentAuthoringExamId);
+  else renderExamAuthoringEditor();
+}
+
+async function openExamAuthoring() {
+  document.getElementById("examAuthoringDialog").showModal();
+  document.getElementById("examAuthoringMsg").classList.add("hidden");
+  try {
+    await loadAdminExams();
+  } catch (error) {
+    showExamAuthoringMessage(error.message || "试卷列表载入失败", "error");
+  }
+}
+
+function toggleExamQuestion(questionId, selected) {
+  const question = currentExamAuthoring?.questions.find((item) => item.id === questionId);
+  if (!question) return;
+  question.selected = selected;
+  if (selected && question.score === null) question.score = 0;
+  question.position = selected ? Number.MAX_SAFE_INTEGER : null;
+  selectedAuthoringQuestions().forEach((item, index) => { item.position = index + 1; });
+  examSelectionDirty = true;
+  examSelectAllRequested = false;
+  renderExamAuthoringEditor();
+}
+
+function setAllExamQuestions(selected) {
+  for (const [index, question] of currentExamAuthoring.questions.entries()) {
+    question.selected = selected && question.status === "active";
+    question.position = question.selected ? index + 1 : null;
+    if (question.selected && question.score === null) question.score = 0;
+  }
+  examSelectionDirty = true;
+  examSelectAllRequested = selected;
+  renderExamAuthoringEditor();
+}
+
+function saveExamQuestionBank() {
+  const questionBankId = document.getElementById("examQuestionBankSelect").value;
+  if (!questionBankId) return showExamAuthoringMessage("请选择要绑定的题库", "error");
+  const exam = currentExamAuthoring.exam;
+  const currentBankId = exam.questionBankId || exam.question_bank_id || "";
+  if (questionBankId === currentBankId) return showExamAuthoringMessage("当前试卷已经绑定该题库");
+  if (selectedAuthoringQuestions().length) return showExamAuthoringMessage("更换题库前，请先清空并保存当前试卷的选题", "error");
+  runExamAuthoringMutation("正在绑定题库", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-bank`, {
+    method: "PUT",
+    body: JSON.stringify({ version: exam.version, questionBankId })
+  }));
+}
+
+function saveExamQuestionSelection() {
+  const exam = currentExamAuthoring.exam;
+  const questionIds = selectedAuthoringQuestions().map((question) => question.id);
+  runExamAuthoringMutation("正在保存选题", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions`, {
+    method: "PUT",
+    body: JSON.stringify(examSelectAllRequested
+      ? { version: exam.version, selectAll: true }
+      : { version: exam.version, questionIds })
+  }));
+}
+
+function moveExamQuestion(questionId, direction) {
+  const selected = selectedAuthoringQuestions();
+  const index = selected.findIndex((question) => question.id === questionId);
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || nextIndex < 0 || nextIndex >= selected.length) return;
+  [selected[index], selected[nextIndex]] = [selected[nextIndex], selected[index]];
+  selected.forEach((question, position) => { question.position = position + 1; });
+  const exam = currentExamAuthoring.exam;
+  runExamAuthoringMutation("正在保存题目顺序", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-order`, {
+    method: "PUT",
+    body: JSON.stringify({ version: exam.version, questionIds: selected.map((question) => question.id) })
+  }));
+}
+
+function saveExamQuestionScore(button) {
+  const row = button.closest(".exam-question-row");
+  const score = Number(row.querySelector(".exam-question-score-input").value);
+  if (!Number.isFinite(score) || score < 0) return showExamAuthoringMessage("分值必须是大于或等于 0 的数字", "error");
+  const exam = currentExamAuthoring.exam;
+  const questionId = button.dataset.questionId;
+  runExamAuthoringMutation("正在保存题目分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions/${encodeURIComponent(questionId)}/score`, {
+    method: "PATCH",
+    body: JSON.stringify({ version: exam.version, score })
+  }));
+}
+
+function saveExamBulkScore() {
+  const score = Number(document.getElementById("examBulkScoreInput").value);
+  if (!Number.isFinite(score) || score < 0) return showExamAuthoringMessage("批量分值必须是大于或等于 0 的数字", "error");
+  const exam = currentExamAuthoring.exam;
+  runExamAuthoringMutation("正在批量设置分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-scores`, {
+    method: "PATCH",
+    body: JSON.stringify({ version: exam.version, score })
+  }));
+}
+
 function renderQuestionList() {
   const query = document.getElementById("questionSearch").value.trim().toLowerCase();
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId, query);
@@ -180,7 +861,7 @@ function renderQuestionList() {
   list.innerHTML = filtered.length ? filtered.map((question) => `
     <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
       <span class="question-list-stem">${questionText(question.stem)}</span>
-      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)} · ${question.score} 分</span>
+      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)}</span>
     </button>
   `).join("") : `<div class="empty-state admin-user-empty">暂无匹配题目</div>`;
   for (const button of document.querySelectorAll(".question-list-item")) {
@@ -215,6 +896,109 @@ function answerEditor(question) {
   return `<div class="field"><label for="questionAnswerText">${label}</label><textarea id="questionAnswerText">${esc(answer || "")}</textarea></div>`;
 }
 
+function questionImageEditor(images = []) {
+  return `<div class="field question-image-field">
+    <div class="question-option-toolbar">
+      <label for="questionImageInput">题目图片附件</label>
+      <span class="brand-sub">${images.length} / 5 张</span>
+    </div>
+    <input id="questionImageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple
+      ${questionImageUploadBusy || images.length >= 5 ? "disabled" : ""}>
+    ${images.length ? `<div class="question-image-grid">${images.map((src, index) => `
+      <figure class="question-image-item">
+        <img src="${esc(src)}" alt="题目图片 ${index + 1}" loading="lazy">
+        <button class="icon-action remove-question-image-btn" type="button" data-image-index="${index}"
+          title="移除图片" aria-label="移除第 ${index + 1} 张图片" ${questionImageUploadBusy ? "disabled" : ""}>×</button>
+      </figure>`).join("")}</div>` : ""}
+    <span class="brand-sub" id="questionImageMsg">JPEG、PNG 或 WebP，单张不超过 5MB。上传后还需保存题目。</span>
+  </div>`;
+}
+
+function bindQuestionImageEditor() {
+  document.getElementById("questionImageInput")?.addEventListener("change", uploadQuestionImages);
+  for (const button of document.querySelectorAll(".remove-question-image-btn")) {
+    button.addEventListener("click", () => removeQuestionImage(Number(button.dataset.imageIndex)));
+  }
+}
+
+function editingQuestionImages() {
+  if (newQuestionDraft) return newQuestionDraft.images || [];
+  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  if (!question) return [];
+  if (!questionImageDraft) questionImageDraft = [...(question.images || [])];
+  return questionImageDraft;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(new Error("图片读取失败")));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadQuestionImages(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length || questionImageUploadBusy) return;
+  const images = editingQuestionImages();
+  const target = newQuestionDraft
+    ? { kind: "new", draft: newQuestionDraft }
+    : { kind: "existing", questionId: currentQuestionId };
+  const message = document.getElementById("questionImageMsg");
+  if (images.length + files.length > 5) {
+    message.textContent = "每道题最多上传 5 张图片";
+    return;
+  }
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const invalid = files.find((file) => !allowed.has(file.type) || file.size < 1 || file.size > 5 * 1024 * 1024);
+  if (invalid) {
+    message.textContent = "只能上传单张不超过 5MB 的 JPEG、PNG 或 WebP 图片";
+    return;
+  }
+
+  questionImageUploadBusy = true;
+  message.textContent = "正在上传图片";
+  event.target.disabled = true;
+  document.getElementById("saveQuestionBtn").disabled = true;
+  try {
+    for (const file of files) {
+      const dataUrl = await readFileAsDataUrl(file);
+      const data = await api("/api/admin/question-resources", {
+        method: "POST",
+        body: JSON.stringify({ mimeType: file.type, dataUrl })
+      });
+      images.push(data.resource.url);
+    }
+    const targetStillOpen = target.kind === "new"
+      ? newQuestionDraft === target.draft
+      : !newQuestionDraft && currentQuestionId === target.questionId;
+    if (!targetStillOpen) throw new Error("题目已切换，本次上传未关联到题目");
+    if (target.kind === "new") newQuestionDraft.images = images;
+    else questionImageDraft = images;
+    questionImageUploadBusy = false;
+    if (newQuestionDraft) renderNewQuestionEditor();
+    else renderQuestionEditor();
+    document.getElementById("questionImageMsg").textContent = "图片已上传；保存题目后才会生效。";
+  } catch (error) {
+    questionImageUploadBusy = false;
+    if (newQuestionDraft) renderNewQuestionEditor();
+    else renderQuestionEditor();
+    document.getElementById("questionImageMsg").textContent = error.message || "图片上传失败";
+  }
+}
+
+function removeQuestionImage(index) {
+  const images = editingQuestionImages();
+  if (index < 0 || index >= images.length) return;
+  images.splice(index, 1);
+  if (newQuestionDraft) newQuestionDraft.images = images;
+  else questionImageDraft = images;
+  if (newQuestionDraft) renderNewQuestionEditor();
+  else renderQuestionEditor();
+  document.getElementById("questionImageMsg").textContent = "图片已从题目中移除；保存后生效。";
+}
+
 function selectedQuestionBankId() {
   if (currentQuestionFilterId.startsWith("bank:")) return currentQuestionFilterId.slice(5);
   const current = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId)[0];
@@ -228,12 +1012,12 @@ function defaultNewQuestion(type = "single", bankId = selectedQuestionBankId()) 
     externalId: "",
     type,
     stem: "",
+    images: [],
     options: type === "judge"
       ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
       : ["single", "multi"].includes(type) ? choiceOptions : [],
     answer: type === "multi" ? ["A"] : type === "fill" ? [] : type === "qa" ? "" : "A",
-    explanation: "",
-    score: 1
+    explanation: ""
   };
 }
 
@@ -266,15 +1050,12 @@ function renderNewQuestionEditor() {
           <label for="newQuestionExternalId">题目编号（可选）</label>
           <input id="newQuestionExternalId" value="${esc(draft.externalId)}" autocomplete="off">
         </div>
-        <div class="field">
-          <label for="newQuestionScore">默认分值</label>
-          <input id="newQuestionScore" type="number" min="0" max="100000" step="0.01" value="${esc(draft.score)}" required>
-        </div>
       </div>
       <div class="field">
         <label for="questionStem">题干</label>
         <textarea id="questionStem" required>${esc(draft.stem)}</textarea>
       </div>
+      ${questionImageEditor(draft.images)}
       ${optionTypes ? `
         <div class="field">
           <div class="question-option-toolbar">
@@ -296,7 +1077,7 @@ function renderNewQuestionEditor() {
         <textarea id="questionExplanation">${esc(draft.explanation)}</textarea>
       </div>
       <div class="question-save-row">
-        <button class="btn success" id="saveQuestionBtn" type="submit">保存到题库</button>
+        <button class="btn success" id="saveQuestionBtn" type="submit" ${questionImageUploadBusy ? "disabled" : ""}>保存到题库</button>
         <button class="btn secondary" id="cancelNewQuestionBtn" type="button">取消</button>
         <span class="brand-sub" id="questionSaveMsg"></span>
       </div>
@@ -308,6 +1089,7 @@ function renderNewQuestionEditor() {
   for (const button of document.querySelectorAll(".remove-option-btn")) {
     button.addEventListener("click", () => removeNewQuestionOption(Number(button.dataset.index)));
   }
+  bindQuestionImageEditor();
   if (optionTypes) document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(draft));
   updateChoiceAnswerHighlight(draft);
 }
@@ -330,24 +1112,27 @@ function readNewQuestionDraft() {
       : newQuestionDraft.type === "fill"
         ? answerText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
         : answerText,
-    explanation: document.getElementById("questionExplanation").value,
-    score: document.getElementById("newQuestionScore").value
+    explanation: document.getElementById("questionExplanation").value
   };
 }
 
 function startNewQuestion() {
+  if (questionImageUploadBusy) return;
   if (!adminQuestionBanks.length) {
     document.getElementById("questionEditor").innerHTML = `<div class="notice error">当前没有可用题库，请先通过题库导入流程创建题库。</div>`;
     return;
   }
   currentQuestionId = "";
+  questionImageDraft = null;
   newQuestionDraft = defaultNewQuestion();
   renderQuestionList();
   renderNewQuestionEditor();
 }
 
 function cancelNewQuestion() {
+  if (questionImageUploadBusy) return;
   newQuestionDraft = null;
+  questionImageDraft = null;
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
   currentQuestionId = filtered[0]?.id || "";
   renderQuestionList();
@@ -355,9 +1140,18 @@ function cancelNewQuestion() {
 }
 
 function changeNewQuestionType(event) {
+  if (questionImageUploadBusy) {
+    event.target.value = newQuestionDraft.type;
+    return;
+  }
   readNewQuestionDraft();
   const bankId = newQuestionDraft.bankId;
-  const preserved = { stem: newQuestionDraft.stem, externalId: newQuestionDraft.externalId, explanation: newQuestionDraft.explanation, score: newQuestionDraft.score };
+  const preserved = {
+    stem: newQuestionDraft.stem,
+    images: newQuestionDraft.images,
+    externalId: newQuestionDraft.externalId,
+    explanation: newQuestionDraft.explanation
+  };
   newQuestionDraft = { ...defaultNewQuestion(event.target.value, bankId), ...preserved };
   renderNewQuestionEditor();
 }
@@ -387,13 +1181,14 @@ function renderQuestionEditor() {
     return;
   }
   const examNames = question.exams.length ? question.exams.map((exam) => exam.title).join("、") : "尚未用于考试";
+  const images = editingQuestionImages();
   const answerLabels = currentAnswerLabels(question);
   editor.innerHTML = `
     <form id="questionEditorForm" class="question-editor-form">
       <div class="question-editor-meta">
         <span class="badge graded">${esc(question.bankName)}</span>
         <span class="badge pending">${typeLabel(question.type)}</span>
-        <span class="brand-sub">版本 ${question.version} · ${question.score} 分</span>
+        <span class="brand-sub">版本 ${question.version}</span>
       </div>
       <div class="brand-sub">引用考试：${esc(examNames)}</div>
       <div class="notice">保存会更新后续考生看到的题目版本；已提交答卷及其原有判分不会改变。重新阅卷时，管理员可在答卷中逐题选择是否采用本次修改。</div>
@@ -401,6 +1196,7 @@ function renderQuestionEditor() {
         <label for="questionStem">题干</label>
         <textarea id="questionStem" required>${esc(question.stem)}</textarea>
       </div>
+      ${questionImageEditor(images)}
       ${question.options.length ? `
         <div class="field">
           <label>选项</label>
@@ -420,11 +1216,12 @@ function renderQuestionEditor() {
         <textarea id="questionExplanation">${esc(question.explanation || "")}</textarea>
       </div>
       <div class="question-save-row">
-        <button class="btn success" id="saveQuestionBtn" type="submit">保存题目</button>
+        <button class="btn success" id="saveQuestionBtn" type="submit" ${questionImageUploadBusy ? "disabled" : ""}>保存题目</button>
         <span class="brand-sub" id="questionSaveMsg"></span>
       </div>
     </form>`;
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
+  bindQuestionImageEditor();
   if (["single", "judge", "multi"].includes(question.type)) {
     document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(question));
   }
@@ -440,7 +1237,9 @@ function updateChoiceAnswerHighlight(question) {
 }
 
 function selectQuestion(questionId) {
+  if (questionImageUploadBusy) return;
   newQuestionDraft = null;
+  questionImageDraft = null;
   currentQuestionId = questionId;
   renderQuestionList();
   renderQuestionEditor();
@@ -450,6 +1249,7 @@ async function loadQuestions() {
   document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
   const data = await api("/api/admin/questions");
   adminQuestions = data.questions;
+  questionImageDraft = null;
   adminQuestionBanks = data.banks || [];
   renderQuestionFilter();
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
@@ -522,12 +1322,14 @@ async function saveQuestion(event) {
       body: JSON.stringify({
         version: question.version,
         stem: document.getElementById("questionStem").value,
+        images: questionImageDraft || question.images || [],
         options,
         answer: collectQuestionAnswer(question),
         explanation: document.getElementById("questionExplanation").value
       })
     });
     adminQuestions = adminQuestions.map((item) => item.id === data.question.id ? data.question : item);
+    questionImageDraft = null;
     renderQuestionList();
     renderQuestionEditor();
     document.getElementById("questionSaveMsg").textContent = "已保存到题库，历史答卷不受影响。";
@@ -558,12 +1360,27 @@ function getImageSet(exam, q) {
 
 function reviewImages(paths) {
   if (!paths?.length) return "";
-  return `<div class="review-image-row">${paths.map((src) => `<img src="/${esc(src)}" alt="题目图片" loading="lazy">`).join("")}</div>`;
+  return `<div class="review-image-row">${paths.map((src) => `<img src="/${esc(String(src).replace(/^\/+/, ""))}" alt="题目图片" loading="lazy">`).join("")}</div>`;
+}
+
+function updateStatusFilterButtons(status) {
+  for (const button of document.querySelectorAll(".stat-filter")) {
+    button.setAttribute("aria-pressed", String(button.dataset.statusFilter === status));
+  }
+}
+
+function setStatusFilter(status) {
+  const select = document.getElementById("statusFilter");
+  const supported = Array.from(select.options).some((option) => option.value === status);
+  if (!supported) return;
+  select.value = status;
+  renderList();
 }
 
 function renderList() {
   const query = document.getElementById("searchInput").value.trim().toLowerCase();
   const status = document.getElementById("statusFilter").value;
+  updateStatusFilterButtons(status);
   const list = submissions.filter((item) => {
     const hit = [item.studentName, item.examTitle]
       .some((value) => String(value || "").toLowerCase().includes(query));
@@ -607,7 +1424,7 @@ function renderOptionReview(q, detail, images) {
     <div class="review-option ${selected.has(key) ? "selected" : ""}">
       <strong>${esc(key)}.</strong>
       ${q.options?.[key] ? `<span>${esc(q.options[key])}</span>` : ""}
-      ${images.options?.[key] ? `<img src="/${esc(images.options[key])}" alt="选项 ${esc(key)} 图片" loading="lazy">` : ""}
+      ${images.options?.[key] ? `<img src="/${esc(String(images.options[key]).replace(/^\/+/, ""))}" alt="选项 ${esc(key)} 图片" loading="lazy">` : ""}
       ${selected.has(key) ? `<span class="selected-mark">考生已选</span>` : ""}
     </div>
   `).join("")}</div>`;
@@ -851,9 +1668,13 @@ async function initializeAdmin() {
     const [configRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
     const config = await configRes.json();
     const me = await meRes.json();
+    adminAuthProviders = {
+      dingtalk: config.providers?.dingtalk?.enabled ?? config.enabled,
+      feishu: Boolean(config.providers?.feishu?.enabled)
+    };
+    updateAdminLoginButtons();
     if (!config.enabled) {
-      document.getElementById("dingtalkAdminLogin").classList.add("hidden");
-      msg.textContent = "钉钉登录尚未配置，请联系系统管理员。";
+      msg.textContent = "管理员登录服务尚未配置，请联系系统管理员。";
       msg.classList.remove("hidden");
       return;
     }
@@ -866,26 +1687,79 @@ async function initializeAdmin() {
     await loadList();
     startAdminSessionMonitoring();
   } catch (err) {
-    msg.textContent = err.message || "当前钉钉账号没有阅卷权限。";
+    msg.textContent = err.message || "当前账号没有阅卷权限。";
     msg.className = "notice error";
   }
 }
 
 document.getElementById("refreshBtn").addEventListener("click", loadList);
 document.getElementById("manageAdminsBtn").addEventListener("click", openAdminManager);
+document.getElementById("manageExamsBtn").addEventListener("click", openExamAuthoring);
 document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
+document.getElementById("manageBackupsBtn").addEventListener("click", openBackupManager);
 document.getElementById("newQuestionBtn").addEventListener("click", startNewQuestion);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
   document.getElementById("adminManagerDialog").close();
 });
+document.getElementById("closeBackupManagerBtn").addEventListener("click", () => {
+  if (!backupBusy) document.getElementById("backupManagerDialog").close();
+});
+document.getElementById("backupManagerDialog").addEventListener("cancel", (event) => {
+  if (backupBusy) event.preventDefault();
+});
+document.getElementById("exportExamBackupBtn").addEventListener("click", () => {
+  exportBackup("exam", document.getElementById("backupExamSelect").value);
+});
+document.getElementById("exportQuestionBankBackupBtn").addEventListener("click", () => {
+  exportBackup("question-bank", document.getElementById("backupQuestionBankSelect").value);
+});
+document.getElementById("backupImportFile").addEventListener("change", (event) => {
+  document.getElementById("importBackupBtn").disabled = backupBusy || !event.target.files?.length;
+});
+document.getElementById("importBackupBtn").addEventListener("click", importBackup);
+document.getElementById("refreshBackupAutomationBtn").addEventListener("click", async () => {
+  try { await loadBackupAutomation(); } catch (error) { showBackupMessage(error.message || "自动备份状态刷新失败", "error"); }
+});
+document.getElementById("runBackupAutomationBtn").addEventListener("click", triggerAutomaticBackup);
+document.getElementById("backupRunList").addEventListener("click", (event) => {
+  const button = event.target.closest(".stored-backup-download-btn");
+  if (button) downloadStoredBackup(button.dataset.artifactId);
+});
 document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
+  if (questionImageUploadBusy) {
+    document.getElementById("questionImageMsg").textContent = "图片正在上传，完成前不能关闭";
+    return;
+  }
   document.getElementById("questionManagerDialog").close();
 });
+document.getElementById("questionManagerDialog").addEventListener("cancel", (event) => {
+  if (questionImageUploadBusy) event.preventDefault();
+});
+document.getElementById("closeExamAuthoringBtn").addEventListener("click", () => {
+  if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认关闭吗？")) return;
+  examSelectionDirty = false;
+  examSelectAllRequested = false;
+  document.getElementById("examAuthoringDialog").close();
+});
+document.getElementById("examAuthoringDialog").addEventListener("cancel", (event) => {
+  if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认关闭吗？")) {
+    event.preventDefault();
+    return;
+  }
+  examSelectionDirty = false;
+  examSelectAllRequested = false;
+});
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
+document.getElementById("refreshMergeCandidatesBtn").addEventListener("click", loadMergeCandidates);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("questionExamFilter").addEventListener("change", (event) => {
+  if (questionImageUploadBusy) {
+    event.target.value = currentQuestionFilterId;
+    return;
+  }
   currentQuestionFilterId = event.target.value;
   newQuestionDraft = null;
+  questionImageDraft = null;
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
   currentQuestionId = filtered[0]?.id || "";
   document.getElementById("questionSearch").value = "";
@@ -898,6 +1772,9 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 });
 document.getElementById("searchInput").addEventListener("input", renderList);
 document.getElementById("statusFilter").addEventListener("change", renderList);
+for (const button of document.querySelectorAll(".stat-filter")) {
+  button.addEventListener("click", () => setStatusFilter(button.dataset.statusFilter));
+}
 window.addEventListener("pageshow", verifyAdminSession);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") verifyAdminSession();

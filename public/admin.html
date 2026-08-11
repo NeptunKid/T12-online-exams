@@ -11,9 +11,10 @@
     <main class="panel login-card">
       <h1>T12学习考核中心</h1>
       <p class="brand-sub">管理员阅卷后台</p>
-      <p>请使用已授予阅卷权限的钉钉账号登录。</p>
+      <p>请使用已授予后台权限的钉钉或飞书账号登录。</p>
       <div class="btn-row" style="margin-top:22px">
         <a class="btn primary" id="dingtalkAdminLogin" href="/auth/dingtalk/login?returnTo=/admin">使用钉钉登录</a>
+        <a class="btn secondary" id="feishuAdminLogin" href="/auth/feishu/login?returnTo=/admin">使用飞书登录</a>
       </div>
       <div id="loginMsg" class="notice error hidden"></div>
     </main>
@@ -27,7 +28,9 @@
           <div class="brand-sub">管理员阅卷后台</div>
         </div>
         <div class="btn-row admin-actions">
+          <button class="btn secondary hidden" id="manageExamsBtn" type="button">试卷</button>
           <button class="btn secondary hidden" id="manageQuestionsBtn" type="button">题库</button>
+          <button class="btn secondary hidden" id="manageBackupsBtn" type="button">备份</button>
           <button class="btn secondary hidden" id="manageAdminsBtn" type="button">管理员</button>
           <button class="btn secondary" id="refreshBtn" type="button">刷新</button>
           <button class="btn danger" id="logoutBtn" type="button">退出登录</button>
@@ -38,10 +41,16 @@
     <main class="shell admin-layout">
       <aside class="panel admin-card" id="submissionPanel">
         <div class="toolbar">
-          <div class="stats">
-            <div class="stat"><span class="meta-label">总提交</span><strong id="statTotal">0</strong></div>
-            <div class="stat"><span class="meta-label">待批阅</span><strong id="statPending">0</strong></div>
-            <div class="stat"><span class="meta-label">已批阅</span><strong id="statGraded">0</strong></div>
+          <div class="stats" role="group" aria-label="按批阅状态筛选答卷">
+            <button class="stat stat-filter" type="button" data-status-filter="all" aria-controls="submissionList" aria-pressed="false">
+              <span class="meta-label">总提交</span><strong id="statTotal">0</strong>
+            </button>
+            <button class="stat stat-filter" type="button" data-status-filter="pending" aria-controls="submissionList" aria-pressed="true">
+              <span class="meta-label">待批阅</span><strong id="statPending">0</strong>
+            </button>
+            <button class="stat stat-filter" type="button" data-status-filter="graded" aria-controls="submissionList" aria-pressed="false">
+              <span class="meta-label">已批阅</span><strong id="statGraded">0</strong>
+            </button>
           </div>
           <input id="searchInput" placeholder="搜索考生姓名">
           <select id="statusFilter">
@@ -69,13 +78,105 @@
       <div class="admin-dialog-head">
         <div>
           <h2>管理员</h2>
-          <p class="brand-sub">钉钉用户与后台权限</p>
+          <p class="brand-sub">钉钉、飞书用户与后台权限</p>
         </div>
         <button class="btn secondary compact-btn" id="closeAdminManagerBtn" type="button">关闭</button>
       </div>
       <input id="adminUserSearch" type="search" placeholder="搜索姓名、工号或部门">
       <div id="adminManagerMsg" class="notice hidden"></div>
       <div id="adminUserList" class="admin-user-list"></div>
+      <section class="identity-merge-section">
+        <div class="identity-merge-head">
+          <div>
+            <h3>同名账号合并</h3>
+            <p class="brand-sub">仅列出分属钉钉和飞书的同名账号，合并前请核对工号与部门。</p>
+          </div>
+          <button class="btn secondary compact-btn" id="refreshMergeCandidatesBtn" type="button">重新检查</button>
+        </div>
+        <div id="identityMergeList" class="identity-merge-list"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="backupManagerDialog" class="admin-dialog backup-dialog">
+    <div class="admin-dialog-shell">
+      <div class="admin-dialog-head">
+        <div>
+          <h2>备份与迁移</h2>
+          <p class="brand-sub">导出自包含备份包，或一键导入为新的题库和试卷</p>
+        </div>
+        <button class="btn secondary compact-btn" id="closeBackupManagerBtn" type="button">关闭</button>
+      </div>
+      <div id="backupManagerMsg" class="notice hidden" role="status"></div>
+      <div class="backup-manager-grid">
+        <section class="backup-section" aria-labelledby="backupExportTitle">
+          <div>
+            <h3 id="backupExportTitle">导出备份</h3>
+            <p class="brand-sub">备份包包含题目、组卷分值、答案解析及全部图片资源。</p>
+          </div>
+          <div class="field">
+            <label for="backupExamSelect">试卷</label>
+            <div class="backup-control-row">
+              <select id="backupExamSelect"></select>
+              <button class="btn secondary compact-btn" id="exportExamBackupBtn" type="button">导出试卷</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="backupQuestionBankSelect">题库</label>
+            <div class="backup-control-row">
+              <select id="backupQuestionBankSelect"></select>
+              <button class="btn secondary compact-btn" id="exportQuestionBankBackupBtn" type="button">导出题库</button>
+            </div>
+          </div>
+        </section>
+        <section class="backup-section" aria-labelledby="backupImportTitle">
+          <div>
+            <h3 id="backupImportTitle">导入备份</h3>
+            <p class="brand-sub">系统会校验包版本、文件哈希和图片内容，并创建新的记录，不覆盖现有数据。</p>
+          </div>
+          <div class="field">
+            <label for="backupImportFile">备份包</label>
+            <input id="backupImportFile" type="file" accept=".t12backup,.zip,application/zip,application/octet-stream">
+          </div>
+          <button class="btn primary" id="importBackupBtn" type="button" disabled>导入并创建副本</button>
+        </section>
+        <section class="backup-section backup-automation" aria-labelledby="backupAutomationTitle">
+          <div class="backup-automation-head">
+            <div>
+              <h3 id="backupAutomationTitle">自动备份</h3>
+              <p class="brand-sub" id="backupAutomationMeta">正在读取配置</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn secondary compact-btn" id="refreshBackupAutomationBtn" type="button">刷新</button>
+              <button class="btn primary compact-btn" id="runBackupAutomationBtn" type="button" disabled>立即运行</button>
+            </div>
+          </div>
+          <div id="backupAutomationSummary" class="backup-automation-summary"></div>
+          <div id="backupRunList" class="backup-run-list"></div>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="examAuthoringDialog" class="admin-dialog exam-authoring-dialog">
+    <div class="admin-dialog-shell">
+      <div class="admin-dialog-head">
+        <div>
+          <h2>试卷组卷</h2>
+          <p class="brand-sub">从一个题库选择试题并设置试卷分值</p>
+        </div>
+        <button class="btn secondary compact-btn" id="closeExamAuthoringBtn" type="button">关闭</button>
+      </div>
+      <div id="examAuthoringMsg" class="notice hidden" role="status"></div>
+      <div class="exam-authoring-layout">
+        <aside class="exam-authoring-list-panel">
+          <div class="brand-sub exam-authoring-count" id="examAuthoringCount"></div>
+          <div id="examAuthoringList" class="exam-authoring-list"></div>
+        </aside>
+        <section id="examAuthoringEditor" class="exam-authoring-editor">
+          <div class="empty-state">请选择一张试卷</div>
+        </section>
+      </div>
     </div>
   </dialog>
 
@@ -110,6 +211,6 @@
 
   <script src="/question-format.js?v=20260809-2"></script>
   <script src="/question-admin-model.js?v=20260810-1"></script>
-  <script src="/admin.js?v=20260810-3"></script>
+  <script src="/admin.js?v=20260811-3"></script>
 </body>
 </html>

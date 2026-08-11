@@ -3,6 +3,7 @@ const test = require("node:test");
 const {
   getAdminAccess,
   getIdentityAccess,
+  listAdminUsers,
   mapAdminUser,
   maskIdentity,
   normalizeRealName,
@@ -11,22 +12,49 @@ const {
   upsertFeishuUser
 } = require("../src/db/user-repository");
 
-test("管理员用户映射会遮蔽钉钉身份标识", () => {
+test("管理员用户映射会遮蔽钉钉和飞书身份标识", () => {
   assert.equal(maskIdentity("union-1234567890"), "unio...7890");
   const user = mapAdminUser({
     id: "user-1", name: "测试用户", employee_no: null, department: "运营",
-    status: "active", union_id: "union-1234567890", roles: ["student", "system_admin"]
+    status: "active",
+    identities: [
+      { provider: "dingtalk", identifier: "union-1234567890" },
+      { provider: "feishu", identifier: "ou-feishu-0987654321" }
+    ],
+    roles: ["student", "system_admin"]
   });
-  assert.equal(user.identityHint, "unio...7890");
+  assert.equal(user.identityHint, "dingtalk: unio...7890 / feishu: ou-f...4321");
+  assert.deepEqual(user.providers, ["dingtalk", "feishu"]);
   assert.equal(user.isAdmin, true);
 });
 
+test("管理员列表包含飞书独立用户且不返回原始身份标识", async () => {
+  let capturedSql = "";
+  const users = await listAdminUsers({
+    async query(sql) {
+      capturedSql = sql;
+      return { rows: [{
+        id: "fei-user", name: "飞书管理员", employee_no: null, department: "运营", status: "active",
+        identities: [{ provider: "feishu", identifier: "ou-feishu-1234567890" }], roles: ["grader"]
+      }] };
+    }
+  });
+  assert.match(capturedSql, /'feishu'/);
+  assert.equal(users[0].identityHint, "feishu: ou-f...7890");
+  assert.equal(JSON.stringify(users).includes("ou-feishu-1234567890"), false);
+});
+
 test("数据库系统管理员和环境引导账号均可管理管理员", async () => {
-  const pool = { query: async () => ({ rows: [{ id: "user-1", roles: ["grader", "system_admin"] }] }) };
+  let capturedSql = "";
+  const pool = { query: async (sql) => {
+    capturedSql = sql;
+    return { rows: [{ id: "user-1", roles: ["grader", "system_admin"] }] };
+  } };
   const databaseAccess = await getAdminAccess(pool, "union-1", new Set());
   assert.equal(databaseAccess.canAccess, true);
   assert.equal(databaseAccess.canManageAdmins, true);
   assert.equal(databaseAccess.canManageQuestions, true);
+  assert.match(capturedSql, /u\.status = 'active'/);
 
   const bootstrapAccess = await getAdminAccess(null, "bootstrap-1", new Set(["bootstrap-1"]));
   assert.equal(bootstrapAccess.canAccess, true);
@@ -94,13 +122,12 @@ test("飞书登录没有同名钉钉用户时按 open_id 建立独立身份", as
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
-test("飞书登录只在唯一真实姓名匹配时绑定既有钉钉用户", async () => {
+test("飞书登录不会仅凭唯一真实姓名自动绑定钉钉用户", async () => {
   const calls = [];
   const client = {
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.includes("WHERE provider = 'feishu'")) return { rows: [] };
-      if (sql.includes("ui.provider = ANY")) return { rows: [{ id: "ding-user", name: " 张 三 " }] };
       return { rows: [] };
     },
     release() {}
@@ -108,39 +135,43 @@ test("飞书登录只在唯一真实姓名匹配时绑定既有钉钉用户", as
   const userId = await upsertFeishuUser({ connect: async () => client }, {
     providerSubject: "ou_feishu_2", name: "张　三"
   });
-  assert.equal(userId, "ding-user");
+  assert.notEqual(userId, "ding-user");
   const identityInsert = calls.find((call) => call.sql.includes("INSERT INTO user_identities"));
-  assert.equal(identityInsert.params[1], "ding-user");
-  assert.equal(calls.some((call) => call.sql.includes("auto_link_identity_by_real_name")), true);
+  assert.equal(identityInsert.params[1], userId);
+  assert.equal(calls.some((call) => call.sql.includes("ui.provider = ANY")), false);
 });
 
-test("同名候选不唯一时拒绝自动绑定并回滚", async () => {
+test("同名候选不唯一时仍建立独立飞书用户等待管理员核对", async () => {
   const calls = [];
   const client = {
     async query(sql) {
       calls.push(sql);
       if (sql.includes("WHERE provider = 'feishu'")) return { rows: [] };
-      if (sql.includes("ui.provider = ANY")) {
-        return { rows: [{ id: "ding-1", name: "同名员工" }, { id: "ding-2", name: "同名员工" }] };
-      }
       return { rows: [] };
     },
     release() {}
   };
-  await assert.rejects(
-    upsertFeishuUser({ connect: async () => client }, { providerSubject: "ou-3", name: "同名员工" }),
-    /停止自动合并/
+  const userId = await upsertFeishuUser(
+    { connect: async () => client },
+    { providerSubject: "ou-3", name: "同名员工" }
   );
-  assert.equal(calls.includes("ROLLBACK"), true);
+  assert.match(userId, /^user_[a-f0-9]{32}$/);
+  assert.equal(calls.includes("ROLLBACK"), false);
+  assert.equal(calls.at(-1), "COMMIT");
 });
 
 test("飞书身份可以读取数据库角色但不使用钉钉引导名单", async () => {
-  const pool = { query: async () => ({ rows: [{ id: "user-feishu", roles: ["student"] }] }) };
+  let capturedSql = "";
+  const pool = { query: async (sql) => {
+    capturedSql = sql;
+    return { rows: [{ id: "user-feishu", roles: ["student"] }] };
+  } };
   const access = await getIdentityAccess(pool, "feishu", "ou_feishu_1");
 
   assert.equal(access.userId, "user-feishu");
   assert.equal(access.canAccess, false);
   assert.deepEqual(access.roles, ["student"]);
+  assert.match(capturedSql, /u\.status = 'active'/);
 });
 
 test("授予管理员同时写入角色和审计日志", async () => {

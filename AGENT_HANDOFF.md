@@ -1,6 +1,6 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-10
+更新时间：2026-08-11
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
@@ -12,7 +12,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 - 不修改 `$HOME/Documents/Codex/001_考试后台追踪系统` 和 `$HOME/Documents/Codex/002_考试后台追踪系统_钉钉登录版`。
 - 不删除、覆盖或重置 `data/submissions.json`；003 使用 PostgreSQL 和独立数据目录。
 - 不读取、输出或提交 `.env`、`/etc/t12-online-exams/t12-online-exams.env`、OAuth Secret、数据库密码、员工身份标识或答卷答案。
-- 生产 PostgreSQL 发生写入前先执行 `pg_dump -Fc`，并记录备份文件路径；身份合并必须先 dry-run，确认 `ambiguous` 为空后才允许 `--apply`。
+- 生产 PostgreSQL 发生写入前先执行 `pg_dump -Fc`，并记录备份文件路径；身份合并仅能由系统管理员在后台执行，命令行脚本只允许 dry-run，禁止 `--apply`。
 - 历史答卷必须继续使用提交时保存的题目快照和评分依据。题库修改不得静默改变历史成绩。
 - 每次只推进一个可独立验证、可回滚的步骤，并记录修改文件、测试、风险、回滚和飞书同步状态。
 - GitHub 网络操作容易卡顿。用户已明确：`git push`、`gh pr create`、PR 检查和合并优先由用户在本机终端执行；连接异常时停止重试并请用户协助。
@@ -20,12 +20,14 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前分支：`fix/feishu-plain-text-sync`
+当前分支：`feature/exam-authoring-v2`
 
 ```text
-HEAD  7cb7b7e fix: sync Feishu summaries as plain text
-origin/fix/feishu-plain-text-sync  7cb7b7e
-main  d93f17c fix: repair cleaning question bank content
+本轮已提交：`9ce1a09` 管理员筛选/模型审计、`83c5464` 飞书管理员入口、`75a330a` 经核对的跨平台用户合并、`9393e3e` 试卷分值所有权兼容层
+草稿组卷已由用户提交，本文未记录该提交哈希。
+本轮已提交：题目图片资源 `5f42217`、可移植备份 `f258843`
+当前未提交：定期自动备份 `0009`、数据库/文件系统存储、调度、管理员状态与历史下载、测试和文档
+基线：`main` 的 `d93f17c fix: repair cleaning question bank content`
 ```
 
 当前工作树的未跟踪文件是用户素材，不要删除、改名或提交：
@@ -108,6 +110,12 @@ sudo systemctl restart t12-exams
 - 题库按试卷/题库分类展示；管理员可手动录入单选、多选、判断、填空、问答题，并编辑题干、选项、参考答案和解析。
 - 空白的 `【】`、`「」`、`[]` 会在展示层转换为带下划线的空白；括号内有文字时不转换。
 - 题库修改会递增题目/考试版本、写入审计日志；历史答卷读取原快照。重新阅卷时会提示题目已修改或删除，并允许选择是否采用新版本。
+- 分值业务所有权已收敛到 `exam_questions.score`：题库 API、手动录题和题库 UI 不再读写分值；`questions.score` 仅作为旧数据兼容列保留并默认 0。
+- `0007_exam_authoring_score_ownership` 为单题库试卷回填可空 `exams.question_bank_id`，跨题库或空试卷保持 NULL；同时保存 `pass_rate`，后续组卷改分应据此重算试卷总分和通过分。该迁移不更新历史答卷或快照。
+- 草稿试卷已支持绑定单题库、部分/全选 active 题、完整排序、单题分值和全部已选题统一分值。每次写入均校验 `version`，重算总分/通过分并记录审计；非草稿试卷只读，历史答卷和快照不变。
+- 手动录题和题目编辑已支持最多 5 张题干图片。`0008_question_resources` 将允许的图片作为 `bytea` 与 SHA-256 保存在 PostgreSQL，这些图片会进入数据库备份，不依赖生产代码目录或手工复制静态文件。
+- 管理员已支持试卷/题库可移植备份：`.t12backup` ZIP 内嵌题库、题目、答案解析、试卷组卷关系与分值、作答规则、考试分配、补考权限和所有图片正文；导入固定生成新 ID 和草稿试卷，完整校验后在一个事务内写入，失败整体回滚。格式见 `docs/backup-format-v1.md`。
+- 定期自动备份已支持 PostgreSQL `bytea` 或受控服务器目录，默认关闭。`0009` 保存逐试卷/题库运行与工件，调度使用 advisory lock，单对象失败不阻断其他对象，保留策略按对象保留最近 N 份。管理员可查看公开配置、立即运行并下载历史工件；服务器路径不返回前端。生产启用和边界见 `docs/automatic-backups.md`。
 - 已发布考试包括：萃取原理、消防基础、IT 基础、清洁卫生入职培训、咖啡基础知识、餐饮相关法律法规。生产题数和最终状态以 PostgreSQL 查询为准，不要依赖旧 CSV 统计。
 - 《餐饮相关法律法规》已按用户确认配置：40 分钟、总分 100、通过分 85；题型方案为 19 单选、19 多选、15 判断。
 - 《咖啡基础知识》已生成 100 题导入稿，60 分钟、总分 100、通过分 85；生产导入状态曾因未拉取含 `0005` 的版本而未确认，接手时必须查询数据库核实。
@@ -116,8 +124,10 @@ sudo systemctl restart t12-exams
 ### Phase 3 / Sprint 4：钉钉、飞书、权限和移动端
 
 - 已完成钉钉/飞书 OAuth Provider 抽象、登录回调、身份登记和双入口。
-- 两个平台均以真实姓名为准；标准化姓名唯一时绑定同一内部用户，同名歧义不自动合并。
-- 已提供历史身份整理脚本 `scripts/reconcile-cross-platform-users.js`，必须先 dry-run，再在 `ambiguous: []` 时 `--apply`。
+- 两个平台均以真实姓名登记，但绝不只凭姓名自动绑定；首次登录始终创建或复用对应 Provider 身份。
+- 系统管理员后台可查看同名候选并进行人工确认。只有“纯钉钉/历史钉钉账号 + 纯飞书账号”的唯一候选可合并；任何多重候选或已绑定双平台账号均阻断。
+- 合并以事务迁移身份、角色、考试授权、补考权限和答卷归属；题目快照、作答和分数保持不变。副本保留为 `disabled`，历史审计不改写，新审计记录保存迁移统计。
+- `scripts/reconcile-cross-platform-users.js` 只生成 dry-run 预览；`--apply` 已明确停用。生产合并前仍必须在阿里云 Workbench 执行 `pg_dump -Fc`，再由系统管理员在后台逐项确认。
 - 管理员角色管理已完成：首位管理员由 `DINGTALK_GRADER_UNION_IDS` 引导，后台可授予/撤销 `grader`、`system_admin`，禁止自我撤权和移除最后系统管理员。
 - 管理员会话在打开、恢复前台和运行期间检查，失效时提前锁定并要求登录。
 - 考生端和管理员端已做手机自适应；管理员阅卷默认筛选待批阅项，非待批阅内容可折叠。
@@ -132,16 +142,15 @@ sudo systemctl restart t12-exams
 
 ## 五、质量验证记录
 
-截至最新提交，本机质量门结果：
+截至当前定期自动备份步骤，本机质量门结果：
 
 ```text
 npm run check:syntax   通过
-npm test               114 项通过
+npm test               232 项通过
 npm run check:secrets  通过
-git diff --check       通过
 ```
 
-新增/主要覆盖的测试包括：迁移、遗留答卷导入、考试 API、题库导入、题目资源、题目格式、题目编辑、手动录题、跨平台身份、管理员移动布局、OAuth、飞书同步等。生产验收仍需真实浏览器和手机端复核，不能只以单元测试替代。
+新增/主要覆盖的测试包括：迁移、遗留答卷导入、考试 API、题库导入、题目静态/数据库上传资源、图片校验与去重、题目格式、题目编辑、手动录题、草稿组卷仓储/API/UI、跨平台身份、管理员移动布局、OAuth、飞书同步等。本步未重试内置浏览器；生产验收仍需真实 PostgreSQL、浏览器和手机端复核，不能只以单元测试替代。
 
 ## 六、未确认事项与风险
 
@@ -149,10 +158,15 @@ git diff --check       通过
 
 1. `fix/feishu-plain-text-sync` 的 PR 是否已创建、合并、部署。
 2. 纯文本同步代码是否已拉取到生产服务器；旧 Markdown 段落是否已在飞书文档中人工删除。
-3. 跨平台身份整理脚本的 `--apply` 是否真正执行完成；最近一次 dry-run 曾发现一组同名/重复身份，后续需以生产数据库复核。
+3. 是否已在生产以系统管理员身份核对同名候选；不得使用脚本或仅凭同名完成合并。执行前必须在阿里云 Workbench 创建 `pg_dump -Fc`。
 4. 《咖啡基础知识》是否已执行含 `0005_question_stem_images` 迁移的生产导入；导入前必须确认图片资源和题数。
 5. 手动录题、手机管理员阅卷、飞书成员考试授权是否已由真实账号验收。
 6. 生产服务器公网仍经 Cloudflare 代理；域名解析、缓存和 Caddy 证书状态变更时需重新做 `/healthz`、`/readyz`、首页、登录回调和提交链路验收。
+7. `0007_exam_authoring_score_ownership` 尚未在生产执行。部署时必须先备份、执行迁移并确认成功，再重启依赖题目分值默认值的新代码。
+8. 草稿组卷尚未连接真实 PostgreSQL 做管理员浏览器/手机验收，也尚未部署。
+9. `0008_question_resources` 尚未在生产执行。上传结构含图片 `bytea`，部署前必须先 `pg_dump -Fc`，并在迁移后核对数据库空间。
+10. 可移植备份尚未连接真实 PostgreSQL 做浏览器下载、上传和大图片包验收。
+11. `0009_automatic_backups` 尚未在生产执行，自动备份默认关闭；数据库或文件系统存储目标、容量和保留数必须由用户确认后再启用。数据库内逻辑包不能替代 `pg_dump -Fc`。
 
 ## 七、接手后的最小行动顺序
 
@@ -195,7 +209,7 @@ cd /opt/t12-online-exams
 sudo -u codexdeploy -H node scripts/reconcile-cross-platform-users.js --dry-run
 ```
 
-只有输出 `ambiguous: []` 且用户确认后，才运行 `--apply`。再用 PostgreSQL 查询考试 ID、标题、状态、时长、题数、总分和通过线，核实六份考试；不要输出答卷正文或身份敏感字段。
+命令行整理脚本永久只读，禁止 `--apply`。只有用户核对唯一候选后，才可在系统管理员后台执行逐项合并。再用 PostgreSQL 查询考试 ID、标题、状态、时长、题数、总分和通过线，核实六份考试；不要输出答卷正文或身份敏感字段。
 
 ### 4. 飞书：同步总结
 
@@ -218,7 +232,9 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 代码回滚：在 GitHub 回滚已合并 PR，或在服务器以 `codexdeploy` checkout 上一个已验证提交后重启服务。
 - 应用恢复：恢复对应 `/var/backups/t12-online-exams/*.dump` 前，先停止写入并确认目标数据库；严禁直接覆盖 `data/submissions.json`。
 - 题库修复/导入：优先使用脚本的 dry-run 和事务；失败时事务自动回滚，使用导入前 PostgreSQL dump 恢复。
-- 身份合并：仅执行可回滚迁移；先保存 dry-run 输出，异常时停止后续授权操作。
+- 图片资源：尚无历史答卷引用上传图片时，`0008` down 会从当前题目移除上传 URL 后删除资源表。一旦历史答卷快照已引用上传图片，down 会主动拒绝；应保留 `0008` 或在停止写入后恢复迁移前完整备份，禁止直接删表。
+- 可移植备份：导入失败会自动回滚；导入成功后只会新增题库、题目、草稿试卷及相关资源。确认误导入时应先核对 `import_backup` 审计记录和引用关系，再由后续专用归档/清理流程处理，禁止直接级联删除。
+- 身份合并：后台事务失败会自动回滚；若已提交但确认误合并，先停止相关账号操作，优先从合并前 `pg_dump -Fc` 恢复到隔离库核对后再执行修复，禁止直接删除用户或手改答卷快照。
 - Caddy/服务：恢复上一版 `Caddyfile` 或 systemd unit，执行 `systemctl daemon-reload`、重启并重新检查证书和 `/readyz`。
 
 ## 九、后续计划建议
@@ -226,9 +242,9 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 按详细实施计划继续：
 
 1. 完整题库 CRUD、归档/恢复和操作审计。
-2. 手动组卷、试卷版本和发布流程。
+2. 已发布试卷复制为新草稿/发布流程。
 3. 部门/组织同步与考试授权管理。
 4. 通知 Outbox、失败重试、人工重发和结果回执。
-5. 自动发布、监控告警、定期备份及恢复演练。
+5. 在已完成可移植及定期自动备份基础上，增加容量监控告警、外部对象存储适配和恢复演练。
 
 每项仍按“复现/方案 -> 单步实现 -> 本机质量门 -> PR -> 用户部署 -> 端到端验收 -> 开发总结/飞书同步”推进。

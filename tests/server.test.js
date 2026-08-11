@@ -9,6 +9,9 @@ const {
   getAttemptInfo,
   roleForUnionId,
   healthStatus,
+  isSameOriginJsonRequest,
+  questionResourceUrl,
+  sendQuestionResource,
   publicUser,
   matchesFillAnswer
 } = require("../server");
@@ -70,6 +73,40 @@ test("阅卷角色和普通考生角色分离", () => {
 
 test("健康检查不暴露配置或凭证", () => {
   assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
+});
+
+test("高影响用户归并仅接受同源 JSON 请求", () => {
+  assert.equal(isSameOriginJsonRequest({ headers: {
+    "content-type": "application/json; charset=utf-8", origin: "https://exam.t12group.com", host: "exam.t12group.com"
+  } }), true);
+  assert.equal(isSameOriginJsonRequest({ headers: {
+    "content-type": "application/json", origin: "https://evil.example", host: "exam.t12group.com"
+  } }), false);
+  assert.equal(isSameOriginJsonRequest({ headers: { "content-type": "text/plain" } }), false);
+});
+
+test("题目上传资源使用站内 URL 和不可嗅探的图片响应", () => {
+  assert.equal(
+    questionResourceUrl("question_resource_123"),
+    "/api/question-resources/question_resource_123"
+  );
+  const calls = [];
+  const res = {
+    writeHead(status, headers) { calls.push({ status, headers }); },
+    end(content) { calls.push({ content }); }
+  };
+  const content = Buffer.from([0x89, 0x50]);
+  sendQuestionResource({ headers: {} }, res, {
+    mimeType: "image/png",
+    sizeBytes: content.length,
+    sha256: "a".repeat(64),
+    content
+  });
+  assert.equal(calls[0].status, 200);
+  assert.equal(calls[0].headers["Content-Type"], "image/png");
+  assert.equal(calls[0].headers["X-Content-Type-Options"], "nosniff");
+  assert.match(calls[0].headers["Cache-Control"], /private/);
+  assert.deepEqual(calls[1].content, content);
 });
 
 test("浏览器用户信息不暴露 provider subject", () => {

@@ -17,33 +17,9 @@ function requireRealName(value) {
   return name;
 }
 
-async function findCrossPlatformUser(client, provider, realName) {
-  const counterpartProviders = provider === "feishu" ? ["dingtalk", "legacy"] : ["feishu"];
-  const result = await client.query(`
-    SELECT u.id, u.name
-    FROM users u
-    WHERE u.status = 'active'
-      AND EXISTS (
-        SELECT 1 FROM user_identities ui
-        WHERE ui.user_id = u.id AND ui.provider = ANY($1::text[])
-      )
-    ORDER BY u.created_at, u.id
-    FOR UPDATE;`, [counterpartProviders]);
-  const normalized = normalizeRealName(realName);
-  const candidates = result.rows.filter((row) => normalizeRealName(row.name) === normalized);
-  if (candidates.length > 1) {
-    throw new Error(`发现多名真实姓名为“${realName}”的跨平台用户，已停止自动合并，请由管理员核对`);
-  }
-  return candidates[0]?.id || null;
-}
-
-async function recordAutomaticIdentityLink(client, userId, provider, providerSubject, realName) {
-  await client.query(`
-    INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
-    VALUES ($1, $2, 'auto_link_identity_by_real_name', 'user_identity', $3, NULL, $4::jsonb);`, [
-    crypto.randomUUID(), userId, `${provider}:${providerSubject}`,
-    JSON.stringify({ userId, provider, realName })
-  ]);
+// Login and a reviewed identity merge must not observe different ownership for one provider identity.
+async function lockUserIdentityMutation(client) {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1));", ["t12:user-identity-mutation"]);
 }
 
 function maskIdentity(value) {
@@ -55,13 +31,18 @@ function maskIdentity(value) {
 
 function mapAdminUser(row) {
   const roles = Array.isArray(row.roles) ? row.roles.filter(Boolean) : [];
+  const identities = Array.isArray(row.identities) ? row.identities.map((identity) => ({
+    provider: identity.provider,
+    hint: maskIdentity(identity.identifier)
+  })) : [];
   return {
     id: row.id,
     name: row.name,
     employeeNo: row.employee_no || "",
     department: row.department || "",
     status: row.status,
-    identityHint: maskIdentity(row.union_id),
+    identityHint: identities.map((identity) => `${identity.provider}: ${identity.hint}`).join(" / ") || "未记录",
+    providers: [...new Set(identities.map((identity) => identity.provider))],
     roles,
     isAdmin: roles.includes("system_admin")
   };
@@ -77,14 +58,14 @@ async function upsertDingtalkUser(pool, user) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockUserIdentityMutation(client);
     const existing = await client.query(`
       SELECT id, user_id, provider, provider_subject
       FROM user_identities
       WHERE union_id = $1 AND provider IN ('dingtalk', 'legacy')
       ORDER BY (provider = 'dingtalk') DESC, created_at
       LIMIT 1;`, [unionId]);
-    const matchedUserId = existing.rows[0]?.user_id || await findCrossPlatformUser(client, "dingtalk", realName);
-    const userId = matchedUserId || fallbackUserId;
+    const userId = existing.rows[0]?.user_id || fallbackUserId;
     if (existing.rows[0]?.provider === "dingtalk") {
       identityId = existing.rows[0].id;
       providerSubject = existing.rows[0].provider_subject;
@@ -105,9 +86,6 @@ async function upsertDingtalkUser(pool, user) {
       INSERT INTO user_roles (user_id, role_code)
       VALUES ($1, 'student')
       ON CONFLICT (user_id, role_code) DO NOTHING;`, [userId]);
-    if (!existing.rows[0] && matchedUserId) {
-      await recordAutomaticIdentityLink(client, userId, "dingtalk", providerSubject, realName);
-    }
     await client.query("COMMIT");
     return userId;
   } catch (error) {
@@ -128,13 +106,13 @@ async function upsertFeishuUser(pool, user) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockUserIdentityMutation(client);
     const existing = await client.query(`
       SELECT id, user_id
       FROM user_identities
       WHERE provider = 'feishu' AND provider_subject = $1
       LIMIT 1;`, [providerSubject]);
-    const matchedUserId = existing.rows[0]?.user_id || await findCrossPlatformUser(client, "feishu", realName);
-    const userId = matchedUserId || fallbackUserId;
+    const userId = existing.rows[0]?.user_id || fallbackUserId;
     await client.query(`
       INSERT INTO users (id, name)
       VALUES ($1, $2)
@@ -151,9 +129,6 @@ async function upsertFeishuUser(pool, user) {
       INSERT INTO user_roles (user_id, role_code)
       VALUES ($1, 'student')
       ON CONFLICT (user_id, role_code) DO NOTHING;`, [userId]);
-    if (!existing.rows[0] && matchedUserId) {
-      await recordAutomaticIdentityLink(client, userId, "feishu", providerSubject, realName);
-    }
     await client.query("COMMIT");
     return userId;
   } catch (error) {
@@ -198,7 +173,8 @@ async function getAdminAccess(pool, unionId, bootstrapUnionIds = new Set()) {
     FROM users u
     JOIN user_identities ui ON ui.user_id = u.id
     LEFT JOIN user_roles ur ON ur.user_id = u.id
-    WHERE (ui.union_id = $1 OR ui.provider_subject = $1 OR ui.open_id = $1)
+    WHERE u.status = 'active'
+      AND (ui.union_id = $1 OR ui.provider_subject = $1 OR ui.open_id = $1)
       AND ui.provider IN ('dingtalk', 'legacy')
     GROUP BY u.id
     ORDER BY bool_or(ui.provider = 'dingtalk') DESC
@@ -225,7 +201,8 @@ async function getIdentityAccess(pool, provider, providerSubject) {
     FROM users u
     JOIN user_identities ui ON ui.user_id = u.id
     LEFT JOIN user_roles ur ON ur.user_id = u.id
-    WHERE ui.provider = $1 AND ui.provider_subject = $2
+    WHERE u.status = 'active'
+      AND ui.provider = $1 AND ui.provider_subject = $2
     GROUP BY u.id
     LIMIT 1;`, [provider, providerSubject]);
   const row = result.rows[0];
@@ -241,19 +218,18 @@ async function getIdentityAccess(pool, provider, providerSubject) {
 
 async function listAdminUsers(pool) {
   const result = await pool.query(`
-    SELECT u.id, u.name, u.employee_no, u.department, u.status, ui.union_id,
-      COALESCE(array_agg(ur.role_code ORDER BY ur.role_code)
+    SELECT u.id, u.name, u.employee_no, u.department, u.status,
+      jsonb_agg(DISTINCT jsonb_build_object(
+        'provider', ui.provider,
+        'identifier', COALESCE(ui.union_id, ui.provider_subject, ui.open_id)
+      )) AS identities,
+      COALESCE(array_agg(DISTINCT ur.role_code ORDER BY ur.role_code)
         FILTER (WHERE ur.role_code IS NOT NULL), ARRAY[]::text[]) AS roles
     FROM users u
-    JOIN LATERAL (
-      SELECT union_id
-      FROM user_identities
-      WHERE user_id = u.id AND provider = 'dingtalk'
-      ORDER BY created_at, id
-      LIMIT 1
-    ) ui ON true
+    JOIN user_identities ui ON ui.user_id = u.id
+      AND ui.provider IN ('dingtalk', 'feishu', 'legacy')
     LEFT JOIN user_roles ur ON ur.user_id = u.id
-    GROUP BY u.id, u.name, u.employee_no, u.department, u.status, ui.union_id
+    GROUP BY u.id, u.name, u.employee_no, u.department, u.status
     ORDER BY u.name, u.id;`);
   return result.rows.map(mapAdminUser);
 }
@@ -265,11 +241,16 @@ async function setAdminRole(pool, targetUserId, enabled, actorUserId) {
     const targetResult = await client.query(`
       SELECT u.id, u.name
       FROM users u
-      JOIN user_identities ui ON ui.user_id = u.id AND ui.provider = 'dingtalk'
       WHERE u.id = $1
+        AND u.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM user_identities ui
+          WHERE ui.user_id = u.id
+            AND ui.provider IN ('dingtalk', 'feishu', 'legacy')
+        )
       FOR UPDATE OF u;`, [targetUserId]);
     const target = targetResult.rows[0];
-    if (!target) throw new Error("未找到该钉钉用户");
+    if (!target) throw new Error("未找到可授权的平台用户");
     const rolesResult = await client.query(
       "SELECT role_code FROM user_roles WHERE user_id = $1 ORDER BY role_code;",
       [targetUserId]
@@ -321,6 +302,7 @@ module.exports = {
   listAdminUsers,
   mapAdminUser,
   maskIdentity,
+  lockUserIdentityMutation,
   normalizeRealName,
   setAdminRole,
   stableId,

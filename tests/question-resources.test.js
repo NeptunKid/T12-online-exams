@@ -18,6 +18,13 @@ test("答卷快照中已解析的受控图片地址保持可用", () => {
   ], {})[0].image, "/question-resources/extraction/extraction-17-a.png");
 });
 
+test("数据库上传的题目图片 URL 保持为受控 API 路径", () => {
+  assert.deepEqual(mapQuestionImages([
+    "/api/question-resources/question_resource_123",
+    "/api/question-resources/invalid"
+  ]), ["/api/question-resources/question_resource_123"]);
+});
+
 test("萃取原理图表资源清单包含 17/18 题全部受控图片", () => {
   const resources = loadQuestionResourceManifest();
   assert.equal(Object.keys(resources).filter((id) => id.startsWith("resource:extraction-")).length, 9);

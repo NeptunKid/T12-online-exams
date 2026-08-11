@@ -50,10 +50,12 @@ test("合并保留答卷题目快照与成绩，仅归并用户并校正考核�
   assert.equal(calls.some((sql) => sql.includes("submission_questions")), false);
   assert.equal(calls.some((sql) => /objective_score|total_score|scores_json/.test(sql)), false);
   assert.equal(calls.some((sql) => sql.includes("merge_cross_platform_user")), true);
+  assert.equal(calls.some((sql) => sql.includes("UPDATE users SET status = 'disabled'")), true);
+  assert.equal(calls.some((sql) => sql.includes("DELETE FROM users")), false);
 });
 
-test("身份整理参数只有显式 apply 才写库", () => {
-  assert.deepEqual(parseArgs([]), { apply: false, help: false });
-  assert.deepEqual(parseArgs(["--apply"]), { apply: true, help: false });
-  assert.throws(() => parseArgs(["--force"]), /不支持的参数/);
+test("身份整理脚本只允许预览并拒绝命令行 apply", () => {
+  assert.deepEqual(parseArgs([]), { help: false });
+  assert.deepEqual(parseArgs(["--help"]), { help: true });
+  assert.throws(() => parseArgs(["--apply"]), /已停用/);
 });

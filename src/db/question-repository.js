@@ -1,4 +1,9 @@
 const crypto = require("node:crypto");
+const {
+  loadQuestionResourceManifest,
+  mapQuestionImages,
+  uploadedResourceId
+} = require("../resources/question-resources");
 
 const OPTION_TYPES = new Set(["single", "multi", "judge"]);
 const QUESTION_TYPES = new Set(["single", "multi", "judge", "fill", "qa"]);
@@ -25,6 +30,7 @@ function mapQuestion(row) {
     externalId: row.external_id || "",
     type: row.type,
     stem: row.stem,
+    images: mapQuestionImages(row.images_json || []),
     options: options.map((option) => ({
       label: option.label,
       text: option.text,
@@ -32,7 +38,6 @@ function mapQuestion(row) {
     })),
     answer: row.answer_json,
     explanation: row.explanation || "",
-    score: Number(row.score),
     version: Number(row.version),
     status: row.status,
     exams: Array.isArray(row.exam_refs) ? row.exam_refs : []
@@ -41,7 +46,7 @@ function mapQuestion(row) {
 
 const QUESTION_SELECT = `
   SELECT q.id, q.bank_id, qb.name AS bank_name, q.external_id, q.type, q.stem,
-    q.options_json, q.answer_json, q.explanation, q.score, q.version, q.status,
+    q.options_json, q.images_json, q.answer_json, q.explanation, q.version, q.status,
     refs.exam_refs
   FROM questions q
   JOIN question_banks qb ON qb.id = q.bank_id
@@ -129,6 +134,31 @@ function normalizeEditedAnswer(type, answer, options) {
   return normalized;
 }
 
+function normalizeEditedImages(images, existingImages = []) {
+  const source = images === undefined ? mapQuestionImages(existingImages) : images;
+  if (!Array.isArray(source)) throw new Error("题目图片格式无效");
+  if (source.length > 5) throw new Error("每道题最多上传 5 张图片");
+  const normalized = source.map((value) => String(value || "").trim());
+  if (normalized.some((value) => !value)) throw new Error("题目图片地址不能为空");
+  if (new Set(normalized).size !== normalized.length) throw new Error("题目图片不能重复");
+
+  const staticUrls = new Set(Object.values(loadQuestionResourceManifest()).map((item) => item?.url).filter(Boolean));
+  if (normalized.some((value) => !staticUrls.has(value) && !uploadedResourceId(value))) {
+    throw new Error("题目图片必须使用已登记的受控资源");
+  }
+  return normalized;
+}
+
+async function assertUploadedImagesExist(queryable, images) {
+  const ids = images.map(uploadedResourceId).filter(Boolean);
+  if (!ids.length) return;
+  const result = await queryable.query(`
+    SELECT id
+    FROM question_resources
+    WHERE id = ANY($1::text[]);`, [ids]);
+  if (result.rows.length !== new Set(ids).size) throw new Error("题目图片资源不存在，请重新上传");
+}
+
 function normalizeQuestionEdit(existing, input) {
   const stem = String(input?.stem || "").trim();
   if (!stem) throw new Error("题干不能为空");
@@ -137,7 +167,8 @@ function normalizeQuestionEdit(existing, input) {
   if (explanation.length > 50_000) throw new Error("题目解析内容过长");
   const options = normalizeEditedOptions(existing.type, input?.options, existing.options_json);
   const answer = normalizeEditedAnswer(existing.type, input?.answer, options);
-  return { stem, options, answer, explanation };
+  const images = normalizeEditedImages(input?.images, existing.images_json);
+  return { stem, images, options, answer, explanation };
 }
 
 function normalizeQuestionCreate(input) {
@@ -147,11 +178,9 @@ function normalizeQuestionCreate(input) {
   if (!QUESTION_TYPES.has(type)) throw new Error("不支持的题型");
   const externalId = String(input?.externalId || "").trim();
   if (externalId.length > 200) throw new Error("题目编号内容过长");
-  const score = Number(input?.score);
-  if (!Number.isFinite(score) || score < 0 || score > 100_000) throw new Error("默认分值必须是有效的非负数字");
-  const base = { type, options_json: [] };
+  const base = { type, options_json: [], images_json: [] };
   const edited = normalizeQuestionEdit(base, input);
-  return { bankId, type, externalId: externalId || null, score, ...edited };
+  return { bankId, type, externalId: externalId || null, ...edited };
 }
 
 async function getQuestion(client, questionId) {
@@ -165,7 +194,7 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     await client.query("BEGIN");
     const locked = await client.query(`
       SELECT id, bank_id, external_id, type, stem, options_json, answer_json,
-        explanation, score, version, status
+        images_json, explanation, version, status
       FROM questions
       WHERE id = $1
       FOR UPDATE;`, [questionId]);
@@ -176,8 +205,10 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     }
 
     const edited = normalizeQuestionEdit(existing, input);
+    await assertUploadedImagesExist(client, edited.images);
     const before = {
       stem: existing.stem,
+      images: mapQuestionImages(existing.images_json || []),
       options: existing.options_json,
       answer: existing.answer_json,
       explanation: existing.explanation,
@@ -186,13 +217,15 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     await client.query(`
       UPDATE questions
       SET stem = $2,
-          options_json = $3::jsonb,
-          answer_json = $4::jsonb,
-          explanation = $5,
+          images_json = $3::jsonb,
+          options_json = $4::jsonb,
+          answer_json = $5::jsonb,
+          explanation = $6,
           version = version + 1
       WHERE id = $1;`, [
       questionId,
       edited.stem,
+      JSON.stringify(edited.images),
       JSON.stringify(edited.options),
       JSON.stringify(edited.answer),
       edited.explanation
@@ -235,20 +268,21 @@ async function createQuestion(pool, input, actorUserId) {
       WHERE id = $1 AND status = 'active'
       FOR UPDATE;`, [created.bankId]);
     if (!bank.rows.length) throw new Error("未找到可用题库");
+    await assertUploadedImagesExist(client, created.images);
     await client.query(`
       INSERT INTO questions (
-        id, bank_id, external_id, type, stem, options_json, answer_json,
-        explanation, score, version, status
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, 1, 'active');`, [
+        id, bank_id, external_id, type, stem, images_json, options_json, answer_json,
+        explanation, version, status
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, 1, 'active');`, [
       questionId,
       created.bankId,
       created.externalId,
       created.type,
       created.stem,
+      JSON.stringify(created.images),
       JSON.stringify(created.options),
       JSON.stringify(created.answer),
-      created.explanation,
-      created.score
+      created.explanation
     ]);
     await client.query(`
       INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
@@ -260,7 +294,7 @@ async function createQuestion(pool, input, actorUserId) {
         bankId: created.bankId,
         externalId: created.externalId,
         type: created.type,
-        score: created.score,
+        images: created.images,
         version: 1,
         status: "active",
         examIds: []
@@ -283,6 +317,7 @@ module.exports = {
   listQuestions,
   listQuestionBanks,
   mapQuestion,
+  normalizeEditedImages,
   normalizeEditedAnswer,
   normalizeEditedOptions,
   normalizeQuestionCreate,

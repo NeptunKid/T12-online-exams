@@ -11,6 +11,7 @@ function mapExam(row) {
 }
 
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
+const { lockUserIdentityMutation } = require("./user-repository");
 
 function mapQuestion(row) {
   const options = mapQuestionOptions(row.options_json || []);
@@ -181,6 +182,7 @@ async function createSubmission(pool, examId, identity, input = {}) {
   const current = identityValues(identity);
   try {
     await client.query("BEGIN");
+    await lockUserIdentityMutation(client);
     const examResult = await client.query(`
       WITH ${currentIdentityCte("$2", "$3", "$4")}
       SELECT e.id, e.title, e.version, e.pass_score, e.total_score,
@@ -233,7 +235,11 @@ async function createSubmission(pool, examId, identity, input = {}) {
         rows.push(row);
       }
     }
-    await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [userId]);
+    const lockedUser = await client.query(
+      "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR UPDATE;",
+      [userId]
+    );
+    if (!lockedUser.rows.length) throw new Error("账号归属已更新，请刷新页面后重新提交");
     const attemptResult = await client.query(
       "SELECT COALESCE(MAX(attempt_no), 0) + 1 AS attempt_no FROM submissions WHERE exam_id = $1 AND user_id = $2",
       [examId, userId]
