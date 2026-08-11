@@ -140,6 +140,20 @@
           </div>
           <button class="btn primary" id="importBackupBtn" type="button" disabled>导入并创建副本</button>
         </section>
+        <section class="backup-section backup-automation" aria-labelledby="backupAutomationTitle">
+          <div class="backup-automation-head">
+            <div>
+              <h3 id="backupAutomationTitle">自动备份</h3>
+              <p class="brand-sub" id="backupAutomationMeta">正在读取配置</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn secondary compact-btn" id="refreshBackupAutomationBtn" type="button">刷新</button>
+              <button class="btn primary compact-btn" id="runBackupAutomationBtn" type="button" disabled>立即运行</button>
+            </div>
+          </div>
+          <div id="backupAutomationSummary" class="backup-automation-summary"></div>
+          <div id="backupRunList" class="backup-run-list"></div>
+        </section>
       </div>
     </div>
   </dialog>

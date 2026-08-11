@@ -1131,6 +1131,55 @@ select:focus {
   min-width: 0;
 }
 
+.backup-automation {
+  grid-column: 1 / -1;
+}
+
+.backup-automation-head,
+.backup-run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.backup-automation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  min-height: 28px;
+}
+
+.backup-run-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.backup-run-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.backup-run-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.backup-run-main strong,
+.backup-run-error {
+  overflow-wrap: anywhere;
+}
+
+.backup-run-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .exam-authoring-layout {
   display: grid;
   grid-template-columns: minmax(240px, 0.65fr) minmax(0, 1.8fr);
@@ -2010,6 +2059,12 @@ select:focus {
   .backup-manager-grid,
   .backup-control-row {
     grid-template-columns: 1fr;
+  }
+
+  .backup-automation-head,
+  .backup-run-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .backup-control-row .btn,

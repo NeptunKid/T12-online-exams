@@ -14,6 +14,9 @@ const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
 const backupExportRepository = require("./src/backup/export-package");
 const backupImportRepository = require("./src/backup/import-package");
+const backupRepository = require("./src/db/backup-repository");
+const { createAutomaticBackupService } = require("./src/backup/automatic-backup-service");
+const { loadAutomaticBackupConfig, publicAutomaticBackupConfig } = require("./src/backup/automatic-backup-config");
 const { createAdminBackupHandler } = require("./src/http/admin-backup-handler");
 
 function loadEnvFile() {
@@ -55,6 +58,7 @@ const OAUTH_STATE_TTL = 10 * 60 * 1000;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const DINGTALK_PROVIDER = createDingtalkProvider({ clientId: DINGTALK_CLIENT_ID, clientSecret: DINGTALK_CLIENT_SECRET, redirectUri: DINGTALK_REDIRECT_URI });
 const FEISHU_PROVIDER = createFeishuProvider({ appId: FEISHU_APP_ID, appSecret: FEISHU_APP_SECRET, redirectUri: FEISHU_REDIRECT_URI });
+const AUTOMATIC_BACKUP_CONFIG = loadAutomaticBackupConfig(process.env, __dirname);
 let POSTGRES_POOL = null;
 
 const ROOT = __dirname;
@@ -324,10 +328,18 @@ const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
   isSameOriginJsonRequest
 });
 
+const automaticBackupService = createAutomaticBackupService({
+  config: AUTOMATIC_BACKUP_CONFIG,
+  getPool: getPostgresPool
+});
+
 const handleAdminBackup = createAdminBackupHandler({
-  repository: { ...backupExportRepository, ...backupImportRepository },
+  repository: { ...backupExportRepository, ...backupImportRepository, ...backupRepository },
   getPool: getPostgresPool,
-  json
+  json,
+  automation: automaticBackupService,
+  automaticConfig: publicAutomaticBackupConfig(AUTOMATIC_BACKUP_CONFIG),
+  isSameOriginJsonRequest
 });
 
 function requireUser(req, res) {
@@ -1137,6 +1149,7 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
+    automaticBackupService.start();
     console.log(`考试后台追踪系统已启动: http://${HOST}:${PORT}`);
     console.log(`管理员后台: http://${HOST}:${PORT}/admin`);
   });
@@ -1155,6 +1168,7 @@ module.exports = {
   isSameOriginJsonRequest,
   questionResourceUrl,
   sendQuestionResource,
+  automaticBackupService,
   matchesFillAnswer,
   publicUser
 };

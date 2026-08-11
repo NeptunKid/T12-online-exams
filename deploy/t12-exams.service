@@ -19,7 +19,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/opt/t12-online-exams/data
+ReadWritePaths=/opt/t12-online-exams/data -/var/backups/t12-online-exams/portable
 UMask=0077
 
 [Install]

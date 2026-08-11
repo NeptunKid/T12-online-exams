@@ -24,6 +24,7 @@ let examSelectionDirty = false;
 let examSelectAllRequested = false;
 let backupCatalog = { exams: [], banks: [] };
 let backupBusy = false;
+let backupAutomation = { automation: null, runs: [] };
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -120,6 +121,51 @@ function renderBackupCatalog() {
   document.getElementById("exportQuestionBankBackupBtn").disabled = backupBusy || !backupCatalog.banks.length;
 }
 
+function backupScopeLabel(run) {
+  if (run.scopeType === "exam") {
+    return backupCatalog.exams.find((item) => item.id === run.scopeId)?.title || run.scopeId;
+  }
+  return backupCatalog.banks.find((item) => item.id === run.scopeId)?.name || run.scopeId;
+}
+
+function renderBackupAutomation() {
+  const automation = backupAutomation.automation;
+  const meta = document.getElementById("backupAutomationMeta");
+  const summary = document.getElementById("backupAutomationSummary");
+  const list = document.getElementById("backupRunList");
+  const runButton = document.getElementById("runBackupAutomationBtn");
+  if (!automation) {
+    meta.textContent = "自动备份状态暂不可用";
+    summary.innerHTML = "";
+    list.innerHTML = `<div class="empty-state">暂无自动备份运行记录</div>`;
+    runButton.disabled = true;
+    return;
+  }
+  const storage = automation.storageType === "filesystem" ? "服务器目录" : "PostgreSQL";
+  meta.textContent = automation.enabled
+    ? `每 ${automation.intervalHours} 小时 · ${storage} · 每个对象保留 ${automation.retentionCount} 份`
+    : "未启用；请通过服务器环境变量配置";
+  const last = automation.lastSummary;
+  summary.innerHTML = `
+    <span class="badge ${automation.enabled ? "graded" : "pending"}">${automation.enabled ? "已启用" : "未启用"}</span>
+    <span>${automation.running ? "正在运行" : automation.nextRunAt ? `下次 ${fmtTime(automation.nextRunAt)}` : "当前空闲"}</span>
+    ${last ? `<span>上次：成功 ${Number(last.succeeded || 0)}，失败 ${Number(last.failed || 0)}${last.cleanupFailed ? `，清理失败 ${Number(last.cleanupFailed)}` : ""}</span>` : ""}
+  `;
+  runButton.disabled = backupBusy || !automation.enabled || automation.running;
+  const runs = backupAutomation.runs || [];
+  list.innerHTML = runs.length ? runs.map((run) => `
+    <div class="backup-run-row">
+      <div class="backup-run-main">
+        <strong>${esc(backupScopeLabel(run))}</strong>
+        <span class="brand-sub">${run.scopeType === "exam" ? "试卷" : "题库"} · ${fmtTime(run.startedAt)}</span>
+        ${run.errorMessage ? `<span class="backup-run-error">${esc(run.errorMessage)}</span>` : ""}
+      </div>
+      <span class="badge ${run.status === "succeeded" ? "graded" : run.status === "failed" ? "danger" : "pending"}">${run.status === "succeeded" ? "成功" : run.status === "failed" ? "失败" : "运行中"}</span>
+      ${run.artifact ? `<button class="btn secondary compact-btn stored-backup-download-btn" type="button" data-artifact-id="${esc(run.artifact.id)}">下载</button>` : ""}
+    </div>
+  `).join("") : `<div class="empty-state">暂无自动备份运行记录</div>`;
+}
+
 async function loadBackupCatalog() {
   const [examData, questionData] = await Promise.all([
     api("/api/admin/exams"),
@@ -132,17 +178,23 @@ async function loadBackupCatalog() {
   renderBackupCatalog();
 }
 
+async function loadBackupAutomation() {
+  backupAutomation = await api("/api/admin/backups/automation");
+  renderBackupAutomation();
+}
+
 async function openBackupManager() {
   const dialog = document.getElementById("backupManagerDialog");
   dialog.showModal();
   document.getElementById("backupManagerMsg").classList.add("hidden");
   backupCatalog = { exams: [], banks: [] };
+  backupAutomation = { automation: null, runs: [] };
   renderBackupCatalog();
-  try {
-    await loadBackupCatalog();
-  } catch (error) {
-    showBackupMessage(error.message || "备份目录载入失败", "error");
-  }
+  renderBackupAutomation();
+  const results = await Promise.allSettled([loadBackupCatalog(), loadBackupAutomation()]);
+  renderBackupAutomation();
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length) showBackupMessage(failures[0].reason?.message || "备份状态载入失败", "error");
 }
 
 function downloadBlob(blob, filename) {
@@ -219,6 +271,43 @@ async function importBackup() {
     backupBusy = false;
     document.getElementById("importBackupBtn").disabled = !input.files?.length;
     renderBackupCatalog();
+  }
+}
+
+async function triggerAutomaticBackup() {
+  if (backupBusy || !backupAutomation.automation?.enabled) return;
+  backupBusy = true;
+  renderBackupCatalog();
+  renderBackupAutomation();
+  try {
+    await api("/api/admin/backups/automation/run", { method: "POST", body: "{}" });
+    showBackupMessage("自动备份已启动，可稍后刷新查看每个对象的结果。", "success");
+    await loadBackupAutomation();
+  } catch (error) {
+    showBackupMessage(error.message || "自动备份启动失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupCatalog();
+    renderBackupAutomation();
+  }
+}
+
+async function downloadStoredBackup(artifactId) {
+  if (backupBusy || !artifactId) return;
+  backupBusy = true;
+  renderBackupAutomation();
+  try {
+    const response = await fetch(`/api/admin/backups/artifacts/${encodeURIComponent(artifactId)}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "历史备份下载失败");
+    }
+    downloadBlob(await response.blob(), backupFilenameFromResponse(response, "stored"));
+  } catch (error) {
+    showBackupMessage(error.message || "历史备份下载失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupAutomation();
   }
 }
 
@@ -1628,6 +1717,14 @@ document.getElementById("backupImportFile").addEventListener("change", (event) =
   document.getElementById("importBackupBtn").disabled = backupBusy || !event.target.files?.length;
 });
 document.getElementById("importBackupBtn").addEventListener("click", importBackup);
+document.getElementById("refreshBackupAutomationBtn").addEventListener("click", async () => {
+  try { await loadBackupAutomation(); } catch (error) { showBackupMessage(error.message || "自动备份状态刷新失败", "error"); }
+});
+document.getElementById("runBackupAutomationBtn").addEventListener("click", triggerAutomaticBackup);
+document.getElementById("backupRunList").addEventListener("click", (event) => {
+  const button = event.target.closest(".stored-backup-download-btn");
+  if (button) downloadStoredBackup(button.dataset.artifactId);
+});
 document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
   if (questionImageUploadBusy) {
     document.getElementById("questionImageMsg").textContent = "图片正在上传，完成前不能关闭";

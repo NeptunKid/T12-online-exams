@@ -40,6 +40,17 @@ test("导入导出在进行中禁止重复操作或关闭弹窗", () => {
   assert.match(html, /id="importBackupBtn"[^>]*disabled/);
 });
 
+test("自动备份显示公开状态、支持立即运行和下载历史工件", () => {
+  assert.match(html, /id="backupAutomationMeta"/);
+  assert.match(html, /id="runBackupAutomationBtn"[^>]*disabled/);
+  assert.match(html, /id="backupRunList"/);
+  assert.match(script, /api\("\/api\/admin\/backups\/automation"\)/);
+  assert.match(script, /api\("\/api\/admin\/backups\/automation\/run", \{ method: "POST", body: "\{\}" \}\)/);
+  assert.match(script, /\/api\/admin\/backups\/artifacts\/\$\{encodeURIComponent\(artifactId\)\}/);
+  assert.match(script, /stored-backup-download-btn/);
+  assert.doesNotMatch(script, /storageKey/);
+});
+
 test("备份界面具备桌面双栏和手机单栏布局", () => {
   assert.match(css, /\.backup-manager-grid \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.backup-manager-grid,[\s\S]*\.backup-control-row \{\s*grid-template-columns: 1fr/);

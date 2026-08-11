@@ -106,3 +106,14 @@ test("0007 建立试卷分值所有权兼容层且不改写历史答卷", () => 
   assert.match(down, /DROP COLUMN question_bank_id/);
   assert.match(down, /ALTER COLUMN score DROP DEFAULT/);
 });
+
+test("0009 自动备份迁移不读写历史答卷", () => {
+  const migration = listMigrations().find((item) => item.name === "0009_automatic_backups");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE backup_runs/);
+  assert.match(migration.sql, /CREATE TABLE backup_artifacts/);
+  assert.match(migration.sql, /storage_type IN \('database', 'filesystem'\)/);
+  assert.match(migration.sql, /ON DELETE CASCADE/);
+  assert.match(migration.sql, /retention_expires_at timestamptz/);
+  assert.doesNotMatch(migration.sql, /\b(submissions|submission_questions)\b/i);
+});

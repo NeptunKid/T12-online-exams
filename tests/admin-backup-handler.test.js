@@ -30,11 +30,21 @@ function setup(overrides = {}) {
       calls.push({ pool, content, actor });
       return { kind: "exam", questionBanks: [{ id: "bank-new", name: "题库" }], exams: [{ id: "exam-new", title: "试卷", status: "draft" }], counts: { questions: 1, resources: 1 } };
     },
+    async listRecentBackupRuns() { return []; },
+    async getBackupArtifact() { return null; },
     ...overrides.repository
   };
   const json = (res, status, body) => { res.status = status; res.body = body; };
   const pool = Object.hasOwn(overrides, "pool") ? overrides.pool : { name: "pool" };
-  return { calls, handler: createAdminBackupHandler({ repository, getPool: () => pool, json, readBody: overrides.readBody }) };
+  return { calls, handler: createAdminBackupHandler({
+    repository,
+    getPool: () => pool,
+    json,
+    readBody: overrides.readBody,
+    automation: overrides.automation,
+    automaticConfig: overrides.automaticConfig,
+    isSameOriginJsonRequest: overrides.isSameOriginJsonRequest || (() => false)
+  }) };
 }
 
 test("试卷导出返回可解析的自包含 ZIP 和安全下载响应头", async () => {
@@ -91,4 +101,54 @@ test("备份路由执行权限、数据库配置、参数和来源校验", async
 test("不属于备份模块的路径返回 false", async () => {
   const { handler } = setup();
   assert.equal(await handler({ method: "GET" }, response(), "/api/admin/questions", {}), false);
+});
+
+test("自动备份状态只返回公开配置和受控运行字段", async () => {
+  const run = {
+    id: "run-1", scopeType: "exam", scopeId: "exam-1", triggerType: "scheduled", status: "succeeded",
+    requestedBy: "private-user", startedAt: "start", completedAt: "end", errorMessage: "",
+    artifact: { id: "artifact-1", filename: "exam.t12backup", storageKey: "/private/path", sha256: "a".repeat(64), sizeBytes: 12, createdAt: "now" }
+  };
+  const automation = { status: () => ({ running: false, nextRunAt: null, lastSummary: null }) };
+  const { handler } = setup({
+    automation,
+    automaticConfig: { enabled: true, storageType: "filesystem", intervalHours: 24, retentionCount: 7 },
+    repository: { async listRecentBackupRuns() { return [run]; } }
+  });
+  const res = response();
+  await handler({ method: "GET", headers: {} }, res, "/api/admin/backups/automation", { canManageQuestions: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.automation.storageType, "filesystem");
+  assert.equal(Object.hasOwn(res.body.runs[0], "requestedBy"), false);
+  assert.equal(Object.hasOwn(res.body.runs[0].artifact, "storageKey"), false);
+});
+
+test("同源 JSON 可以立即启动自动备份，跨站请求被拒绝", async () => {
+  const automation = { triggerManual(actor) { return { started: true, actor }; } };
+  let setupResult = setup({ automation, isSameOriginJsonRequest: () => true });
+  let res = response();
+  await setupResult.handler({ method: "POST", headers: {} }, res, "/api/admin/backups/automation/run", { canManageQuestions: true, userId: "admin-1" });
+  assert.equal(res.status, 202);
+  assert.equal(res.body.run.actor, "admin-1");
+  setupResult = setup({ automation, isSameOriginJsonRequest: () => false });
+  res = response();
+  await setupResult.handler({ method: "POST", headers: {} }, res, "/api/admin/backups/automation/run", { canManageQuestions: true, userId: "admin-1" });
+  assert.equal(res.status, 403);
+});
+
+test("历史工件下载支持数据库正文并在响应前复核 SHA-256", async () => {
+  const crypto = require("node:crypto");
+  const content = Buffer.from("archive");
+  const artifact = {
+    id: "artifact-1", storageType: "database", filename: "exam.t12backup",
+    contentType: "application/zip", content, storageKey: "",
+    sizeBytes: content.length, sha256: crypto.createHash("sha256").update(content).digest("hex")
+  };
+  const automation = { readFilesystemArtifact: async () => { throw new Error("unexpected"); } };
+  const { handler } = setup({ automation, repository: { async getBackupArtifact() { return artifact; } } });
+  const res = response();
+  await handler({ method: "GET", headers: {} }, res, "/api/admin/backups/artifacts/artifact-1", { canManageQuestions: true });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, content);
+  assert.equal(res.headers.ETag, `"${artifact.sha256}"`);
 });
