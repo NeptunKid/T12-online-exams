@@ -12,6 +12,9 @@ const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = req
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
+const backupExportRepository = require("./src/backup/export-package");
+const backupImportRepository = require("./src/backup/import-package");
+const { createAdminBackupHandler } = require("./src/http/admin-backup-handler");
 
 function loadEnvFile() {
   const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
@@ -319,6 +322,12 @@ const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
   readBody,
   json,
   isSameOriginJsonRequest
+});
+
+const handleAdminBackup = createAdminBackupHandler({
+  repository: { ...backupExportRepository, ...backupImportRepository },
+  getPool: getPostgresPool,
+  json
 });
 
 function requireUser(req, res) {
@@ -765,6 +774,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (await handleAdminExamAuthoring(req, res, pathname, adminAccess)) return;
+  if (await handleAdminBackup(req, res, pathname, adminAccess)) return;
 
   if (req.method === "POST" && pathname === "/api/admin/question-resources") {
     if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });

@@ -1096,6 +1096,41 @@ select:focus {
   max-height: calc(100vh - 32px);
 }
 
+.backup-dialog {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.backup-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.backup-section {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.backup-section h3,
+.backup-section p {
+  margin: 0;
+}
+
+.backup-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.backup-control-row select {
+  min-width: 0;
+}
+
 .exam-authoring-layout {
   display: grid;
   grid-template-columns: minmax(240px, 0.65fr) minmax(0, 1.8fr);
@@ -1970,6 +2005,16 @@ select:focus {
 
   .exam-authoring-layout {
     grid-template-columns: 1fr;
+  }
+
+  .backup-manager-grid,
+  .backup-control-row {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-control-row .btn,
+  .backup-section > .btn {
+    width: 100%;
   }
 
   .exam-authoring-list {

@@ -22,6 +22,8 @@ let currentExamAuthoring = null;
 let examAuthoringBusy = false;
 let examSelectionDirty = false;
 let examSelectAllRequested = false;
+let backupCatalog = { exams: [], banks: [] };
+let backupBusy = false;
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -68,7 +70,7 @@ async function api(path, options = {}) {
 }
 
 function closeOpenAdminDialogs() {
-  for (const id of ["adminManagerDialog", "questionManagerDialog", "examAuthoringDialog"]) {
+  for (const id of ["adminManagerDialog", "questionManagerDialog", "examAuthoringDialog", "backupManagerDialog"]) {
     const dialog = document.getElementById(id);
     if (dialog?.open) dialog.close();
   }
@@ -95,7 +97,129 @@ function applyAdminAccess(access) {
   document.getElementById("manageAdminsBtn").classList.toggle("hidden", !access.canManageAdmins);
   document.getElementById("manageQuestionsBtn").classList.toggle("hidden", !access.canManageQuestions);
   document.getElementById("manageExamsBtn").classList.toggle("hidden", !access.canManageQuestions);
+  document.getElementById("manageBackupsBtn").classList.toggle("hidden", !access.canManageQuestions);
   currentAdminUserId = access.currentUserId || "";
+}
+
+function showBackupMessage(message, tone = "") {
+  const element = document.getElementById("backupManagerMsg");
+  element.textContent = message;
+  element.className = `notice${tone ? ` ${tone}` : ""}`;
+}
+
+function renderBackupCatalog() {
+  const examSelect = document.getElementById("backupExamSelect");
+  const bankSelect = document.getElementById("backupQuestionBankSelect");
+  examSelect.innerHTML = backupCatalog.exams.length
+    ? backupCatalog.exams.map((exam) => `<option value="${esc(exam.id)}">${esc(exam.title || "未命名试卷")}</option>`).join("")
+    : `<option value="">暂无可导出的试卷</option>`;
+  bankSelect.innerHTML = backupCatalog.banks.length
+    ? backupCatalog.banks.map((bank) => `<option value="${esc(bank.id)}">${esc(bank.name || "未命名题库")}</option>`).join("")
+    : `<option value="">暂无可导出的题库</option>`;
+  document.getElementById("exportExamBackupBtn").disabled = backupBusy || !backupCatalog.exams.length;
+  document.getElementById("exportQuestionBankBackupBtn").disabled = backupBusy || !backupCatalog.banks.length;
+}
+
+async function loadBackupCatalog() {
+  const [examData, questionData] = await Promise.all([
+    api("/api/admin/exams"),
+    api("/api/admin/questions")
+  ]);
+  backupCatalog = {
+    exams: examData.exams || [],
+    banks: questionData.banks || []
+  };
+  renderBackupCatalog();
+}
+
+async function openBackupManager() {
+  const dialog = document.getElementById("backupManagerDialog");
+  dialog.showModal();
+  document.getElementById("backupManagerMsg").classList.add("hidden");
+  backupCatalog = { exams: [], banks: [] };
+  renderBackupCatalog();
+  try {
+    await loadBackupCatalog();
+  } catch (error) {
+    showBackupMessage(error.message || "备份目录载入失败", "error");
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function backupFilenameFromResponse(response, kind) {
+  const disposition = response.headers.get("content-disposition") || "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  if (encoded) {
+    try { return decodeURIComponent(encoded); } catch (_) { /* use fallback */ }
+  }
+  return plain || `t12-${kind}-backup.t12backup`;
+}
+
+async function exportBackup(kind, id) {
+  if (backupBusy || !id) return;
+  backupBusy = true;
+  renderBackupCatalog();
+  showBackupMessage("正在生成自包含备份包，请勿关闭页面");
+  try {
+    const query = new URLSearchParams({ kind, id });
+    const response = await fetch(`/api/admin/backups/export?${query.toString()}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
+      throw new Error(data.error || "备份导出失败");
+    }
+    downloadBlob(await response.blob(), backupFilenameFromResponse(response, kind));
+    showBackupMessage("备份包已生成并开始下载。", "success");
+  } catch (error) {
+    showBackupMessage(error.message || "备份导出失败", "error");
+  } finally {
+    backupBusy = false;
+    renderBackupCatalog();
+  }
+}
+
+async function importBackup() {
+  const input = document.getElementById("backupImportFile");
+  const file = input.files?.[0];
+  if (backupBusy || !file) return;
+  backupBusy = true;
+  document.getElementById("importBackupBtn").disabled = true;
+  showBackupMessage("正在校验并导入备份包，请勿关闭页面");
+  try {
+    const form = new FormData();
+    form.append("backup", file, file.name);
+    const response = await fetch("/api/admin/backups/import", { method: "POST", body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
+      throw new Error(data.error || "备份导入失败");
+    }
+    const created = [data.questionBank?.name, data.exam?.title].filter(Boolean).join("、");
+    showBackupMessage(created ? `导入成功，已创建：${created}` : "导入成功，已创建新的题库或试卷。", "success");
+    input.value = "";
+    try {
+      await loadBackupCatalog();
+    } catch (_) {
+      showBackupMessage("导入成功，但备份目录刷新失败；重新打开本窗口即可查看新记录。", "success");
+    }
+  } catch (error) {
+    showBackupMessage(error.message || "备份导入失败", "error");
+  } finally {
+    backupBusy = false;
+    document.getElementById("importBackupBtn").disabled = !input.files?.length;
+    renderBackupCatalog();
+  }
 }
 
 async function verifyAdminSession() {
@@ -1483,10 +1607,27 @@ document.getElementById("refreshBtn").addEventListener("click", loadList);
 document.getElementById("manageAdminsBtn").addEventListener("click", openAdminManager);
 document.getElementById("manageExamsBtn").addEventListener("click", openExamAuthoring);
 document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
+document.getElementById("manageBackupsBtn").addEventListener("click", openBackupManager);
 document.getElementById("newQuestionBtn").addEventListener("click", startNewQuestion);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
   document.getElementById("adminManagerDialog").close();
 });
+document.getElementById("closeBackupManagerBtn").addEventListener("click", () => {
+  if (!backupBusy) document.getElementById("backupManagerDialog").close();
+});
+document.getElementById("backupManagerDialog").addEventListener("cancel", (event) => {
+  if (backupBusy) event.preventDefault();
+});
+document.getElementById("exportExamBackupBtn").addEventListener("click", () => {
+  exportBackup("exam", document.getElementById("backupExamSelect").value);
+});
+document.getElementById("exportQuestionBankBackupBtn").addEventListener("click", () => {
+  exportBackup("question-bank", document.getElementById("backupQuestionBankSelect").value);
+});
+document.getElementById("backupImportFile").addEventListener("change", (event) => {
+  document.getElementById("importBackupBtn").disabled = backupBusy || !event.target.files?.length;
+});
+document.getElementById("importBackupBtn").addEventListener("click", importBackup);
 document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
   if (questionImageUploadBusy) {
     document.getElementById("questionImageMsg").textContent = "图片正在上传，完成前不能关闭";
