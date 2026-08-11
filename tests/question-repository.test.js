@@ -16,6 +16,7 @@ test("题库映射返回可编辑字段但不暴露图片资源标识", () => {
   });
   assert.deepEqual(question.options, [{ label: "A", text: "选项", hasImage: true }]);
   assert.equal(JSON.stringify(question).includes("resource:secret"), false);
+  assert.equal(Object.hasOwn(question, "score"), false);
 });
 
 test("题目编辑校验答案必须来自现有选项", () => {
@@ -25,7 +26,7 @@ test("题目编辑校验答案必须来自现有选项", () => {
   }), /参考答案必须来自现有选项/);
 });
 
-test("手动录题校验题库、题型、分值、选项和答案", () => {
+test("手动录题校验题库、题型、选项和答案且不接收题库分值", () => {
   const created = normalizeQuestionCreate({
     bankId: "bank-1",
     externalId: " manual-1 ",
@@ -37,10 +38,9 @@ test("手动录题校验题库、题型、分值、选项和答案", () => {
     score: "2.5"
   });
   assert.equal(created.externalId, "manual-1");
-  assert.equal(created.score, 2.5);
+  assert.equal(Object.hasOwn(created, "score"), false);
   assert.deepEqual(created.answer, ["A", "B"]);
   assert.throws(() => normalizeQuestionCreate({ ...created, bankId: "" }), /请选择题库/);
-  assert.throws(() => normalizeQuestionCreate({ ...created, score: -1 }), /默认分值/);
 });
 
 test("手动新增题目写入题库和审计日志但不加入试卷", async () => {
@@ -65,12 +65,13 @@ test("手动新增题目写入题库和审计日志但不加入试卷", async ()
   const question = await createQuestion({ connect: async () => client }, {
     bankId: "bank-1", externalId: "manual-1", type: "single", stem: "题干",
     options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }],
-    answer: "A", explanation: "解析", score: 1
+    answer: "A", explanation: "解析"
   }, "admin-1");
 
   assert.equal(question.bankId, "bank-1");
   assert.deepEqual(question.exams, []);
   assert.equal(calls.some((call) => call.sql.includes("INSERT INTO questions")), true);
+  assert.equal(calls.find((call) => call.sql.includes("INSERT INTO questions")).sql.includes("score"), false);
   assert.equal(calls.some((call) => call.sql.includes("'create_question'")), true);
   assert.equal(calls.some((call) => call.sql.includes("INSERT INTO exam_questions")), false);
   assert.equal(calls.at(-1).sql, "COMMIT");

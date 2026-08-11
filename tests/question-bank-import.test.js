@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const {
   BANKS,
+  ensureBank,
   ensureExam,
   ensureAssignmentsForActiveDingtalkUsers,
   ensureAssignmentsForActiveUsers,
@@ -64,7 +65,7 @@ test("legal regulations exam is published for 40 minutes with an 85 percent pass
   const questions = Array.from({ length: 53 }, (_, index) => ({
     id: `question-legal-${String(index + 2).padStart(3, "0")}`,
     position: index + 1,
-    score: index < 34 ? 1 : index < 44 ? 3 : 4
+    examScore: index < 34 ? 1 : index < 44 ? 3 : 4
   }));
 
   const result = await ensureExam(client, bank, questions, true);
@@ -78,7 +79,7 @@ test("legal regulations exam is published for 40 minutes with an 85 percent pass
     duration: 40
   });
   assert.deepEqual(result, { total: 100, pass: 85, status: "published" });
-  assert.deepEqual(inserts[0], ["exam-legal-regulations", "餐饮相关法律法规", "published", 2400, 85, 100]);
+  assert.deepEqual(inserts[0], ["exam-legal-regulations", "餐饮相关法律法规", "published", 2400, 85, 100, "bank-legal-regulations"]);
 });
 
 test("coffee basics exam is published for 60 minutes with an 85 percent pass score", async () => {
@@ -99,7 +100,7 @@ test("coffee basics exam is published for 60 minutes with an 85 percent pass sco
   const questions = Array.from({ length: 100 }, (_, index) => ({
     id: `question-coffee-${String(index + 1).padStart(3, "0")}`,
     position: index + 1,
-    score: 1
+    examScore: 1
   }));
 
   const result = await ensureExam(client, bank, questions, true);
@@ -113,7 +114,29 @@ test("coffee basics exam is published for 60 minutes with an 85 percent pass sco
     duration: 60
   });
   assert.deepEqual(result, { total: 100, pass: 85, status: "published" });
-  assert.deepEqual(inserts[0], ["exam-coffee-basics", "咖啡基础知识", "published", 3600, 85, 100]);
+  assert.deepEqual(inserts[0], ["exam-coffee-basics", "咖啡基础知识", "published", 3600, 85, 100, "bank-coffee-basics"]);
+});
+
+test("旧 CSV 分值只写入组卷关系而不写题库题目", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.startsWith("SELECT id, name")) return { rows: [] };
+      if (sql.startsWith("SELECT bank_id")) return { rows: [] };
+      return { rows: [] };
+    }
+  };
+  const rows = await ensureBank(client, {
+    key: "sample", bankId: "bank-sample", title: "测试题库"
+  }, [{
+    externalId: "1", type: "single", stem: "题干", options: [{ label: "A", text: "答案" }, { label: "B", text: "干扰项" }],
+    optionImages: {}, imageUrls: [], answer: "A", explanation: "解析", score: 3
+  }]);
+  const insert = calls.find((call) => call.sql.includes("INSERT INTO questions"));
+  assert.ok(insert);
+  assert.equal(insert.sql.includes("score"), false);
+  assert.deepEqual(rows, [{ id: "question-sample-1", position: 1, examScore: 3 }]);
 });
 
 test("parseArgs supports assigning all active DingTalk users", () => {

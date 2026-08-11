@@ -82,3 +82,27 @@ test("0006 为钉钉和飞书员工建立可回滚的跨平台全员授权", () 
   assert.match(down, /DELETE FROM exam_assignments/);
   assert.match(down, /all-active-users/);
 });
+
+test("0007 建立试卷分值所有权兼容层且不改写历史答卷", () => {
+  const migration = listMigrations().find((item) => item.name === "0007_exam_authoring_score_ownership");
+  assert.ok(migration);
+
+  assert.match(migration.sql, /ALTER COLUMN score SET DEFAULT 0/);
+  assert.doesNotMatch(migration.sql, /ALTER COLUMN score DROP NOT NULL/);
+  assert.doesNotMatch(migration.sql, /DROP COLUMN score/);
+
+  assert.match(migration.sql, /ADD COLUMN question_bank_id text/);
+  assert.match(migration.sql, /FOREIGN KEY \(question_bank_id\) REFERENCES question_banks \(id\)/);
+  assert.match(migration.sql, /HAVING COUNT\(DISTINCT q\.bank_id\) = 1/);
+
+  assert.match(migration.sql, /ADD COLUMN pass_rate numeric\(7, 6\)/);
+  assert.match(migration.sql, /ROUND\(pass_score \/ total_score, 6\)/);
+  assert.match(migration.sql, /ALTER COLUMN pass_rate SET DEFAULT 0\.600000/);
+  assert.match(migration.sql, /CHECK \(pass_rate >= 0 AND pass_rate <= 1\)/);
+  assert.doesNotMatch(migration.sql, /UPDATE\s+(submissions|submission_questions)\b/i);
+
+  const down = require("node:fs").readFileSync(migration.downPath, "utf8");
+  assert.match(down, /DROP COLUMN pass_rate/);
+  assert.match(down, /DROP COLUMN question_bank_id/);
+  assert.match(down, /ALTER COLUMN score DROP DEFAULT/);
+});

@@ -36,4 +36,5 @@ test("管理员题库提供手动新增题目入口", () => {
   assert.match(html, /<label for="questionExamFilter">分类<\/label>/);
   assert.match(script, /api\("\/api\/admin\/questions", \{/);
   assert.match(script, /保存后进入题库，但不会自动加入任何试卷/);
+  assert.doesNotMatch(script, /newQuestionScore|默认分值/);
 });

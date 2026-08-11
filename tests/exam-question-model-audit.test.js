@@ -19,7 +19,7 @@ const examRows = [
     exam_question_score_total: "100.00",
     declared_total_score: "100.00",
     total_score_difference: "0.00",
-    question_score_mismatch_count: "0"
+    deprecated_question_score_difference_count: "0"
   },
   {
     exam_id: "exam-2",
@@ -30,7 +30,7 @@ const examRows = [
     exam_question_score_total: "90.00",
     declared_total_score: "100.00",
     total_score_difference: "-10.00",
-    question_score_mismatch_count: "2"
+    deprecated_question_score_difference_count: "2"
   }
 ];
 
@@ -52,13 +52,13 @@ test("审计行使用白名单映射且不输出题干答案或身份", () => {
   assert.deepEqual(Object.keys(mapped), [
     "examId", "examTitle", "examStatus", "questionCount", "questionBankCount",
     "examQuestionScoreTotal", "declaredTotalScore", "totalScoreDifference",
-    "totalScoreMatches", "questionScoreMismatchCount"
+    "totalScoreMatches", "deprecatedQuestionScoreDifferenceCount"
   ]);
   assert.equal(JSON.stringify(mapped).includes("不得输出"), false);
   assert.equal(JSON.stringify(mapped).includes("private"), false);
 });
 
-test("审计报告汇总多题库、总分、题目分值和孤立题差异", () => {
+test("审计报告汇总多题库、总分、废弃分值残留和孤立题差异", () => {
   const report = buildAuditReport(examRows, {
     orphan_question_count: "4",
     active_orphan_question_count: "3"
@@ -67,7 +67,7 @@ test("审计报告汇总多题库、总分、题目分值和孤立题差异", ()
     examCount: 2,
     multiBankExamCount: 1,
     totalScoreMismatchExamCount: 1,
-    questionScoreMismatchReferenceCount: 2,
+    deprecatedQuestionScoreDifferenceReferenceCount: 2,
     orphanQuestionCount: 4,
     activeOrphanQuestionCount: 3
   });

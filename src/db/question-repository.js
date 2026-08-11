@@ -32,7 +32,6 @@ function mapQuestion(row) {
     })),
     answer: row.answer_json,
     explanation: row.explanation || "",
-    score: Number(row.score),
     version: Number(row.version),
     status: row.status,
     exams: Array.isArray(row.exam_refs) ? row.exam_refs : []
@@ -41,7 +40,7 @@ function mapQuestion(row) {
 
 const QUESTION_SELECT = `
   SELECT q.id, q.bank_id, qb.name AS bank_name, q.external_id, q.type, q.stem,
-    q.options_json, q.answer_json, q.explanation, q.score, q.version, q.status,
+    q.options_json, q.answer_json, q.explanation, q.version, q.status,
     refs.exam_refs
   FROM questions q
   JOIN question_banks qb ON qb.id = q.bank_id
@@ -147,11 +146,9 @@ function normalizeQuestionCreate(input) {
   if (!QUESTION_TYPES.has(type)) throw new Error("不支持的题型");
   const externalId = String(input?.externalId || "").trim();
   if (externalId.length > 200) throw new Error("题目编号内容过长");
-  const score = Number(input?.score);
-  if (!Number.isFinite(score) || score < 0 || score > 100_000) throw new Error("默认分值必须是有效的非负数字");
   const base = { type, options_json: [] };
   const edited = normalizeQuestionEdit(base, input);
-  return { bankId, type, externalId: externalId || null, score, ...edited };
+  return { bankId, type, externalId: externalId || null, ...edited };
 }
 
 async function getQuestion(client, questionId) {
@@ -165,7 +162,7 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     await client.query("BEGIN");
     const locked = await client.query(`
       SELECT id, bank_id, external_id, type, stem, options_json, answer_json,
-        explanation, score, version, status
+        explanation, version, status
       FROM questions
       WHERE id = $1
       FOR UPDATE;`, [questionId]);
@@ -238,8 +235,8 @@ async function createQuestion(pool, input, actorUserId) {
     await client.query(`
       INSERT INTO questions (
         id, bank_id, external_id, type, stem, options_json, answer_json,
-        explanation, score, version, status
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, 1, 'active');`, [
+        explanation, version, status
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, 1, 'active');`, [
       questionId,
       created.bankId,
       created.externalId,
@@ -247,8 +244,7 @@ async function createQuestion(pool, input, actorUserId) {
       created.stem,
       JSON.stringify(created.options),
       JSON.stringify(created.answer),
-      created.explanation,
-      created.score
+      created.explanation
     ]);
     await client.query(`
       INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
@@ -260,7 +256,6 @@ async function createQuestion(pool, input, actorUserId) {
         bankId: created.bankId,
         externalId: created.externalId,
         type: created.type,
-        score: created.score,
         version: 1,
         status: "active",
         examIds: []

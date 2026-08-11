@@ -299,7 +299,7 @@ function renderQuestionList() {
   list.innerHTML = filtered.length ? filtered.map((question) => `
     <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
       <span class="question-list-stem">${questionText(question.stem)}</span>
-      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)} · ${question.score} 分</span>
+      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)}</span>
     </button>
   `).join("") : `<div class="empty-state admin-user-empty">暂无匹配题目</div>`;
   for (const button of document.querySelectorAll(".question-list-item")) {
@@ -351,8 +351,7 @@ function defaultNewQuestion(type = "single", bankId = selectedQuestionBankId()) 
       ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
       : ["single", "multi"].includes(type) ? choiceOptions : [],
     answer: type === "multi" ? ["A"] : type === "fill" ? [] : type === "qa" ? "" : "A",
-    explanation: "",
-    score: 1
+    explanation: ""
   };
 }
 
@@ -384,10 +383,6 @@ function renderNewQuestionEditor() {
         <div class="field">
           <label for="newQuestionExternalId">题目编号（可选）</label>
           <input id="newQuestionExternalId" value="${esc(draft.externalId)}" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="newQuestionScore">默认分值</label>
-          <input id="newQuestionScore" type="number" min="0" max="100000" step="0.01" value="${esc(draft.score)}" required>
         </div>
       </div>
       <div class="field">
@@ -449,8 +444,7 @@ function readNewQuestionDraft() {
       : newQuestionDraft.type === "fill"
         ? answerText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
         : answerText,
-    explanation: document.getElementById("questionExplanation").value,
-    score: document.getElementById("newQuestionScore").value
+    explanation: document.getElementById("questionExplanation").value
   };
 }
 
@@ -476,7 +470,7 @@ function cancelNewQuestion() {
 function changeNewQuestionType(event) {
   readNewQuestionDraft();
   const bankId = newQuestionDraft.bankId;
-  const preserved = { stem: newQuestionDraft.stem, externalId: newQuestionDraft.externalId, explanation: newQuestionDraft.explanation, score: newQuestionDraft.score };
+  const preserved = { stem: newQuestionDraft.stem, externalId: newQuestionDraft.externalId, explanation: newQuestionDraft.explanation };
   newQuestionDraft = { ...defaultNewQuestion(event.target.value, bankId), ...preserved };
   renderNewQuestionEditor();
 }
@@ -512,7 +506,7 @@ function renderQuestionEditor() {
       <div class="question-editor-meta">
         <span class="badge graded">${esc(question.bankName)}</span>
         <span class="badge pending">${typeLabel(question.type)}</span>
-        <span class="brand-sub">版本 ${question.version} · ${question.score} 分</span>
+        <span class="brand-sub">版本 ${question.version}</span>
       </div>
       <div class="brand-sub">引用考试：${esc(examNames)}</div>
       <div class="notice">保存会更新后续考生看到的题目版本；已提交答卷及其原有判分不会改变。重新阅卷时，管理员可在答卷中逐题选择是否采用本次修改。</div>

@@ -82,39 +82,46 @@ async function ensureBank(client, bank, questions) {
     const answer = question.answer;
     const images = question.imageUrls || [];
     const existingQuestion = await client.query(
-      "SELECT bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, score, status FROM questions WHERE id = $1",
+      "SELECT bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, status FROM questions WHERE id = $1",
       [id]
     );
     if (!existingQuestion.rows.length) {
       await client.query(`
-        INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, score, version, status)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, 1, 'active')`,
-      [id, bank.bankId, question.externalId, question.type, question.stem, JSON.stringify(options), JSON.stringify(images), JSON.stringify(answer), question.explanation, question.score]);
+        INSERT INTO questions (id, bank_id, external_id, type, stem, options_json, images_json, answer_json, explanation, version, status)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, 1, 'active')`,
+      [id, bank.bankId, question.externalId, question.type, question.stem, JSON.stringify(options), JSON.stringify(images), JSON.stringify(answer), question.explanation]);
     } else {
       const row = existingQuestion.rows[0];
       if (row.bank_id !== bank.bankId || row.external_id !== question.externalId || row.type !== question.type || row.stem !== question.stem
         || !sameJson(row.options_json || [], options) || !sameJson(row.images_json || [], images)
         || !sameJson(row.answer_json, answer) || row.explanation !== question.explanation
-        || Number(row.score) !== Number(question.score) || row.status !== "active") {
+        || row.status !== "active") {
         throw new Error(`题目 ${id} 已存在但内容不一致，拒绝覆盖`);
       }
     }
   }
-  return questions.map((question, index) => ({ id: `question-${bank.key}-${question.externalId}`, position: index + 1, score: question.score }));
+  return questions.map((question, index) => ({
+    id: `question-${bank.key}-${question.externalId}`,
+    position: index + 1,
+    examScore: question.score
+  }));
 }
 
 async function ensureExam(client, bank, questionRows, publish) {
-  const total = questionRows.reduce((sum, question) => sum + Number(question.score), 0);
+  const total = questionRows.reduce((sum, question) => sum + Number(question.examScore), 0);
   const pass = Number((total * 0.85).toFixed(2));
   const status = publish ? "published" : "draft";
-  const existing = await client.query("SELECT id, title, status, duration_seconds, pass_score, total_score, version FROM exams WHERE id = $1", [bank.examId]);
+  const existing = await client.query("SELECT id, title, status, duration_seconds, pass_score, total_score, pass_rate, question_bank_id, version FROM exams WHERE id = $1", [bank.examId]);
   if (!existing.rows.length) {
-    await client.query(`INSERT INTO exams (id, title, status, duration_seconds, pass_score, total_score, version)
-      VALUES ($1, $2, $3, $4, $5, $6, 1)`, [bank.examId, bank.title, status, bank.duration * 60, pass, total]);
+    await client.query(`INSERT INTO exams (id, title, status, duration_seconds, pass_score, total_score, pass_rate, question_bank_id, version)
+      VALUES ($1, $2, $3, $4, $5, $6, 0.85, $7, 1)`, [bank.examId, bank.title, status, bank.duration * 60, pass, total, bank.bankId]);
   } else {
     const row = existing.rows[0];
     const allowedStatus = publish ? ["draft", "published"] : ["draft"];
-    if (row.title !== bank.title || Number(row.duration_seconds) !== bank.duration * 60 || Number(row.pass_score) !== pass || Number(row.total_score) !== total || !allowedStatus.includes(row.status)) {
+    if (row.title !== bank.title || Number(row.duration_seconds) !== bank.duration * 60
+      || Number(row.pass_score) !== pass || Number(row.total_score) !== total
+      || Number(row.pass_rate) !== 0.85 || row.question_bank_id !== bank.bankId
+      || !allowedStatus.includes(row.status)) {
       throw new Error(`考试 ${bank.examId} 已存在但元数据不一致，拒绝覆盖`);
     }
     if (publish && row.status === "draft") await client.query("UPDATE exams SET status = 'published' WHERE id = $1", [bank.examId]);
@@ -122,8 +129,8 @@ async function ensureExam(client, bank, questionRows, publish) {
   for (const question of questionRows) {
     const existingQuestion = await client.query("SELECT score, position FROM exam_questions WHERE exam_id = $1 AND question_id = $2", [bank.examId, question.id]);
     if (!existingQuestion.rows.length) {
-      await client.query("INSERT INTO exam_questions (exam_id, question_id, position, score) VALUES ($1, $2, $3, $4)", [bank.examId, question.id, question.position, question.score]);
-    } else if (Number(existingQuestion.rows[0].score) !== Number(question.score) || Number(existingQuestion.rows[0].position) !== question.position) {
+      await client.query("INSERT INTO exam_questions (exam_id, question_id, position, score) VALUES ($1, $2, $3, $4)", [bank.examId, question.id, question.position, question.examScore]);
+    } else if (Number(existingQuestion.rows[0].score) !== Number(question.examScore) || Number(existingQuestion.rows[0].position) !== question.position) {
       throw new Error(`考试 ${bank.examId} 的题目顺序或分值不一致，拒绝覆盖`);
     }
   }
@@ -250,6 +257,7 @@ if (require.main === module) {
 
 module.exports = {
   BANKS,
+  ensureBank,
   ensureExam,
   ensureAssignment,
   ensureAssignmentsForActiveDingtalkUsers,

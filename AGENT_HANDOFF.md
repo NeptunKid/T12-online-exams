@@ -23,7 +23,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 当前分支：`feature/exam-authoring-v2`
 
 ```text
-最近已提交：`83c5464 feat: enable Feishu administrator access`
+本轮已提交：`9ce1a09` 管理员筛选/模型审计、`83c5464` 飞书管理员入口、`75a330a` 经核对的跨平台用户合并
 基线：`main` 的 `d93f17c fix: repair cleaning question bank content`
 ```
 
@@ -107,6 +107,8 @@ sudo systemctl restart t12-exams
 - 题库按试卷/题库分类展示；管理员可手动录入单选、多选、判断、填空、问答题，并编辑题干、选项、参考答案和解析。
 - 空白的 `【】`、`「」`、`[]` 会在展示层转换为带下划线的空白；括号内有文字时不转换。
 - 题库修改会递增题目/考试版本、写入审计日志；历史答卷读取原快照。重新阅卷时会提示题目已修改或删除，并允许选择是否采用新版本。
+- 分值业务所有权已收敛到 `exam_questions.score`：题库 API、手动录题和题库 UI 不再读写分值；`questions.score` 仅作为旧数据兼容列保留并默认 0。
+- `0007_exam_authoring_score_ownership` 为单题库试卷回填可空 `exams.question_bank_id`，跨题库或空试卷保持 NULL；同时保存 `pass_rate`，后续组卷改分应据此重算试卷总分和通过分。该迁移不更新历史答卷或快照。
 - 已发布考试包括：萃取原理、消防基础、IT 基础、清洁卫生入职培训、咖啡基础知识、餐饮相关法律法规。生产题数和最终状态以 PostgreSQL 查询为准，不要依赖旧 CSV 统计。
 - 《餐饮相关法律法规》已按用户确认配置：40 分钟、总分 100、通过分 85；题型方案为 19 单选、19 多选、15 判断。
 - 《咖啡基础知识》已生成 100 题导入稿，60 分钟、总分 100、通过分 85；生产导入状态曾因未拉取含 `0005` 的版本而未确认，接手时必须查询数据库核实。
@@ -137,7 +139,7 @@ sudo systemctl restart t12-exams
 
 ```text
 npm run check:syntax   通过
-npm test               129 项通过
+npm test               131 项通过
 npm run check:secrets  通过
 git diff --check       通过
 ```
@@ -154,6 +156,7 @@ git diff --check       通过
 4. 《咖啡基础知识》是否已执行含 `0005_question_stem_images` 迁移的生产导入；导入前必须确认图片资源和题数。
 5. 手动录题、手机管理员阅卷、飞书成员考试授权是否已由真实账号验收。
 6. 生产服务器公网仍经 Cloudflare 代理；域名解析、缓存和 Caddy 证书状态变更时需重新做 `/healthz`、`/readyz`、首页、登录回调和提交链路验收。
+7. `0007_exam_authoring_score_ownership` 尚未在生产执行。部署时必须先备份、执行迁移并确认成功，再重启依赖题目分值默认值的新代码。
 
 ## 七、接手后的最小行动顺序
 

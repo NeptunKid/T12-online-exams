@@ -15,7 +15,7 @@ const EXAM_AUDIT_SQL = `
     (COALESCE(SUM(eq.score), 0) - e.total_score)::numeric AS total_score_difference,
     COUNT(eq.question_id) FILTER (
       WHERE q.score IS DISTINCT FROM eq.score
-    )::integer AS question_score_mismatch_count
+    )::integer AS deprecated_question_score_difference_count
   FROM exams e
   LEFT JOIN exam_questions eq ON eq.exam_id = e.id
   LEFT JOIN questions q ON q.id = eq.question_id
@@ -60,7 +60,10 @@ function mapExamAuditRow(row) {
     declaredTotalScore: numeric(row.declared_total_score, "declared_total_score"),
     totalScoreDifference: difference,
     totalScoreMatches: difference === 0,
-    questionScoreMismatchCount: numeric(row.question_score_mismatch_count, "question_score_mismatch_count")
+    deprecatedQuestionScoreDifferenceCount: numeric(
+      row.deprecated_question_score_difference_count,
+      "deprecated_question_score_difference_count"
+    )
   };
 }
 
@@ -72,8 +75,8 @@ function buildAuditReport(examRows, orphanRow = {}) {
       examCount: exams.length,
       multiBankExamCount: exams.filter((exam) => exam.questionBankCount > 1).length,
       totalScoreMismatchExamCount: exams.filter((exam) => !exam.totalScoreMatches).length,
-      questionScoreMismatchReferenceCount: exams.reduce(
-        (total, exam) => total + exam.questionScoreMismatchCount,
+      deprecatedQuestionScoreDifferenceReferenceCount: exams.reduce(
+        (total, exam) => total + exam.deprecatedQuestionScoreDifferenceCount,
         0
       ),
       orphanQuestionCount: numeric(orphanRow.orphan_question_count ?? 0, "orphan_question_count"),
