@@ -11,6 +11,8 @@ let adminQuestionBanks = [];
 let currentQuestionFilterId = "";
 let currentQuestionId = "";
 let newQuestionDraft = null;
+let questionImageDraft = null;
+let questionImageUploadBusy = false;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
 let adminAuthProviders = { dingtalk: true, feishu: false };
@@ -681,6 +683,109 @@ function answerEditor(question) {
   return `<div class="field"><label for="questionAnswerText">${label}</label><textarea id="questionAnswerText">${esc(answer || "")}</textarea></div>`;
 }
 
+function questionImageEditor(images = []) {
+  return `<div class="field question-image-field">
+    <div class="question-option-toolbar">
+      <label for="questionImageInput">题目图片附件</label>
+      <span class="brand-sub">${images.length} / 5 张</span>
+    </div>
+    <input id="questionImageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple
+      ${questionImageUploadBusy || images.length >= 5 ? "disabled" : ""}>
+    ${images.length ? `<div class="question-image-grid">${images.map((src, index) => `
+      <figure class="question-image-item">
+        <img src="${esc(src)}" alt="题目图片 ${index + 1}" loading="lazy">
+        <button class="icon-action remove-question-image-btn" type="button" data-image-index="${index}"
+          title="移除图片" aria-label="移除第 ${index + 1} 张图片" ${questionImageUploadBusy ? "disabled" : ""}>×</button>
+      </figure>`).join("")}</div>` : ""}
+    <span class="brand-sub" id="questionImageMsg">JPEG、PNG 或 WebP，单张不超过 5MB。上传后还需保存题目。</span>
+  </div>`;
+}
+
+function bindQuestionImageEditor() {
+  document.getElementById("questionImageInput")?.addEventListener("change", uploadQuestionImages);
+  for (const button of document.querySelectorAll(".remove-question-image-btn")) {
+    button.addEventListener("click", () => removeQuestionImage(Number(button.dataset.imageIndex)));
+  }
+}
+
+function editingQuestionImages() {
+  if (newQuestionDraft) return newQuestionDraft.images || [];
+  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  if (!question) return [];
+  if (!questionImageDraft) questionImageDraft = [...(question.images || [])];
+  return questionImageDraft;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(new Error("图片读取失败")));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadQuestionImages(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length || questionImageUploadBusy) return;
+  const images = editingQuestionImages();
+  const target = newQuestionDraft
+    ? { kind: "new", draft: newQuestionDraft }
+    : { kind: "existing", questionId: currentQuestionId };
+  const message = document.getElementById("questionImageMsg");
+  if (images.length + files.length > 5) {
+    message.textContent = "每道题最多上传 5 张图片";
+    return;
+  }
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const invalid = files.find((file) => !allowed.has(file.type) || file.size < 1 || file.size > 5 * 1024 * 1024);
+  if (invalid) {
+    message.textContent = "只能上传单张不超过 5MB 的 JPEG、PNG 或 WebP 图片";
+    return;
+  }
+
+  questionImageUploadBusy = true;
+  message.textContent = "正在上传图片";
+  event.target.disabled = true;
+  document.getElementById("saveQuestionBtn").disabled = true;
+  try {
+    for (const file of files) {
+      const dataUrl = await readFileAsDataUrl(file);
+      const data = await api("/api/admin/question-resources", {
+        method: "POST",
+        body: JSON.stringify({ mimeType: file.type, dataUrl })
+      });
+      images.push(data.resource.url);
+    }
+    const targetStillOpen = target.kind === "new"
+      ? newQuestionDraft === target.draft
+      : !newQuestionDraft && currentQuestionId === target.questionId;
+    if (!targetStillOpen) throw new Error("题目已切换，本次上传未关联到题目");
+    if (target.kind === "new") newQuestionDraft.images = images;
+    else questionImageDraft = images;
+    questionImageUploadBusy = false;
+    if (newQuestionDraft) renderNewQuestionEditor();
+    else renderQuestionEditor();
+    document.getElementById("questionImageMsg").textContent = "图片已上传；保存题目后才会生效。";
+  } catch (error) {
+    questionImageUploadBusy = false;
+    if (newQuestionDraft) renderNewQuestionEditor();
+    else renderQuestionEditor();
+    document.getElementById("questionImageMsg").textContent = error.message || "图片上传失败";
+  }
+}
+
+function removeQuestionImage(index) {
+  const images = editingQuestionImages();
+  if (index < 0 || index >= images.length) return;
+  images.splice(index, 1);
+  if (newQuestionDraft) newQuestionDraft.images = images;
+  else questionImageDraft = images;
+  if (newQuestionDraft) renderNewQuestionEditor();
+  else renderQuestionEditor();
+  document.getElementById("questionImageMsg").textContent = "图片已从题目中移除；保存后生效。";
+}
+
 function selectedQuestionBankId() {
   if (currentQuestionFilterId.startsWith("bank:")) return currentQuestionFilterId.slice(5);
   const current = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId)[0];
@@ -694,6 +799,7 @@ function defaultNewQuestion(type = "single", bankId = selectedQuestionBankId()) 
     externalId: "",
     type,
     stem: "",
+    images: [],
     options: type === "judge"
       ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
       : ["single", "multi"].includes(type) ? choiceOptions : [],
@@ -736,6 +842,7 @@ function renderNewQuestionEditor() {
         <label for="questionStem">题干</label>
         <textarea id="questionStem" required>${esc(draft.stem)}</textarea>
       </div>
+      ${questionImageEditor(draft.images)}
       ${optionTypes ? `
         <div class="field">
           <div class="question-option-toolbar">
@@ -757,7 +864,7 @@ function renderNewQuestionEditor() {
         <textarea id="questionExplanation">${esc(draft.explanation)}</textarea>
       </div>
       <div class="question-save-row">
-        <button class="btn success" id="saveQuestionBtn" type="submit">保存到题库</button>
+        <button class="btn success" id="saveQuestionBtn" type="submit" ${questionImageUploadBusy ? "disabled" : ""}>保存到题库</button>
         <button class="btn secondary" id="cancelNewQuestionBtn" type="button">取消</button>
         <span class="brand-sub" id="questionSaveMsg"></span>
       </div>
@@ -769,6 +876,7 @@ function renderNewQuestionEditor() {
   for (const button of document.querySelectorAll(".remove-option-btn")) {
     button.addEventListener("click", () => removeNewQuestionOption(Number(button.dataset.index)));
   }
+  bindQuestionImageEditor();
   if (optionTypes) document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(draft));
   updateChoiceAnswerHighlight(draft);
 }
@@ -796,18 +904,22 @@ function readNewQuestionDraft() {
 }
 
 function startNewQuestion() {
+  if (questionImageUploadBusy) return;
   if (!adminQuestionBanks.length) {
     document.getElementById("questionEditor").innerHTML = `<div class="notice error">当前没有可用题库，请先通过题库导入流程创建题库。</div>`;
     return;
   }
   currentQuestionId = "";
+  questionImageDraft = null;
   newQuestionDraft = defaultNewQuestion();
   renderQuestionList();
   renderNewQuestionEditor();
 }
 
 function cancelNewQuestion() {
+  if (questionImageUploadBusy) return;
   newQuestionDraft = null;
+  questionImageDraft = null;
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
   currentQuestionId = filtered[0]?.id || "";
   renderQuestionList();
@@ -815,9 +927,18 @@ function cancelNewQuestion() {
 }
 
 function changeNewQuestionType(event) {
+  if (questionImageUploadBusy) {
+    event.target.value = newQuestionDraft.type;
+    return;
+  }
   readNewQuestionDraft();
   const bankId = newQuestionDraft.bankId;
-  const preserved = { stem: newQuestionDraft.stem, externalId: newQuestionDraft.externalId, explanation: newQuestionDraft.explanation };
+  const preserved = {
+    stem: newQuestionDraft.stem,
+    images: newQuestionDraft.images,
+    externalId: newQuestionDraft.externalId,
+    explanation: newQuestionDraft.explanation
+  };
   newQuestionDraft = { ...defaultNewQuestion(event.target.value, bankId), ...preserved };
   renderNewQuestionEditor();
 }
@@ -847,6 +968,7 @@ function renderQuestionEditor() {
     return;
   }
   const examNames = question.exams.length ? question.exams.map((exam) => exam.title).join("、") : "尚未用于考试";
+  const images = editingQuestionImages();
   const answerLabels = currentAnswerLabels(question);
   editor.innerHTML = `
     <form id="questionEditorForm" class="question-editor-form">
@@ -861,6 +983,7 @@ function renderQuestionEditor() {
         <label for="questionStem">题干</label>
         <textarea id="questionStem" required>${esc(question.stem)}</textarea>
       </div>
+      ${questionImageEditor(images)}
       ${question.options.length ? `
         <div class="field">
           <label>选项</label>
@@ -880,11 +1003,12 @@ function renderQuestionEditor() {
         <textarea id="questionExplanation">${esc(question.explanation || "")}</textarea>
       </div>
       <div class="question-save-row">
-        <button class="btn success" id="saveQuestionBtn" type="submit">保存题目</button>
+        <button class="btn success" id="saveQuestionBtn" type="submit" ${questionImageUploadBusy ? "disabled" : ""}>保存题目</button>
         <span class="brand-sub" id="questionSaveMsg"></span>
       </div>
     </form>`;
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
+  bindQuestionImageEditor();
   if (["single", "judge", "multi"].includes(question.type)) {
     document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(question));
   }
@@ -900,7 +1024,9 @@ function updateChoiceAnswerHighlight(question) {
 }
 
 function selectQuestion(questionId) {
+  if (questionImageUploadBusy) return;
   newQuestionDraft = null;
+  questionImageDraft = null;
   currentQuestionId = questionId;
   renderQuestionList();
   renderQuestionEditor();
@@ -910,6 +1036,7 @@ async function loadQuestions() {
   document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
   const data = await api("/api/admin/questions");
   adminQuestions = data.questions;
+  questionImageDraft = null;
   adminQuestionBanks = data.banks || [];
   renderQuestionFilter();
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
@@ -982,12 +1109,14 @@ async function saveQuestion(event) {
       body: JSON.stringify({
         version: question.version,
         stem: document.getElementById("questionStem").value,
+        images: questionImageDraft || question.images || [],
         options,
         answer: collectQuestionAnswer(question),
         explanation: document.getElementById("questionExplanation").value
       })
     });
     adminQuestions = adminQuestions.map((item) => item.id === data.question.id ? data.question : item);
+    questionImageDraft = null;
     renderQuestionList();
     renderQuestionEditor();
     document.getElementById("questionSaveMsg").textContent = "已保存到题库，历史答卷不受影响。";
@@ -1018,7 +1147,7 @@ function getImageSet(exam, q) {
 
 function reviewImages(paths) {
   if (!paths?.length) return "";
-  return `<div class="review-image-row">${paths.map((src) => `<img src="/${esc(src)}" alt="题目图片" loading="lazy">`).join("")}</div>`;
+  return `<div class="review-image-row">${paths.map((src) => `<img src="/${esc(String(src).replace(/^\/+/, ""))}" alt="题目图片" loading="lazy">`).join("")}</div>`;
 }
 
 function updateStatusFilterButtons(status) {
@@ -1082,7 +1211,7 @@ function renderOptionReview(q, detail, images) {
     <div class="review-option ${selected.has(key) ? "selected" : ""}">
       <strong>${esc(key)}.</strong>
       ${q.options?.[key] ? `<span>${esc(q.options[key])}</span>` : ""}
-      ${images.options?.[key] ? `<img src="/${esc(images.options[key])}" alt="选项 ${esc(key)} 图片" loading="lazy">` : ""}
+      ${images.options?.[key] ? `<img src="/${esc(String(images.options[key]).replace(/^\/+/, ""))}" alt="选项 ${esc(key)} 图片" loading="lazy">` : ""}
       ${selected.has(key) ? `<span class="selected-mark">考生已选</span>` : ""}
     </div>
   `).join("")}</div>`;
@@ -1359,7 +1488,14 @@ document.getElementById("closeAdminManagerBtn").addEventListener("click", () => 
   document.getElementById("adminManagerDialog").close();
 });
 document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
+  if (questionImageUploadBusy) {
+    document.getElementById("questionImageMsg").textContent = "图片正在上传，完成前不能关闭";
+    return;
+  }
   document.getElementById("questionManagerDialog").close();
+});
+document.getElementById("questionManagerDialog").addEventListener("cancel", (event) => {
+  if (questionImageUploadBusy) event.preventDefault();
 });
 document.getElementById("closeExamAuthoringBtn").addEventListener("click", () => {
   if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认关闭吗？")) return;
@@ -1379,8 +1515,13 @@ document.getElementById("adminUserSearch").addEventListener("input", renderAdmin
 document.getElementById("refreshMergeCandidatesBtn").addEventListener("click", loadMergeCandidates);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("questionExamFilter").addEventListener("change", (event) => {
+  if (questionImageUploadBusy) {
+    event.target.value = currentQuestionFilterId;
+    return;
+  }
   currentQuestionFilterId = event.target.value;
   newQuestionDraft = null;
+  questionImageDraft = null;
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
   currentQuestionId = filtered[0]?.id || "";
   document.getElementById("questionSearch").value = "";

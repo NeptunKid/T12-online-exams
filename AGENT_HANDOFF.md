@@ -24,7 +24,8 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ```text
 本轮已提交：`9ce1a09` 管理员筛选/模型审计、`83c5464` 飞书管理员入口、`75a330a` 经核对的跨平台用户合并、`9393e3e` 试卷分值所有权兼容层
-当前未提交：草稿组卷 Repository、API、管理员 UI、测试和交接文档
+草稿组卷已由用户提交，本文未记录该提交哈希。
+当前未提交：题目图片资源 `0008`、Repository/API、题库 UI、测试和交接文档
 基线：`main` 的 `d93f17c fix: repair cleaning question bank content`
 ```
 
@@ -111,6 +112,7 @@ sudo systemctl restart t12-exams
 - 分值业务所有权已收敛到 `exam_questions.score`：题库 API、手动录题和题库 UI 不再读写分值；`questions.score` 仅作为旧数据兼容列保留并默认 0。
 - `0007_exam_authoring_score_ownership` 为单题库试卷回填可空 `exams.question_bank_id`，跨题库或空试卷保持 NULL；同时保存 `pass_rate`，后续组卷改分应据此重算试卷总分和通过分。该迁移不更新历史答卷或快照。
 - 草稿试卷已支持绑定单题库、部分/全选 active 题、完整排序、单题分值和全部已选题统一分值。每次写入均校验 `version`，重算总分/通过分并记录审计；非草稿试卷只读，历史答卷和快照不变。
+- 手动录题和题目编辑已支持最多 5 张题干图片。`0008_question_resources` 将允许的图片作为 `bytea` 与 SHA-256 保存在 PostgreSQL，这些图片会进入数据库备份，不依赖生产代码目录或手工复制静态文件。
 - 已发布考试包括：萃取原理、消防基础、IT 基础、清洁卫生入职培训、咖啡基础知识、餐饮相关法律法规。生产题数和最终状态以 PostgreSQL 查询为准，不要依赖旧 CSV 统计。
 - 《餐饮相关法律法规》已按用户确认配置：40 分钟、总分 100、通过分 85；题型方案为 19 单选、19 多选、15 判断。
 - 《咖啡基础知识》已生成 100 题导入稿，60 分钟、总分 100、通过分 85；生产导入状态曾因未拉取含 `0005` 的版本而未确认，接手时必须查询数据库核实。
@@ -141,11 +143,11 @@ sudo systemctl restart t12-exams
 
 ```text
 npm run check:syntax   通过
-npm test               160 项通过
+npm test               174 项通过
 npm run check:secrets  通过
 ```
 
-新增/主要覆盖的测试包括：迁移、遗留答卷导入、考试 API、题库导入、题目资源、题目格式、题目编辑、手动录题、草稿组卷仓储/API/UI、跨平台身份、管理员移动布局、OAuth、飞书同步等。本步内置浏览器连接本机页面时卡住已立即终止；生产验收仍需真实 PostgreSQL、浏览器和手机端复核，不能只以单元测试替代。
+新增/主要覆盖的测试包括：迁移、遗留答卷导入、考试 API、题库导入、题目静态/数据库上传资源、图片校验与去重、题目格式、题目编辑、手动录题、草稿组卷仓储/API/UI、跨平台身份、管理员移动布局、OAuth、飞书同步等。本步未重试内置浏览器；生产验收仍需真实 PostgreSQL、浏览器和手机端复核，不能只以单元测试替代。
 
 ## 六、未确认事项与风险
 
@@ -159,6 +161,7 @@ npm run check:secrets  通过
 6. 生产服务器公网仍经 Cloudflare 代理；域名解析、缓存和 Caddy 证书状态变更时需重新做 `/healthz`、`/readyz`、首页、登录回调和提交链路验收。
 7. `0007_exam_authoring_score_ownership` 尚未在生产执行。部署时必须先备份、执行迁移并确认成功，再重启依赖题目分值默认值的新代码。
 8. 草稿组卷尚未连接真实 PostgreSQL 做管理员浏览器/手机验收，也尚未部署。
+9. `0008_question_resources` 尚未在生产执行。上传结构含图片 `bytea`，部署前必须先 `pg_dump -Fc`，并在迁移后核对数据库空间。
 
 ## 七、接手后的最小行动顺序
 
@@ -224,6 +227,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 代码回滚：在 GitHub 回滚已合并 PR，或在服务器以 `codexdeploy` checkout 上一个已验证提交后重启服务。
 - 应用恢复：恢复对应 `/var/backups/t12-online-exams/*.dump` 前，先停止写入并确认目标数据库；严禁直接覆盖 `data/submissions.json`。
 - 题库修复/导入：优先使用脚本的 dry-run 和事务；失败时事务自动回滚，使用导入前 PostgreSQL dump 恢复。
+- 图片资源：尚无历史答卷引用上传图片时，`0008` down 会从当前题目移除上传 URL 后删除资源表。一旦历史答卷快照已引用上传图片，down 会主动拒绝；应保留 `0008` 或在停止写入后恢复迁移前完整备份，禁止直接删表。
 - 身份合并：后台事务失败会自动回滚；若已提交但确认误合并，先停止相关账号操作，优先从合并前 `pg_dump -Fc` 恢复到隔离库核对后再执行修复，禁止直接删除用户或手改答卷快照。
 - Caddy/服务：恢复上一版 `Caddyfile` 或 systemd unit，执行 `systemctl daemon-reload`、重启并重新检查证书和 `/readyz`。
 
@@ -232,7 +236,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 按详细实施计划继续：
 
 1. 完整题库 CRUD、归档/恢复和操作审计。
-2. 题目图片附件上传，以及已发布试卷复制为新草稿/发布流程。
+2. 已发布试卷复制为新草稿/发布流程。
 3. 部门/组织同步与考试授权管理。
 4. 通知 Outbox、失败重试、人工重发和结果回执。
 5. 试卷/题库自包含备份包的导入导出，以及自动备份、监控告警和恢复演练。

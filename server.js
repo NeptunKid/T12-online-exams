@@ -7,6 +7,7 @@ const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const examAuthoringRepository = require("./src/db/exam-authoring-repository");
+const { createQuestionResource, getQuestionResource } = require("./src/db/question-resource-repository");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
@@ -253,17 +254,21 @@ function cleanExpiredAuth() {
   for (const [key, item] of SESSIONS) if (item.expiresAt < now) SESSIONS.delete(key);
 }
 
-function readBody(req) {
+function readBody(req, maxLength = 2_000_000) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let rejected = false;
     req.on("data", (chunk) => {
+      if (rejected) return;
       body += chunk;
-      if (body.length > 2_000_000) {
+      if (body.length > maxLength) {
+        rejected = true;
         reject(new Error("请求内容过大"));
         req.destroy();
       }
     });
     req.on("end", () => {
+      if (rejected) return;
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch (_) {
@@ -272,6 +277,27 @@ function readBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function questionResourceUrl(resourceId) {
+  return `/api/question-resources/${encodeURIComponent(resourceId)}`;
+}
+
+function sendQuestionResource(req, res, resource) {
+  const etag = `"${resource.sha256}"`;
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, { ETag: etag, "Cache-Control": "private, max-age=31536000, immutable" });
+    return res.end();
+  }
+  res.writeHead(200, {
+    "Content-Type": resource.mimeType,
+    "Content-Length": resource.sizeBytes,
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+    ETag: etag
+  });
+  return res.end(resource.content);
 }
 
 function isSameOriginJsonRequest(req) {
@@ -528,6 +554,21 @@ async function handleApi(req, res, pathname) {
     return json(res, 200, { ok: true });
   }
 
+  const questionResourceMatch = pathname.match(/^\/api\/question-resources\/(question_resource_[A-Za-z0-9-]+)$/);
+  if (req.method === "GET" && questionResourceMatch) {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "图片资源数据库尚未配置" });
+    try {
+      const resource = await getQuestionResource(pool, questionResourceMatch[1]);
+      return sendQuestionResource(req, res, resource);
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode)) return json(res, error.statusCode, { error: error.message });
+      return json(res, 503, { error: "图片资源暂不可用" });
+    }
+  }
+
   if (req.method === "GET" && pathname === "/api/exams") {
     const user = requireUser(req, res);
     if (!user) return;
@@ -724,6 +765,24 @@ async function handleApi(req, res, pathname) {
   }
 
   if (await handleAdminExamAuthoring(req, res, pathname, adminAccess)) return;
+
+  if (req.method === "POST" && pathname === "/api/admin/question-resources") {
+    if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
+    if (!isSameOriginJsonRequest(req)) return json(res, 403, { error: "图片上传请求来源无效" });
+    try {
+      const body = await readBody(req, 7_250_000);
+      const resource = await createQuestionResource(pool, body, adminAccess.userId);
+      return json(res, 201, { resource: { ...resource, url: questionResourceUrl(resource.id) } });
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode)) return json(res, error.statusCode, { error: error.message });
+      if (error?.message === "JSON 格式错误" || error?.message === "请求内容过大") {
+        return json(res, 400, { error: error.message });
+      }
+      return json(res, 503, { error: "图片上传暂不可用" });
+    }
+  }
 
   if (req.method === "GET" && pathname === "/api/admin/questions") {
     if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
@@ -1084,6 +1143,8 @@ module.exports = {
   healthStatus,
   readinessStatus,
   isSameOriginJsonRequest,
+  questionResourceUrl,
+  sendQuestionResource,
   matchesFillAnswer,
   publicUser
 };

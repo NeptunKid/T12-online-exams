@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const MANIFEST_PATH = path.join(__dirname, "../../public/question-resources/manifest.json");
+const UPLOADED_RESOURCE_URL_PATTERN = /^\/api\/question-resources\/(question_resource_[A-Za-z0-9-]+)$/;
 
 function loadQuestionResourceManifest() {
   try {
@@ -23,8 +24,13 @@ function mapQuestionImages(images, resources = loadQuestionResourceManifest()) {
   return images.map((image) => {
     if (typeof image !== "string") return "";
     if (/^\/question-resources\/[A-Za-z0-9_./-]+$/.test(image) && !image.includes("..")) return image;
+    if (UPLOADED_RESOURCE_URL_PATTERN.test(image)) return image;
     return resourceUrl(image, resources);
   }).filter(Boolean);
+}
+
+function uploadedResourceId(value) {
+  return String(value || "").match(UPLOADED_RESOURCE_URL_PATTERN)?.[1] || "";
 }
 
 function mapQuestionOptions(options, resources = loadQuestionResourceManifest()) {
@@ -43,4 +49,11 @@ function mapQuestionOptions(options, resources = loadQuestionResourceManifest())
   }));
 }
 
-module.exports = { loadQuestionResourceManifest, mapQuestionImages, mapQuestionOptions, resourceUrl };
+module.exports = {
+  UPLOADED_RESOURCE_URL_PATTERN,
+  loadQuestionResourceManifest,
+  mapQuestionImages,
+  mapQuestionOptions,
+  resourceUrl,
+  uploadedResourceId
+};
