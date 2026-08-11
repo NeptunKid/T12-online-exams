@@ -40,3 +40,12 @@ test("手机端管理员操作按钮使用固定四列对齐", () => {
   assert.match(html, /class="btn-row admin-actions"/);
   assert.match(css, /\.admin-actions[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
 });
+
+test("系统管理员可以预览并人工确认同名跨平台账号", () => {
+  assert.match(html, /id="identityMergeList"/);
+  assert.match(html, /id="refreshMergeCandidatesBtn"/);
+  assert.match(script, /api\("\/api\/admin\/user-merge-candidates"\)/);
+  assert.match(script, /api\("\/api\/admin\/user-merges", \{/);
+  assert.match(script, /window\.confirm\(/);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.identity-merge-pair \{[\s\S]*flex-direction: column/);
+});

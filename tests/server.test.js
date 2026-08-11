@@ -9,6 +9,7 @@ const {
   getAttemptInfo,
   roleForUnionId,
   healthStatus,
+  isSameOriginJsonRequest,
   publicUser,
   matchesFillAnswer
 } = require("../server");
@@ -70,6 +71,16 @@ test("阅卷角色和普通考生角色分离", () => {
 
 test("健康检查不暴露配置或凭证", () => {
   assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
+});
+
+test("高影响用户归并仅接受同源 JSON 请求", () => {
+  assert.equal(isSameOriginJsonRequest({ headers: {
+    "content-type": "application/json; charset=utf-8", origin: "https://exam.t12group.com", host: "exam.t12group.com"
+  } }), true);
+  assert.equal(isSameOriginJsonRequest({ headers: {
+    "content-type": "application/json", origin: "https://evil.example", host: "exam.t12group.com"
+  } }), false);
+  assert.equal(isSameOriginJsonRequest({ headers: { "content-type": "text/plain" } }), false);
 });
 
 test("浏览器用户信息不暴露 provider subject", () => {

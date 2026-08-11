@@ -1,6 +1,6 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-10
+更新时间：2026-08-11
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
@@ -12,7 +12,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 - 不修改 `$HOME/Documents/Codex/001_考试后台追踪系统` 和 `$HOME/Documents/Codex/002_考试后台追踪系统_钉钉登录版`。
 - 不删除、覆盖或重置 `data/submissions.json`；003 使用 PostgreSQL 和独立数据目录。
 - 不读取、输出或提交 `.env`、`/etc/t12-online-exams/t12-online-exams.env`、OAuth Secret、数据库密码、员工身份标识或答卷答案。
-- 生产 PostgreSQL 发生写入前先执行 `pg_dump -Fc`，并记录备份文件路径；身份合并必须先 dry-run，确认 `ambiguous` 为空后才允许 `--apply`。
+- 生产 PostgreSQL 发生写入前先执行 `pg_dump -Fc`，并记录备份文件路径；身份合并仅能由系统管理员在后台执行，命令行脚本只允许 dry-run，禁止 `--apply`。
 - 历史答卷必须继续使用提交时保存的题目快照和评分依据。题库修改不得静默改变历史成绩。
 - 每次只推进一个可独立验证、可回滚的步骤，并记录修改文件、测试、风险、回滚和飞书同步状态。
 - GitHub 网络操作容易卡顿。用户已明确：`git push`、`gh pr create`、PR 检查和合并优先由用户在本机终端执行；连接异常时停止重试并请用户协助。
@@ -20,12 +20,11 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前分支：`fix/feishu-plain-text-sync`
+当前分支：`feature/exam-authoring-v2`
 
 ```text
-HEAD  7cb7b7e fix: sync Feishu summaries as plain text
-origin/fix/feishu-plain-text-sync  7cb7b7e
-main  d93f17c fix: repair cleaning question bank content
+最近已提交：`83c5464 feat: enable Feishu administrator access`
+基线：`main` 的 `d93f17c fix: repair cleaning question bank content`
 ```
 
 当前工作树的未跟踪文件是用户素材，不要删除、改名或提交：
@@ -116,8 +115,10 @@ sudo systemctl restart t12-exams
 ### Phase 3 / Sprint 4：钉钉、飞书、权限和移动端
 
 - 已完成钉钉/飞书 OAuth Provider 抽象、登录回调、身份登记和双入口。
-- 两个平台均以真实姓名为准；标准化姓名唯一时绑定同一内部用户，同名歧义不自动合并。
-- 已提供历史身份整理脚本 `scripts/reconcile-cross-platform-users.js`，必须先 dry-run，再在 `ambiguous: []` 时 `--apply`。
+- 两个平台均以真实姓名登记，但绝不只凭姓名自动绑定；首次登录始终创建或复用对应 Provider 身份。
+- 系统管理员后台可查看同名候选并进行人工确认。只有“纯钉钉/历史钉钉账号 + 纯飞书账号”的唯一候选可合并；任何多重候选或已绑定双平台账号均阻断。
+- 合并以事务迁移身份、角色、考试授权、补考权限和答卷归属；题目快照、作答和分数保持不变。副本保留为 `disabled`，历史审计不改写，新审计记录保存迁移统计。
+- `scripts/reconcile-cross-platform-users.js` 只生成 dry-run 预览；`--apply` 已明确停用。生产合并前仍必须在阿里云 Workbench 执行 `pg_dump -Fc`，再由系统管理员在后台逐项确认。
 - 管理员角色管理已完成：首位管理员由 `DINGTALK_GRADER_UNION_IDS` 引导，后台可授予/撤销 `grader`、`system_admin`，禁止自我撤权和移除最后系统管理员。
 - 管理员会话在打开、恢复前台和运行期间检查，失效时提前锁定并要求登录。
 - 考生端和管理员端已做手机自适应；管理员阅卷默认筛选待批阅项，非待批阅内容可折叠。
@@ -136,7 +137,7 @@ sudo systemctl restart t12-exams
 
 ```text
 npm run check:syntax   通过
-npm test               114 项通过
+npm test               129 项通过
 npm run check:secrets  通过
 git diff --check       通过
 ```
@@ -149,7 +150,7 @@ git diff --check       通过
 
 1. `fix/feishu-plain-text-sync` 的 PR 是否已创建、合并、部署。
 2. 纯文本同步代码是否已拉取到生产服务器；旧 Markdown 段落是否已在飞书文档中人工删除。
-3. 跨平台身份整理脚本的 `--apply` 是否真正执行完成；最近一次 dry-run 曾发现一组同名/重复身份，后续需以生产数据库复核。
+3. 是否已在生产以系统管理员身份核对同名候选；不得使用脚本或仅凭同名完成合并。执行前必须在阿里云 Workbench 创建 `pg_dump -Fc`。
 4. 《咖啡基础知识》是否已执行含 `0005_question_stem_images` 迁移的生产导入；导入前必须确认图片资源和题数。
 5. 手动录题、手机管理员阅卷、飞书成员考试授权是否已由真实账号验收。
 6. 生产服务器公网仍经 Cloudflare 代理；域名解析、缓存和 Caddy 证书状态变更时需重新做 `/healthz`、`/readyz`、首页、登录回调和提交链路验收。
@@ -218,7 +219,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 代码回滚：在 GitHub 回滚已合并 PR，或在服务器以 `codexdeploy` checkout 上一个已验证提交后重启服务。
 - 应用恢复：恢复对应 `/var/backups/t12-online-exams/*.dump` 前，先停止写入并确认目标数据库；严禁直接覆盖 `data/submissions.json`。
 - 题库修复/导入：优先使用脚本的 dry-run 和事务；失败时事务自动回滚，使用导入前 PostgreSQL dump 恢复。
-- 身份合并：仅执行可回滚迁移；先保存 dry-run 输出，异常时停止后续授权操作。
+- 身份合并：后台事务失败会自动回滚；若已提交但确认误合并，先停止相关账号操作，优先从合并前 `pg_dump -Fc` 恢复到隔离库核对后再执行修复，禁止直接删除用户或手改答卷快照。
 - Caddy/服务：恢复上一版 `Caddyfile` 或 systemd unit，执行 `systemctl daemon-reload`、重启并重新检查证书和 `/readyz`。
 
 ## 九、后续计划建议

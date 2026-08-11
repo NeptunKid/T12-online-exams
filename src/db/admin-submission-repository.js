@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
+const { lockUserIdentityMutation } = require("./user-repository");
 
 function asNumber(value, fallback = 0) {
   const number = Number(value);
@@ -259,6 +260,14 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await lockUserIdentityMutation(client);
+    if (grader.userId) {
+      const activeGrader = await client.query(
+        "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR KEY SHARE;",
+        [grader.userId]
+      );
+      if (!activeGrader.rows.length) throw new Error("管理员账号归属已更新，请刷新后重新保存阅卷结果");
+    }
     const submissionResult = await client.query(`
       SELECT s.id, s.exam_id, s.user_id, s.pass_score, s.scores_json, e.total_score
       FROM submissions s
@@ -344,18 +353,37 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
 }
 
 async function grantRetakePermission(pool, submissionId, grantedBy) {
-  const result = await pool.query(`
-    INSERT INTO retake_permissions (id, exam_id, user_id, remaining_count, granted_by, granted_at)
-    SELECT $1, s.exam_id, s.user_id, 1, $3, CURRENT_TIMESTAMP
-    FROM submissions s
-    WHERE s.id = $2 AND s.user_id IS NOT NULL
-    ON CONFLICT (exam_id, user_id) DO UPDATE
-    SET remaining_count = retake_permissions.remaining_count + 1,
-      granted_by = EXCLUDED.granted_by,
-      granted_at = CURRENT_TIMESTAMP
-    RETURNING remaining_count;`, [crypto.randomUUID(), submissionId, grantedBy || null]);
-  if (!result.rows.length) throw new Error("未找到可授权补考的答卷");
-  return { remainingExtraAttempts: asNumber(result.rows[0].remaining_count) };
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockUserIdentityMutation(client);
+    if (grantedBy) {
+      const activeGrader = await client.query(
+        "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR KEY SHARE;",
+        [grantedBy]
+      );
+      if (!activeGrader.rows.length) throw new Error("管理员账号归属已更新，请刷新后重新授权补考");
+    }
+    const result = await client.query(`
+      INSERT INTO retake_permissions (id, exam_id, user_id, remaining_count, granted_by, granted_at)
+      SELECT $1, s.exam_id, s.user_id, 1, $3, CURRENT_TIMESTAMP
+      FROM submissions s
+      JOIN users u ON u.id = s.user_id AND u.status = 'active'
+      WHERE s.id = $2 AND s.user_id IS NOT NULL
+      ON CONFLICT (exam_id, user_id) DO UPDATE
+      SET remaining_count = retake_permissions.remaining_count + 1,
+        granted_by = EXCLUDED.granted_by,
+        granted_at = CURRENT_TIMESTAMP
+      RETURNING remaining_count;`, [crypto.randomUUID(), submissionId, grantedBy || null]);
+    if (!result.rows.length) throw new Error("未找到可授权补考的答卷");
+    await client.query("COMMIT");
+    return { remainingExtraAttempts: asNumber(result.rows[0].remaining_count) };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {

@@ -83,6 +83,16 @@
       <input id="adminUserSearch" type="search" placeholder="搜索姓名、工号或部门">
       <div id="adminManagerMsg" class="notice hidden"></div>
       <div id="adminUserList" class="admin-user-list"></div>
+      <section class="identity-merge-section">
+        <div class="identity-merge-head">
+          <div>
+            <h3>同名账号合并</h3>
+            <p class="brand-sub">仅列出分属钉钉和飞书的同名账号，合并前请核对工号与部门。</p>
+          </div>
+          <button class="btn secondary compact-btn" id="refreshMergeCandidatesBtn" type="button">重新检查</button>
+        </div>
+        <div id="identityMergeList" class="identity-merge-list"></div>
+      </section>
     </div>
   </dialog>
 

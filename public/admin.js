@@ -4,6 +4,7 @@ let currentDetail = null;
 let gradeSaveNotice = "";
 let showWrongOnly = false;
 let adminUsers = [];
+let identityMergeCandidates = [];
 let currentAdminUserId = "";
 let adminQuestions = [];
 let adminQuestionBanks = [];
@@ -143,13 +144,125 @@ async function loadAdminUsers() {
   renderAdminUsers();
 }
 
+function providerLabel(provider) {
+  return { dingtalk: "钉钉", feishu: "飞书", legacy: "历史钉钉" }[provider] || provider;
+}
+
+function mergeCandidateUser(group, userId) {
+  return group.users.find((user) => user.id === userId);
+}
+
+function mergeUserDescription(user) {
+  if (!user) return "未知账号";
+  const providers = (user.providers || []).map(providerLabel).join("+");
+  return `${providers} · ${user.department || "未填写部门"} · ${user.employeeNo || "未填写工号"}`;
+}
+
+function renderMergeCandidates() {
+  const list = document.getElementById("identityMergeList");
+  if (!identityMergeCandidates.length) {
+    list.innerHTML = `<div class="empty-state identity-merge-empty">没有待确认的同名跨平台账号</div>`;
+    return;
+  }
+  list.innerHTML = identityMergeCandidates.map((group) => `
+    <div class="identity-merge-group">
+      <div class="identity-merge-title">
+        <strong>${esc(group.displayName)}</strong>
+        ${group.ambiguous ? `<span class="badge pending">存在歧义，必须逐项核对</span>` : `<span class="badge graded">唯一候选</span>`}
+      </div>
+      ${group.pairs.map((pair) => {
+        const canonical = mergeCandidateUser(group, pair.canonicalUserId);
+        const duplicate = mergeCandidateUser(group, pair.duplicateUserId);
+        const action = group.ambiguous
+          ? `<span class="brand-sub">候选存在歧义，暂不支持合并</span>`
+          : `<button class="btn danger compact-btn identity-merge-btn" type="button"
+              data-name="${esc(group.displayName)}"
+              data-canonical-user-id="${esc(pair.canonicalUserId)}"
+              data-duplicate-user-id="${esc(pair.duplicateUserId)}">核对并合并</button>`;
+        return `<div class="identity-merge-pair">
+          <div class="admin-user-main">
+            <div><strong>保留：</strong>${esc(mergeUserDescription(canonical))}</div>
+            <div><strong>归并：</strong>${esc(mergeUserDescription(duplicate))}</div>
+          </div>
+          ${action}
+        </div>`;
+      }).join("")}
+    </div>
+  `).join("");
+  for (const button of document.querySelectorAll(".identity-merge-btn")) {
+    button.addEventListener("click", () => mergeIdentityPair(button));
+  }
+}
+
+async function loadMergeCandidates() {
+  const list = document.getElementById("identityMergeList");
+  const refreshButton = document.getElementById("refreshMergeCandidatesBtn");
+  list.innerHTML = `<div class="empty-state identity-merge-empty">正在检查同名账号</div>`;
+  refreshButton.disabled = true;
+  try {
+    const data = await api("/api/admin/user-merge-candidates");
+    identityMergeCandidates = data.candidates || [];
+    renderMergeCandidates();
+    return true;
+  } catch (error) {
+    list.innerHTML = `<div class="empty-state identity-merge-empty">候选加载失败，请重新检查</div>`;
+    return false;
+  } finally {
+    refreshButton.disabled = false;
+  }
+}
+
+async function mergeIdentityPair(button) {
+  const group = identityMergeCandidates.find((item) => item.displayName === button.dataset.name
+    && item.pairs.some((pair) => pair.canonicalUserId === button.dataset.canonicalUserId
+      && pair.duplicateUserId === button.dataset.duplicateUserId));
+  if (!group || group.ambiguous) return;
+  const canonical = mergeCandidateUser(group, button.dataset.canonicalUserId);
+  const duplicate = mergeCandidateUser(group, button.dataset.duplicateUserId);
+  const confirmed = window.confirm(
+    `确认将“${group.displayName}”的飞书账号归并到钉钉主账号吗？\n\n保留：${mergeUserDescription(canonical)}\n归并：${mergeUserDescription(duplicate)}\n\n题目快照、作答内容和分数保持不变；账号角色、考试授权、答卷归属、考试次数和补考权限将合并。`
+  );
+  if (!confirmed) return;
+
+  const message = document.getElementById("adminManagerMsg");
+  button.disabled = true;
+  message.textContent = "正在合并账号，请勿关闭页面";
+  message.className = "notice";
+  try {
+    await api("/api/admin/user-merges", {
+      method: "POST",
+      body: JSON.stringify({
+        canonicalUserId: button.dataset.canonicalUserId,
+        duplicateUserId: button.dataset.duplicateUserId,
+        expectedName: group.displayName
+      })
+    });
+    message.textContent = "账号已合并；钉钉和飞书登录将使用同一内部用户";
+    message.className = "notice success";
+    try {
+      const [, candidatesLoaded] = await Promise.all([loadAdminUsers(), loadMergeCandidates()]);
+      if (!candidatesLoaded) {
+        message.textContent = "账号已合并，但候选列表刷新失败；请重新打开管理员设置确认结果";
+        message.className = "notice success";
+      }
+    } catch (_) {
+      message.textContent = "账号已合并，但列表刷新失败；请重新打开管理员设置确认结果";
+      message.className = "notice success";
+    }
+  } catch (error) {
+    message.textContent = error.message || "账号合并失败";
+    message.className = "notice error";
+    button.disabled = false;
+  }
+}
+
 async function openAdminManager() {
   const dialog = document.getElementById("adminManagerDialog");
   const message = document.getElementById("adminManagerMsg");
   message.classList.add("hidden");
   dialog.showModal();
   try {
-    await loadAdminUsers();
+    await Promise.all([loadAdminUsers(), loadMergeCandidates()]);
   } catch (error) {
     message.textContent = error.message || "用户列表载入失败";
     message.className = "notice error";
@@ -907,6 +1020,7 @@ document.getElementById("closeQuestionManagerBtn").addEventListener("click", () 
   document.getElementById("questionManagerDialog").close();
 });
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
+document.getElementById("refreshMergeCandidatesBtn").addEventListener("click", loadMergeCandidates);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("questionExamFilter").addEventListener("change", (event) => {
   currentQuestionFilterId = event.target.value;

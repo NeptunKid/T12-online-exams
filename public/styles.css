@@ -1280,6 +1280,48 @@ select:focus {
   min-height: 140px;
 }
 
+.identity-merge-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.identity-merge-head,
+.identity-merge-title,
+.identity-merge-pair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identity-merge-head h3 {
+  margin: 0 0 4px;
+}
+
+.identity-merge-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.identity-merge-group {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.identity-merge-pair {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.identity-merge-empty {
+  min-height: 90px;
+}
+
 .toolbar {
   display: grid;
   gap: 12px;
@@ -1503,6 +1545,17 @@ select:focus {
     padding: 6px 4px;
     font-size: 13px;
     white-space: nowrap;
+  }
+
+  .identity-merge-head,
+  .identity-merge-pair {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .identity-merge-head .btn,
+  .identity-merge-pair .btn {
+    width: 100%;
   }
 
   .dashboard-topbar {

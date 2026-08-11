@@ -8,6 +8,7 @@ const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmi
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
+const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 
 function loadEnvFile() {
   const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
@@ -269,6 +270,18 @@ function readBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+function isSameOriginJsonRequest(req) {
+  const contentType = String(req.headers["content-type"] || "").toLowerCase();
+  if (!contentType.startsWith("application/json")) return false;
+  const origin = String(req.headers.origin || "").trim();
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === String(req.headers.host || "").toLowerCase();
+  } catch (_) {
+    return false;
+  }
 }
 
 function requireUser(req, res) {
@@ -754,6 +767,35 @@ async function handleApi(req, res, pathname) {
     }
   }
 
+  if (req.method === "GET" && pathname === "/api/admin/user-merge-candidates") {
+    if (!adminAccess.canManageAdmins) return json(res, 403, { error: "当前账号没有用户归并权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "用户权限数据库尚未配置" });
+    try {
+      return json(res, 200, { candidates: await listMergeCandidates(pool) });
+    } catch (_) {
+      return json(res, 503, { error: "同名用户候选暂不可用" });
+    }
+  }
+
+  if (req.method === "POST" && pathname === "/api/admin/user-merges") {
+    if (!adminAccess.canManageAdmins) return json(res, 403, { error: "当前账号没有用户归并权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "用户权限数据库尚未配置" });
+    if (!isSameOriginJsonRequest(req)) return json(res, 403, { error: "用户归并请求来源无效" });
+    try {
+      const body = await readBody(req);
+      const result = await mergePlatformUsers(pool, body, adminAccess.userId);
+      return json(res, 200, { result });
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode)) return json(res, error.statusCode, { error: error.message });
+      if (error?.message === "JSON 格式错误" || error?.message === "请求内容过大") {
+        return json(res, 400, { error: error.message });
+      }
+      return json(res, 503, { error: "用户归并暂不可用，请稍后重试" });
+    }
+  }
+
   const adminRoleMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/admin-role$/);
   if (adminRoleMatch && req.method === "PUT") {
     if (!adminAccess.canManageAdmins) return json(res, 403, { error: "当前账号没有管理员授权权限" });
@@ -1028,6 +1070,7 @@ module.exports = {
   roleForUnionId,
   healthStatus,
   readinessStatus,
+  isSameOriginJsonRequest,
   matchesFillAnswer,
   publicUser
 };

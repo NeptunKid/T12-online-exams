@@ -69,6 +69,9 @@ test("阅卷事务保存逐题分数并重算总分", async () => {
   ];
   const client = {
     async query(sql, params) {
+      if (sql.includes("FROM users WHERE id") && sql.includes("FOR KEY SHARE")) {
+        return { rows: [{ id: "grader-1" }] };
+      }
       if (sql.includes("SELECT s.id") && sql.includes("FOR UPDATE")) {
         return { rows: [{ id: "s-1", exam_id: "exam-1", user_id: "user-1", pass_score: "60", total_score: "100", scores_json: {} }] };
       }
@@ -119,6 +122,24 @@ test("分数输入限制在题目分值范围内", () => {
   assert.equal(scoreInput("12", 10, "题目 1", true), 10);
   assert.equal(scoreInput("-1", 10, "题目 1", true), 0);
   assert.throws(() => scoreInput("", 10, "问答题 1", true), /请填写/);
+});
+
+test("账号归并后禁用的阅卷人不能写入新的评分归属", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes("FROM users WHERE id") && sql.includes("FOR KEY SHARE")) return { rows: [] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await assert.rejects(
+    gradeAdminSubmission({ connect: async () => client }, "s-1", {}, { userId: "disabled-grader", name: "阅卷人" }),
+    /账号归属已更新/
+  );
+  assert.equal(calls.some((sql) => sql.includes("UPDATE submissions")), false);
+  assert.equal(calls.includes("ROLLBACK"), true);
 });
 
 test("采用当前题库答案时按当前答案重新自动判分", () => {
