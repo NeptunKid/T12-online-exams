@@ -6,9 +6,11 @@ const { createDingtalkProvider, createFeishuProvider } = require("./src/auth/oau
 const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-client");
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
+const examAuthoringRepository = require("./src/db/exam-authoring-repository");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
+const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
 
 function loadEnvFile() {
   const envPath = process.env.T12_ENV_FILE || path.join(__dirname, ".env");
@@ -283,6 +285,15 @@ function isSameOriginJsonRequest(req) {
     return false;
   }
 }
+
+const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
+  repository: examAuthoringRepository,
+  listQuestionBanks,
+  getPool: getPostgresPool,
+  readBody,
+  json,
+  isSameOriginJsonRequest
+});
 
 function requireUser(req, res) {
   const user = currentUser(req);
@@ -711,6 +722,8 @@ async function handleApi(req, res, pathname) {
       currentUserId: adminAccess.userId
     });
   }
+
+  if (await handleAdminExamAuthoring(req, res, pathname, adminAccess)) return;
 
   if (req.method === "GET" && pathname === "/api/admin/questions") {
     if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });

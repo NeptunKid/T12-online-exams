@@ -1091,6 +1091,219 @@ select:focus {
   max-height: calc(100vh - 32px);
 }
 
+.exam-authoring-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+
+.exam-authoring-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.65fr) minmax(0, 1.8fr);
+  gap: 18px;
+  min-height: min(650px, calc(100vh - 150px));
+}
+
+.exam-authoring-list-panel,
+.exam-authoring-editor {
+  min-width: 0;
+}
+
+.exam-authoring-count {
+  margin-bottom: 10px;
+}
+
+.exam-authoring-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: calc(100vh - 180px);
+  overflow: auto;
+}
+
+.exam-authoring-list-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.exam-authoring-list-item.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.exam-authoring-list-head,
+.exam-authoring-editor-head,
+.exam-authoring-section-head,
+.exam-bank-controls,
+.exam-selection-actions,
+.exam-bulk-score,
+.exam-question-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exam-authoring-list-head,
+.exam-authoring-editor-head,
+.exam-authoring-section-head {
+  justify-content: space-between;
+}
+
+.exam-authoring-list-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.exam-authoring-editor {
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.exam-authoring-editor-head h3 {
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+.exam-score-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(68px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.exam-score-summary span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+
+.exam-score-summary span:last-child {
+  border-right: 0;
+}
+
+.exam-score-summary small {
+  color: var(--muted);
+}
+
+.exam-score-summary strong {
+  font-size: 17px;
+}
+
+.exam-authoring-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.exam-authoring-section-head {
+  align-items: flex-end;
+}
+
+.exam-authoring-section-head h3,
+.exam-authoring-section-head p {
+  margin: 0;
+}
+
+.exam-bank-controls select {
+  min-width: 220px;
+}
+
+.exam-bulk-score {
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.exam-bulk-score input {
+  width: 100px;
+}
+
+.exam-question-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.exam-question-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.exam-question-row.selected {
+  border-left: 4px solid var(--blue);
+  background: #fbfdff;
+}
+
+.exam-question-select {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.exam-question-select input {
+  width: auto;
+  margin-top: 4px;
+}
+
+.exam-question-select span,
+.exam-question-select strong,
+.exam-question-select small {
+  display: block;
+  min-width: 0;
+}
+
+.exam-question-select strong {
+  overflow-wrap: anywhere;
+}
+
+.exam-question-select small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.exam-question-actions .icon-action {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  font-size: 16px;
+}
+
+.exam-question-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.exam-question-score input {
+  width: 84px;
+  padding: 6px 8px;
+}
+
 .question-manager-layout {
   display: grid;
   grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.5fr);
@@ -1547,6 +1760,10 @@ select:focus {
     white-space: nowrap;
   }
 
+  .admin-actions #manageExamsBtn:not(.hidden) {
+    grid-column: 1 / -1;
+  }
+
   .identity-merge-head,
   .identity-merge-pair {
     align-items: stretch;
@@ -1714,6 +1931,50 @@ select:focus {
 
   .question-manager-layout {
     grid-template-columns: 1fr;
+  }
+
+  .exam-authoring-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-authoring-list {
+    max-height: 220px;
+  }
+
+  .exam-authoring-editor {
+    max-height: none;
+  }
+
+  .exam-authoring-editor-head,
+  .exam-authoring-section-head,
+  .exam-bank-controls,
+  .exam-selection-actions,
+  .exam-bulk-score,
+  .exam-question-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .exam-bank-controls select,
+  .exam-bank-controls .btn,
+  .exam-selection-actions .btn,
+  .exam-bulk-score input,
+  .exam-bulk-score .btn,
+  .exam-question-actions .btn {
+    width: 100%;
+  }
+
+  .exam-question-row {
+    grid-template-columns: 1fr;
+  }
+
+  .exam-question-actions {
+    display: grid;
+    grid-template-columns: 32px 32px minmax(0, 1fr);
+  }
+
+  .exam-question-actions .save-exam-question-score-btn {
+    grid-column: 1 / -1;
   }
 
   .question-create-grid {
