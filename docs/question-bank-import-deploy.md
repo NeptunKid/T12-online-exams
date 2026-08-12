@@ -29,8 +29,9 @@ sudo -u codexdeploy -H sh -c 'cd /opt/t12-online-exams && npm ci'
 导入前先备份 PostgreSQL（不会修改答卷）：
 
 ```bash
-sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
-T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-question-import-$(date +%Y%m%d%H%M%S).dump"
+sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
+sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
+T12_BACKUP_FILE="/var/backups/t12-online-exams/postgres/t12_exams-before-question-import-$(date +%Y%m%d%H%M%S).dump"
 sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
 sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
 ```
@@ -93,8 +94,9 @@ sudo -u codexdeploy -H git -C /opt/t12-online-exams pull --ff-only origin main
 在写数据库前备份，并先运行只读预览。预览输出应为 36 道题中的待补字段清单；若出现题目数量或历史标识不一致，停止，不执行下一步：
 
 ```bash
-sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
-T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-cleaning-repair-$(date +%Y%m%d%H%M%S).dump"
+sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
+sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
+T12_BACKUP_FILE="/var/backups/t12-online-exams/postgres/t12_exams-before-cleaning-repair-$(date +%Y%m%d%H%M%S).dump"
 sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
 sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
 

@@ -13,7 +13,12 @@ function createAdminExamAuthoringHandler({
 }) {
   const routes = [
     { method: "GET", pattern: /^\/api\/admin\/exams$/, action: "list" },
+    { method: "POST", pattern: /^\/api\/admin\/exams$/, action: "create" },
     { method: "GET", pattern: /^\/api\/admin\/exams\/([^/]+)\/authoring$/, action: "detail" },
+    { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/copy$/, action: "copy" },
+    { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/revision$/, action: "revision" },
+    { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/publish$/, action: "publish" },
+    { method: "PATCH", pattern: /^\/api\/admin\/exams\/([^/]+)$/, action: "settings" },
     { method: "PUT", pattern: /^\/api\/admin\/exams\/([^/]+)\/question-bank$/, action: "bank" },
     { method: "PUT", pattern: /^\/api\/admin\/exams\/([^/]+)\/questions$/, action: "questions" },
     { method: "PUT", pattern: /^\/api\/admin\/exams\/([^/]+)\/question-order$/, action: "order" },
@@ -60,7 +65,17 @@ function createAdminExamAuthoringHandler({
       }
       const body = await readBody(req);
       let detail;
-      if (route.action === "bank") {
+      if (route.action === "create") {
+        detail = await repository.createExam(pool, body, adminAccess.userId);
+      } else if (route.action === "copy") {
+        detail = await repository.copyExam(pool, examId, body, adminAccess.userId);
+      } else if (route.action === "revision") {
+        detail = await repository.reopenExamRevision(pool, examId, body, adminAccess.userId);
+      } else if (route.action === "publish") {
+        detail = await repository.publishExam(pool, examId, body, adminAccess.userId);
+      } else if (route.action === "settings") {
+        detail = await repository.updateExamSettings(pool, examId, body, adminAccess.userId);
+      } else if (route.action === "bank") {
         detail = await repository.bindExamQuestionBank(pool, examId, {
           ...body,
           bankId: body.questionBankId ?? body.bankId

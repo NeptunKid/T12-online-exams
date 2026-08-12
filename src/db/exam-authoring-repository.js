@@ -38,6 +38,42 @@ function normalizeScore(value) {
   return score;
 }
 
+function normalizeTitle(value) {
+  const title = String(value || "").trim();
+  if (!title) throw new ExamAuthoringError("试卷名称不能为空");
+  if (title.length > 200) throw new ExamAuthoringError("试卷名称过长");
+  return title;
+}
+
+function normalizeDuration(value) {
+  const duration = Number(value);
+  if (!Number.isInteger(duration) || duration < 60 || duration > 86_400) {
+    throw new ExamAuthoringError("考试时长必须是 1 分钟至 24 小时之间的整秒数");
+  }
+  return duration;
+}
+
+function normalizePassRate(value) {
+  const passRate = Number(value);
+  if (!Number.isFinite(passRate) || passRate < 0 || passRate > 1) {
+    throw new ExamAuthoringError("通过比例必须为 0 到 1 之间的数值");
+  }
+  if (Math.abs(Math.round(passRate * 1_000_000) - passRate * 1_000_000) > 1e-8) {
+    throw new ExamAuthoringError("通过比例最多保留六位小数");
+  }
+  return passRate;
+}
+
+function normalizeAnswerRules(value) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ExamAuthoringError("作答规则格式无效");
+  }
+  const serialized = JSON.stringify(value);
+  if (serialized.length > 20_000) throw new ExamAuthoringError("作答规则内容过长");
+  return value;
+}
+
 function normalizeQuestionIds(questionIds, { allowEmpty = true } = {}) {
   if (!Array.isArray(questionIds)) throw new ExamAuthoringError("题目列表格式无效");
   const normalized = questionIds.map((id) => String(id || "").trim());
@@ -59,7 +95,8 @@ function mapExamSummary(row) {
     version: Number(row.version),
     questionBankId: row.question_bank_id || "",
     questionBankName: row.question_bank_name || "",
-    questionCount: Number(row.question_count || 0)
+    questionCount: Number(row.question_count || 0),
+    answerRules: row.answer_rules_json || {}
   };
 }
 
@@ -79,7 +116,7 @@ function mapAuthoringQuestion(row) {
 async function listAuthoringExams(pool) {
   const result = await pool.query(`
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
-      e.pass_rate, e.version, e.question_bank_id, qb.name AS question_bank_name,
+      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id, qb.name AS question_bank_name,
       count(eq.question_id)::integer AS question_count
     FROM exams e
     LEFT JOIN question_banks qb ON qb.id = e.question_bank_id
@@ -93,7 +130,7 @@ async function listAuthoringExams(pool) {
 async function getExamAuthoring(queryable, examId) {
   const examResult = await queryable.query(`
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
-      e.pass_rate, e.version, e.question_bank_id, qb.name AS question_bank_name,
+      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id, qb.name AS question_bank_name,
       count(eq.question_id)::integer AS question_count
     FROM exams e
     LEFT JOIN question_banks qb ON qb.id = e.question_bank_id
@@ -118,7 +155,7 @@ async function getExamAuthoring(queryable, examId) {
 async function lockDraftExam(client, examId, expectedVersion) {
   const result = await client.query(`
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
-      e.pass_rate, e.version, e.question_bank_id, qb.name AS question_bank_name
+      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id, qb.name AS question_bank_name
     FROM exams e
     LEFT JOIN question_banks qb ON qb.id = e.question_bank_id
     WHERE e.id = $1
@@ -130,6 +167,16 @@ async function lockDraftExam(client, examId, expectedVersion) {
     throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
   }
   return exam;
+}
+
+async function insertExamAudit(client, actorUserId, action, examId, before, after) {
+  await client.query(`
+    INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+    VALUES ($1, $2, $3, 'exam', $4, $5::jsonb, $6::jsonb);`, [
+    crypto.randomUUID(), actorUserId, action, examId,
+    before === null ? null : JSON.stringify(before),
+    after === null ? null : JSON.stringify(after)
+  ]);
 }
 
 async function loadSelection(client, examId, lock = false) {
@@ -157,10 +204,15 @@ function assertSelectionBelongsToBank(selected, bankId) {
 
 function snapshotExam(exam, questions) {
   return {
+    title: exam.title,
+    status: exam.status,
+    duration: Number(exam.duration_seconds),
     version: Number(exam.version),
     questionBankId: exam.question_bank_id || "",
     totalScore: asNumber(exam.total_score),
     passScore: asNumber(exam.pass_score),
+    passRate: asNumber(exam.pass_rate),
+    answerRules: exam.answer_rules_json || {},
     questions
   };
 }
@@ -178,7 +230,7 @@ async function recalculateExam(client, examId) {
     ) totals
     WHERE e.id = $1
     RETURNING e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
-      e.pass_rate, e.version, e.question_bank_id;`, [examId]);
+      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id;`, [examId]);
   return result.rows[0];
 }
 
@@ -194,11 +246,205 @@ async function mutateExam(pool, examId, input, actorUserId, action, mutation) {
     const updated = await recalculateExam(client, examId);
     const afterQuestions = await loadSelection(client, examId);
     const after = snapshotExam(updated, afterQuestions);
+    await insertExamAudit(client, actorUserId, action, examId, before, after);
+    const detail = await getExamAuthoring(client, examId);
+    await client.query("COMMIT");
+    return detail;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function normalizeExamSettings(input, existing = null) {
+  const title = normalizeTitle(input?.title ?? existing?.title);
+  const duration = normalizeDuration(input?.durationSeconds ?? input?.duration ?? existing?.duration_seconds);
+  const answerRules = normalizeAnswerRules(input?.answerRules ?? existing?.answer_rules_json) || {};
+  let passRate;
+  if (input?.passRate !== undefined) {
+    passRate = normalizePassRate(input.passRate);
+  } else if (input?.passScore !== undefined) {
+    const totalScore = asNumber(existing?.total_score);
+    const passScore = normalizeScore(input.passScore);
+    if (totalScore <= 0 && passScore > 0) throw new ExamAuthoringError("空试卷的通过分必须为 0");
+    if (passScore > totalScore) throw new ExamAuthoringError("通过分不能高于试卷总分");
+    passRate = totalScore > 0 ? normalizePassRate(passScore / totalScore) : 0;
+  } else {
+    passRate = normalizePassRate(existing?.pass_rate ?? 0.6);
+  }
+  return { title, duration, passRate, answerRules };
+}
+
+async function createExam(pool, input, actorUserId) {
+  const settings = normalizeExamSettings(input);
+  const bankId = String(input?.questionBankId || input?.bankId || "").trim() || null;
+  const examId = `exam-${crypto.randomUUID()}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (bankId) {
+      const bank = await client.query(
+        "SELECT id FROM question_banks WHERE id = $1 AND status = 'active' FOR SHARE;",
+        [bankId]
+      );
+      if (!bank.rows.length) throw new ExamAuthoringError("未找到可用题库");
+    }
     await client.query(`
-      INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
-      VALUES ($1, $2, $3, 'exam', $4, $5::jsonb, $6::jsonb);`, [
-      crypto.randomUUID(), actorUserId, action, examId, JSON.stringify(before), JSON.stringify(after)
+      INSERT INTO exams (
+        id, title, status, duration_seconds, pass_score, total_score, pass_rate,
+        version, answer_rules_json, question_bank_id, created_by
+      ) VALUES ($1, $2, 'draft', $3, 0, 0, $4, 1, $5::jsonb, $6, $7);`, [
+      examId, settings.title, settings.duration, settings.passRate,
+      JSON.stringify(settings.answerRules), bankId, actorUserId
     ]);
+    await client.query(`
+      INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id)
+      VALUES ('assignment-' || md5($1), $1, 'group', 'all-active-users');`, [examId]);
+    const detail = await getExamAuthoring(client, examId);
+    const after = snapshotExam({
+      title: settings.title, status: "draft", duration_seconds: settings.duration,
+      version: 1, question_bank_id: bankId, total_score: 0, pass_score: 0,
+      pass_rate: settings.passRate, answer_rules_json: settings.answerRules
+    }, []);
+    await insertExamAudit(client, actorUserId, "create_exam", examId, null, after);
+    await client.query("COMMIT");
+    return detail;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function copyExam(pool, sourceExamId, input, actorUserId) {
+  const expectedVersion = normalizeVersion(input?.version);
+  const newExamId = `exam-${crypto.randomUUID()}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const sourceResult = await client.query(`
+      SELECT id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id
+      FROM exams
+      WHERE id = $1 AND status <> 'archived'
+      FOR SHARE;`, [sourceExamId]);
+    const source = sourceResult.rows[0];
+    if (!source) throw new ExamAuthoringError("未找到可复制的试卷", 404);
+    if (Number(source.version) !== expectedVersion) {
+      throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
+    }
+    const title = input?.title === undefined ? `${source.title}（副本）` : normalizeTitle(input.title);
+    await client.query(`
+      INSERT INTO exams (
+        id, title, status, duration_seconds, pass_score, total_score, pass_rate,
+        version, answer_rules_json, question_bank_id, created_by
+      ) VALUES ($1, $2, 'draft', $3, $4, $5, $6, 1, $7::jsonb, $8, $9);`, [
+      newExamId, title, source.duration_seconds, source.pass_score, source.total_score,
+      source.pass_rate, JSON.stringify(source.answer_rules_json || {}), source.question_bank_id, actorUserId
+    ]);
+    await client.query(`
+      INSERT INTO exam_questions (exam_id, question_id, position, score, section)
+      SELECT $2, question_id, position, score, section
+      FROM exam_questions
+      WHERE exam_id = $1
+      ORDER BY position;`, [sourceExamId, newExamId]);
+    await client.query(`
+      INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id, starts_at, ends_at)
+      SELECT 'assignment-' || md5($2 || ':' || id), $2, subject_type, subject_id, starts_at, ends_at
+      FROM exam_assignments
+      WHERE exam_id = $1;`, [sourceExamId, newExamId]);
+    const detail = await getExamAuthoring(client, newExamId);
+    await insertExamAudit(client, actorUserId, "copy_exam", newExamId, null, {
+      sourceExamId,
+      sourceVersion: Number(source.version),
+      ...snapshotExam({ ...source, id: newExamId, title, status: "draft", version: 1 },
+        await loadSelection(client, newExamId))
+    });
+    await client.query("COMMIT");
+    return detail;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function reopenExamRevision(pool, examId, input, actorUserId) {
+  const expectedVersion = normalizeVersion(input?.version);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(`
+      SELECT id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id
+      FROM exams
+      WHERE id = $1
+      FOR UPDATE;`, [examId]);
+    const exam = result.rows[0];
+    if (!exam) throw new ExamAuthoringError("未找到试卷", 404);
+    if (Number(exam.version) !== expectedVersion) {
+      throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
+    }
+    if (exam.status === "draft") throw new ExamAuthoringError("试卷已处于可编辑草稿状态", 409);
+    if (!new Set(["published", "scheduled", "paused", "closed"]).has(exam.status)) {
+      throw new ExamAuthoringError("当前试卷状态不支持开始新版本", 409);
+    }
+    const questions = await loadSelection(client, examId, true);
+    const before = snapshotExam(exam, questions);
+    const updated = await client.query(`
+      UPDATE exams
+      SET status = 'draft', version = version + 1
+      WHERE id = $1
+      RETURNING id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id;`, [examId]);
+    const after = snapshotExam(updated.rows[0], questions);
+    await insertExamAudit(client, actorUserId, "reopen_exam_revision", examId, before, after);
+    const detail = await getExamAuthoring(client, examId);
+    await client.query("COMMIT");
+    return detail;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function updateExamSettings(pool, examId, input, actorUserId) {
+  return mutateExam(pool, examId, input, actorUserId, "update_exam_settings", async (client, exam) => {
+    const settings = normalizeExamSettings(input, exam);
+    await client.query(`
+      UPDATE exams
+      SET title = $2, duration_seconds = $3, pass_rate = $4, answer_rules_json = $5::jsonb
+      WHERE id = $1;`, [
+      examId, settings.title, settings.duration, settings.passRate, JSON.stringify(settings.answerRules)
+    ]);
+  });
+}
+
+async function publishExam(pool, examId, input, actorUserId) {
+  const expectedVersion = normalizeVersion(input?.version);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const exam = await lockDraftExam(client, examId, expectedVersion);
+    const questions = await loadSelection(client, examId, true);
+    if (!questions.length) throw new ExamAuthoringError("试卷至少需要选择一道试题");
+    assertSelectionBelongsToBank(questions, exam.question_bank_id);
+    if (asNumber(exam.total_score) <= 0) throw new ExamAuthoringError("试卷总分必须大于 0");
+    const before = snapshotExam(exam, questions);
+    const result = await client.query(`
+      UPDATE exams
+      SET status = 'published', version = version + 1
+      WHERE id = $1
+      RETURNING id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id;`, [examId]);
+    const after = snapshotExam(result.rows[0], questions);
+    await insertExamAudit(client, actorUserId, "publish_exam_revision", examId, before, after);
     const detail = await getExamAuthoring(client, examId);
     await client.query("COMMIT");
     return detail;
@@ -315,14 +561,19 @@ async function updateAllExamQuestionScores(pool, examId, input, actorUserId) {
 module.exports = {
   ExamAuthoringError,
   bindExamQuestionBank,
+  copyExam,
+  createExam,
   getExamAuthoring,
   listAuthoringExams,
   mapAuthoringQuestion,
   mapExamSummary,
   normalizeQuestionIds,
   normalizeScore,
+  publishExam,
+  reopenExamRevision,
   reorderExamQuestions,
   setExamQuestions,
   updateAllExamQuestionScores,
-  updateExamQuestionScore
+  updateExamQuestionScore,
+  updateExamSettings
 };

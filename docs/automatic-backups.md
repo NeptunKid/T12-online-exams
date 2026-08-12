@@ -32,9 +32,10 @@ T12_AUTO_BACKUP_DIR=/var/backups/t12-online-exams/portable
 以下命令均在**阿里云 Workbench**执行。先确认代码已合并，并在任何数据库写入前创建完整备份：
 
 ```bash
-sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
+sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
+sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
 sudo -u postgres pg_dump -Fc \
-  -f "/var/backups/t12-online-exams/t12_exams-before-automatic-backups-$(date +%Y%m%d%H%M%S).dump" \
+  -f "/var/backups/t12-online-exams/postgres/t12_exams-before-automatic-backups-$(date +%Y%m%d%H%M%S).dump" \
   t12_exams
 ```
 
@@ -43,6 +44,8 @@ sudo -u postgres pg_dump -Fc \
 ```bash
 sudo install -d -m 700 -o codexdeploy -g codexdeploy /var/backups/t12-online-exams/portable
 ```
+
+父目录必须允许 `postgres` 和 `codexdeploy` 穿越，但不允许列出或写入；两个子目录各自仅对对应服务账号开放。不能把父目录设为 `postgres:postgres 0750`，否则 `codexdeploy` 即使拥有 `portable` 子目录也无法进入，并会在创建 `backup_run_*` 目录时得到 `EACCES`。
 
 部署新 unit 和代码、执行 `0009_automatic_backups` 后重启服务。确认 `/readyz` 后，以系统管理员身份打开后台“备份”，点击“立即运行”，核对每个工件的成功状态和下载结果。不要将自动备份目录映射到公网或作为静态文件目录。
 

@@ -13,7 +13,9 @@ const {
   questionResourceUrl,
   sendQuestionResource,
   publicUser,
-  matchesFillAnswer
+  matchesFillAnswer,
+  attachLegacyExamImages,
+  attachLegacyStudentImages
 } = require("../server");
 
 test("清洁卫生入职培训考试时长为 45 分钟", () => {
@@ -73,6 +75,68 @@ test("阅卷角色和普通考生角色分离", () => {
 
 test("健康检查不暴露配置或凭证", () => {
   assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
+});
+
+test("静态题目图片响应使用文件真实 MIME 而不是错误扩展名", () => {
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "../server.js"), "utf8");
+  assert.match(source, /resolved\.startsWith\(path\.join\(PUBLIC_DIR, "question-resources"\)/);
+  assert.match(source, /detectImageMimeType\(data\)/);
+  assert.match(source, /detectedImageType \|\| MIME\[extension\]/);
+});
+
+test("当前题库与旧版路径指向同一图片时只返回一次", () => {
+  const exam = attachLegacyExamImages({
+    title: examData.title,
+    questions: [{ id: "current-0", sourceId: "0" }],
+    images: { "current-0": { stem: [
+      "/question-resources/cleaning/cleaning-1-1.png",
+      "/question-resources/cleaning/cleaning-1-1.png"
+    ], options: {} } }
+  });
+  assert.deepEqual(exam.images["current-0"].stem, [
+    "/question-resources/cleaning/cleaning-1-1.png",
+    "images/1-2.jpeg"
+  ]);
+});
+
+test("考生试卷与管理员阅卷接口共用图片去重层", () => {
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "../server.js"), "utf8");
+  assert.match(source, /attachLegacyExamImages\(await getPublishedExam/);
+  assert.match(source, /exam: attachLegacyExamImages\(detail\.exam\)/);
+});
+
+test("考生成绩详情保留答卷快照图片并只补充不同的旧图片", () => {
+  const current = "/question-resources/cleaning/cleaning-1-1.png";
+  const detail = attachLegacyStudentImages({
+    submission: { examTitle: examData.title },
+    questions: [{
+      id: "snapshot-0",
+      sourceId: "0",
+      images: { stem: [current], options: { A: current } }
+    }]
+  });
+  assert.deepEqual(detail.questions[0].images.stem, [current, "images/1-2.jpeg"]);
+  assert.equal(detail.questions[0].images.options.A, current);
+});
+
+test("非清洁卫生试卷不会进入旧图片兼容层", () => {
+  const otherExam = { title: "其他试卷", questions: [{ id: "q" }], images: {} };
+  const otherDetail = { submission: { examTitle: "其他试卷" }, questions: [{ id: "q" }] };
+  assert.equal(attachLegacyExamImages(otherExam), otherExam);
+  assert.equal(attachLegacyStudentImages(otherDetail), otherDetail);
+});
+
+test("旧版兼容图片保留不同内容且不跨选项标签合并", () => {
+  const currentA = "/question-resources/cleaning/cleaning-2-a.jpeg";
+  const exam = attachLegacyExamImages({
+    title: examData.title,
+    questions: [{ id: "current-1", sourceId: "1" }],
+    images: { "current-1": { stem: [currentA, "images/1-2.jpeg"], options: { A: currentA, E: currentA } } }
+  });
+  assert.deepEqual(exam.images["current-1"].stem, [currentA, "images/1-2.jpeg"]);
+  assert.equal(exam.images["current-1"].options.A, currentA);
+  assert.equal(exam.images["current-1"].options.B, "images/2-B.jpeg");
+  assert.equal(exam.images["current-1"].options.E, currentA);
 });
 
 test("高影响用户归并仅接受同源 JSON 请求", () => {

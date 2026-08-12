@@ -164,8 +164,9 @@ curl -fsS https://exam.t12group.com/readyz
 执行位置：阿里云 Workbench。以下步骤用于本次跨平台身份版本首次上线；代码更新和 `0006` 迁移完成后再执行。
 
 ```bash
-sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
-T12_BACKUP_FILE="/var/backups/t12-online-exams/t12_exams-before-cross-platform-$(date +%Y%m%d%H%M%S).dump"
+sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
+sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
+T12_BACKUP_FILE="/var/backups/t12-online-exams/postgres/t12_exams-before-cross-platform-$(date +%Y%m%d%H%M%S).dump"
 sudo -u postgres pg_dump -Fc -f "$T12_BACKUP_FILE" t12_exams
 sudo -u postgres test -s "$T12_BACKUP_FILE" && echo "数据库备份完成：$T12_BACKUP_FILE"
 

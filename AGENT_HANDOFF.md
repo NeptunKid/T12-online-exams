@@ -1,6 +1,6 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-11
+更新时间：2026-08-12
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
@@ -25,8 +25,8 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 ```text
 本轮已提交：`9ce1a09` 管理员筛选/模型审计、`83c5464` 飞书管理员入口、`75a330a` 经核对的跨平台用户合并、`9393e3e` 试卷分值所有权兼容层
 草稿组卷已由用户提交，本文未记录该提交哈希。
-本轮已提交：题目图片资源 `5f42217`、可移植备份 `f258843`
-当前未提交：定期自动备份 `0009`、数据库/文件系统存储、调度、管理员状态与历史下载、测试和文档
+本轮已提交：题目图片资源 `5f42217`、可移植备份 `f258843`、定期自动备份 `87f200b`
+当前未提交：已发布试卷版本化编辑/新增/复制/重新发布、题库纯题库分类、自动备份目录权限和静态图片 MIME 完整性修正；无新数据库迁移
 基线：`main` 的 `d93f17c fix: repair cleaning question bank content`
 ```
 
@@ -116,6 +116,9 @@ sudo systemctl restart t12-exams
 - 手动录题和题目编辑已支持最多 5 张题干图片。`0008_question_resources` 将允许的图片作为 `bytea` 与 SHA-256 保存在 PostgreSQL，这些图片会进入数据库备份，不依赖生产代码目录或手工复制静态文件。
 - 管理员已支持试卷/题库可移植备份：`.t12backup` ZIP 内嵌题库、题目、答案解析、试卷组卷关系与分值、作答规则、考试分配、补考权限和所有图片正文；导入固定生成新 ID 和草稿试卷，完整校验后在一个事务内写入，失败整体回滚。格式见 `docs/backup-format-v1.md`。
 - 定期自动备份已支持 PostgreSQL `bytea` 或受控服务器目录，默认关闭。`0009` 保存逐试卷/题库运行与工件，调度使用 advisory lock，单对象失败不阻断其他对象，保留策略按对象保留最近 N 份。管理员可查看公开配置、立即运行并下载历史工件；服务器路径不返回前端。生产启用和边界见 `docs/automatic-backups.md`。
+- 文件系统自动备份已在生产修正目录权限后成功生成，管理员也完成了一份题库工件下载。下载文件暴露两项历史静态 WebP 资源被错误声明为 JPEG；新代码按图片真实字节校验/响应 MIME，部署后必须重新生成工件，旧包不能原地篡改。
+- 试卷管理已支持新建和复制草稿；已发布、排期、暂停、结束试卷可显式进入新草稿修订，修改参数、题库、选题、顺序和分值后重新发布。每次事务写入均递增版本并写审计，历史答卷及快照不变；修订期间考生暂时无法进入该试卷。
+- 题库维护分类已严格收敛为题库列表，不再提供按试卷筛题的入口；试卷与题目只通过组卷关系发生关联。
 - 已发布考试包括：萃取原理、消防基础、IT 基础、清洁卫生入职培训、咖啡基础知识、餐饮相关法律法规。生产题数和最终状态以 PostgreSQL 查询为准，不要依赖旧 CSV 统计。
 - 《餐饮相关法律法规》已按用户确认配置：40 分钟、总分 100、通过分 85；题型方案为 19 单选、19 多选、15 判断。
 - 《咖啡基础知识》已生成 100 题导入稿，60 分钟、总分 100、通过分 85；生产导入状态曾因未拉取含 `0005` 的版本而未确认，接手时必须查询数据库核实。
@@ -142,11 +145,11 @@ sudo systemctl restart t12-exams
 
 ## 五、质量验证记录
 
-截至当前定期自动备份步骤，本机质量门结果：
+截至当前题目图片重复显示修复步骤，本机质量门结果：
 
 ```text
 npm run check:syntax   通过
-npm test               232 项通过
+npm test               248 项通过
 npm run check:secrets  通过
 ```
 
@@ -166,7 +169,9 @@ npm run check:secrets  通过
 8. 草稿组卷尚未连接真实 PostgreSQL 做管理员浏览器/手机验收，也尚未部署。
 9. `0008_question_resources` 尚未在生产执行。上传结构含图片 `bytea`，部署前必须先 `pg_dump -Fc`，并在迁移后核对数据库空间。
 10. 可移植备份尚未连接真实 PostgreSQL 做浏览器下载、上传和大图片包验收。
-11. `0009_automatic_backups` 尚未在生产执行，自动备份默认关闭；数据库或文件系统存储目标、容量和保留数必须由用户确认后再启用。数据库内逻辑包不能替代 `pg_dump -Fc`。
+11. `0009_automatic_backups` 已在生产执行并选择文件系统存储；目录权限修正后已成功生成和下载工件。代码中的目录文档/MIME 修正及试卷版本化编辑仍待提交、部署和真实管理员浏览器验收。
+12. 2026-08-11 下载的《002 历史题库：清洁卫生入职培训考试》工件含两项错误 MIME，原包不能直接回导。部署本轮修正后需重新生成并下载，再执行只读完整性校验；禁止手改旧包绕过 payload SHA-256。
+13. 题目图片重复显示已在考生试卷和管理员阅卷共用服务端出口修复，无新迁移。部署并重启服务后，需分别用考生和管理员真实账号确认相同图片只显示一次，而同一题中内容不同的多张图片仍全部保留。
 
 ## 七、接手后的最小行动顺序
 
@@ -189,8 +194,9 @@ gh pr create --base main --head fix/feishu-plain-text-sync \
 以 `codexdeploy` 执行 Git/npm，以 `admin` 执行 systemd/迁移。先做数据库备份，再执行迁移或导入：
 
 ```bash
-sudo install -d -m 750 -o postgres -g postgres /var/backups/t12-online-exams
-sudo -u postgres pg_dump -Fc -f "/var/backups/t12-online-exams/t12_exams-before-<purpose>-$(date +%Y%m%d%H%M%S).dump" t12_exams
+sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
+sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
+sudo -u postgres pg_dump -Fc -f "/var/backups/t12-online-exams/postgres/t12_exams-before-<purpose>-$(date +%Y%m%d%H%M%S).dump" t12_exams
 ```
 
 部署后轮询：
@@ -230,7 +236,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 ## 八、回滚方法
 
 - 代码回滚：在 GitHub 回滚已合并 PR，或在服务器以 `codexdeploy` checkout 上一个已验证提交后重启服务。
-- 应用恢复：恢复对应 `/var/backups/t12-online-exams/*.dump` 前，先停止写入并确认目标数据库；严禁直接覆盖 `data/submissions.json`。
+- 应用恢复：恢复对应 `/var/backups/t12-online-exams/postgres/*.dump` 前，先停止写入并确认目标数据库；早期备份可能仍位于父目录，不能移动或删除；严禁直接覆盖 `data/submissions.json`。
 - 题库修复/导入：优先使用脚本的 dry-run 和事务；失败时事务自动回滚，使用导入前 PostgreSQL dump 恢复。
 - 图片资源：尚无历史答卷引用上传图片时，`0008` down 会从当前题目移除上传 URL 后删除资源表。一旦历史答卷快照已引用上传图片，down 会主动拒绝；应保留 `0008` 或在停止写入后恢复迁移前完整备份，禁止直接删表。
 - 可移植备份：导入失败会自动回滚；导入成功后只会新增题库、题目、草稿试卷及相关资源。确认误导入时应先核对 `import_backup` 审计记录和引用关系，再由后续专用归档/清理流程处理，禁止直接级联删除。

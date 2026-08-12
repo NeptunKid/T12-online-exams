@@ -7,7 +7,7 @@ const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const examAuthoringRepository = require("./src/db/exam-authoring-repository");
-const { createQuestionResource, getQuestionResource } = require("./src/db/question-resource-repository");
+const { createQuestionResource, detectImageMimeType, getQuestionResource } = require("./src/db/question-resource-repository");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
@@ -86,6 +86,35 @@ function readExamData() {
 
 const examData = readExamData();
 const questionsById = new Map(examData.questions.map((q) => [String(q.id), q]));
+const imageIdentityCache = new Map();
+
+function imageIdentity(imageUrl) {
+  const normalized = String(imageUrl || "").replace(/^\/+/, "");
+  if (!normalized) return "";
+  if (imageIdentityCache.has(normalized)) return imageIdentityCache.get(normalized);
+
+  let identity = `url:${normalized}`;
+  const resolved = path.resolve(PUBLIC_DIR, normalized);
+  if (resolved.startsWith(`${PUBLIC_DIR}${path.sep}`)) {
+    try {
+      identity = `sha256:${crypto.createHash("sha256").update(fs.readFileSync(resolved)).digest("hex")}`;
+    } catch (_) {
+      // Database-uploaded images and stale legacy paths fall back to URL identity.
+    }
+  }
+  imageIdentityCache.set(normalized, identity);
+  return identity;
+}
+
+function uniqueQuestionImages(...groups) {
+  const seen = new Set();
+  return groups.flatMap((group) => Array.isArray(group) ? group : []).filter((imageUrl) => {
+    const identity = imageIdentity(imageUrl);
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
 
 function attachLegacyExamImages(exam) {
   if (!exam || exam.title !== examData.title) return exam;
@@ -94,8 +123,8 @@ function attachLegacyExamImages(exam) {
     const legacy = examData.images?.[String(question.sourceId)] || { stem: [], options: {} };
     const current = images[question.id] || question.images || { stem: [], options: {} };
     images[question.id] = {
-      stem: [...(current.stem || []), ...(legacy.stem || [])],
-      options: { ...(current.options || {}), ...(legacy.options || {}) }
+      stem: uniqueQuestionImages(current.stem, legacy.stem),
+      options: { ...(legacy.options || {}), ...(current.options || {}) }
     };
   }
   return { ...exam, images };
@@ -105,10 +134,17 @@ function attachLegacyStudentImages(detail) {
   if (!detail || detail.submission?.examTitle !== examData.title) return detail;
   return {
     ...detail,
-    questions: (detail.questions || []).map((question) => ({
-      ...question,
-      images: examData.images?.[String(question.sourceId)] || { stem: [], options: {} }
-    }))
+    questions: (detail.questions || []).map((question) => {
+      const legacy = examData.images?.[String(question.sourceId)] || { stem: [], options: {} };
+      const current = question.images || { stem: [], options: {} };
+      return {
+        ...question,
+        images: {
+          stem: uniqueQuestionImages(current.stem, legacy.stem),
+          options: { ...(legacy.options || {}), ...(current.options || {}) }
+        }
+      };
+    })
   };
 }
 
@@ -1066,7 +1102,10 @@ function serveStatic(req, res, pathname) {
       return;
     }
     const extension = path.extname(resolved).toLowerCase();
-    const headers = { "Content-Type": MIME[extension] || "application/octet-stream" };
+    const detectedImageType = resolved.startsWith(path.join(PUBLIC_DIR, "question-resources") + path.sep)
+      ? detectImageMimeType(data)
+      : "";
+    const headers = { "Content-Type": detectedImageType || MIME[extension] || "application/octet-stream" };
     if ([".html", ".css", ".js"].includes(extension)) {
       headers["Cache-Control"] = "no-store, max-age=0";
     }
@@ -1170,5 +1209,7 @@ module.exports = {
   sendQuestionResource,
   automaticBackupService,
   matchesFillAnswer,
-  publicUser
+  publicUser,
+  attachLegacyExamImages,
+  attachLegacyStudentImages
 };

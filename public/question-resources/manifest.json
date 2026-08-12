@@ -96,7 +96,7 @@
     "resource:cleaning-12-1": {
       "file": "cleaning/cleaning-12-1.jpeg",
       "url": "/question-resources/cleaning/cleaning-12-1.jpeg",
-      "mediaType": "image/jpeg",
+      "mediaType": "image/webp",
       "bytes": 2880,
       "sha256": "02d7e2a4a3263400c824b922e25ebe488999477c370af9f8dfd85564de0ac53f"
     },
@@ -222,7 +222,7 @@
     "resource:cleaning-23-d": {
       "file": "cleaning/cleaning-23-d.jpeg",
       "url": "/question-resources/cleaning/cleaning-23-d.jpeg",
-      "mediaType": "image/jpeg",
+      "mediaType": "image/webp",
       "bytes": 2880,
       "sha256": "02d7e2a4a3263400c824b922e25ebe488999477c370af9f8dfd85564de0ac53f"
     },

@@ -14,6 +14,8 @@ const {
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
 const PNG_SHA = crypto.createHash("sha256").update(PNG).digest("hex");
+const WEBP = Buffer.from("524946460400000057454250", "hex");
+const WEBP_SHA = crypto.createHash("sha256").update(WEBP).digest("hex");
 
 function question(overrides = {}) {
   return {
@@ -70,6 +72,20 @@ test("资源正文、大小、MIME 或 SHA-256 不一致时拒绝构建", () => 
   assert.throws(() => buildBackupPackage({ resources: [{ id: "r", mimeType: "image/png", content: PNG, sha256: "0".repeat(64) }] }), /SHA-256/);
   assert.throws(() => buildBackupPackage({ resources: [{ id: "r", mimeType: "image/svg+xml", content: PNG }] }), /MIME/);
   assert.throws(() => buildBackupPackage({ resources: [{ id: "r", mimeType: "image/png", size_bytes: 1, content: PNG }] }), /大小/);
+  assert.throws(() => buildBackupPackage({ resources: [{ id: "r", mimeType: "image/jpeg", content: WEBP, sha256: WEBP_SHA }] }), /MIME.*不一致/);
+});
+
+test("静态资源导出以图片真实 MIME 为准并可通过回导校验", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM question_banks WHERE id")) return { rows: [{ id: "bank-1", name: "题库", status: "active" }] };
+    if (sql.includes("FROM questions WHERE bank_id")) return { rows: [question({ images_json: ["resource:webp"], options_json: [] })] };
+    if (sql.includes("FROM question_resources")) return { rows: [] };
+    throw new Error(`未预期 SQL: ${sql}`);
+  } };
+  const pkg = await exportQuestionBank(pool, "bank-1", {
+    staticManifest: { "resource:webp": { url: "/question-resources/cleaning/cleaning-12-1.jpeg", mediaType: "image/jpeg", sha256: "02d7e2a4a3263400c824b922e25ebe488999477c370af9f8dfd85564de0ac53f" } }
+  });
+  assert.equal(pkg.resources[0].mimeType, "image/webp");
 });
 
 test("导出端拒绝生成超过可回导范围的图片包", () => {
