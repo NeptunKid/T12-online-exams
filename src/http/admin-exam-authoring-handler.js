@@ -5,7 +5,7 @@ function authoringPayload(detail, banks) {
 
 function createAdminExamAuthoringHandler({
   repository,
-  listQuestionBanks,
+  listManagedQuestionBanks,
   getPool,
   readBody,
   json,
@@ -52,7 +52,7 @@ function createAdminExamAuthoringHandler({
       if (route.action === "detail") {
         const [detail, banks] = await Promise.all([
           repository.getExamAuthoring(pool, examId),
-          listQuestionBanks(pool)
+          listManagedQuestionBanks(pool)
         ]);
         if (!detail) json(res, 404, { error: "未找到试卷" });
         else json(res, 200, { authoring: authoringPayload(detail, banks) });
@@ -89,7 +89,7 @@ function createAdminExamAuthoringHandler({
       } else {
         detail = await repository.updateAllExamQuestionScores(pool, examId, body, adminAccess.userId);
       }
-      const banks = await listQuestionBanks(pool);
+      const banks = await listManagedQuestionBanks(pool);
       json(res, 200, { authoring: authoringPayload(detail, banks) });
       return true;
     } catch (error) {

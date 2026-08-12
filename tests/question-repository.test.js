@@ -2,12 +2,31 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   createQuestion,
+  listManagedQuestionBanks,
+  listQuestionBanks,
+  listQuestions,
   mapQuestion,
   normalizeEditedImages,
   normalizeQuestionCreate,
   normalizeQuestionEdit,
   updateQuestion
 } = require("../src/db/question-repository");
+
+test("普通题目和题库列表排除归档题库，维护列表保留归档题库", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql) {
+      calls.push(sql);
+      return { rows: [] };
+    }
+  };
+  await listQuestions(pool);
+  await listQuestionBanks(pool);
+  await listManagedQuestionBanks(pool);
+  assert.match(calls[0], /q\.status = 'active' AND qb\.status = 'active'/);
+  assert.match(calls[1], /WHERE qb\.status = 'active'/);
+  assert.doesNotMatch(calls[2], /WHERE qb\.status = 'active'/);
+});
 
 test("题库映射返回可编辑字段但不暴露图片资源标识", () => {
   const question = mapQuestion({
@@ -124,6 +143,7 @@ test("保存题目保留选项图片、递增引用考试版本并写审计日�
   const client = {
     async query(sql, params) {
       calls.push({ sql, params });
+      if (sql.includes("FROM question_banks") && sql.includes("FOR SHARE")) return { rows: [{ id: "bank-1" }] };
       if (sql.includes("FROM questions") && sql.includes("FOR UPDATE")) return { rows: [existing] };
       if (sql.includes("UPDATE exams")) return { rows: [{ id: "exam-1" }] };
       if (sql.includes("LEFT JOIN LATERAL")) {
@@ -159,9 +179,32 @@ test("保存题目保留选项图片、递增引用考试版本并写审计日�
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("归档题库中仍为 active 的题目也不可编辑", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes("FROM question_banks") && sql.includes("FOR SHARE")) return { rows: [] };
+      if (sql.includes("FROM questions") && sql.includes("FOR UPDATE")) return { rows: [{
+        id: "q-1", bank_id: "bank-archived", type: "qa", stem: "旧题干",
+        options_json: [], answer_json: "答案", images_json: [], explanation: "",
+        version: 2, status: "active"
+      }] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await assert.rejects(updateQuestion({ connect: async () => client }, "q-1", {
+    version: 2, stem: "新题干", options: [], answer: "答案", explanation: ""
+  }, "admin-1"), /题库已归档/);
+  assert.equal(calls.some((sql) => /UPDATE\s+(questions|exams)\b/i.test(sql)), false);
+  assert.equal(calls.at(-1), "ROLLBACK");
+});
+
 test("题目版本过期时拒绝覆盖其他管理员的修改", async () => {
   const client = {
     async query(sql) {
+      if (sql.includes("FROM question_banks") && sql.includes("FOR SHARE")) return { rows: [{ id: "bank-1" }] };
       if (sql.includes("FOR UPDATE")) return { rows: [{
         id: "q-1", type: "qa", stem: "题干", options_json: [], answer_json: "答案",
         explanation: "", score: "5", version: "4", status: "active"

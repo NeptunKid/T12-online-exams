@@ -8,6 +8,49 @@ const {
 const OPTION_TYPES = new Set(["single", "multi", "judge"]);
 const QUESTION_TYPES = new Set(["single", "multi", "judge", "fill", "qa"]);
 
+class QuestionBankError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = "QuestionBankError";
+    this.statusCode = statusCode;
+  }
+}
+
+function normalizeBankVersion(value) {
+  const version = Number(value);
+  if ((typeof value !== "number" && typeof value !== "string") || !Number.isInteger(version) || version < 1) {
+    throw new QuestionBankError("题库版本无效，请刷新后重试");
+  }
+  return version;
+}
+
+function normalizeBankMetadata(input, existing = null) {
+  const name = String(input?.name ?? existing?.name ?? "").trim();
+  if (!name) throw new QuestionBankError("题库名称不能为空");
+  if (name.length > 500) throw new QuestionBankError("题库名称过长");
+  const description = String(input?.description ?? existing?.description ?? "").trim();
+  if (description.length > 50_000) throw new QuestionBankError("题库说明过长");
+  let ownerId = input?.ownerId;
+  if (ownerId === undefined) ownerId = existing?.owner_id;
+  ownerId = String(ownerId || "").trim() || null;
+  if (ownerId && ownerId.length > 500) throw new QuestionBankError("题库负责人标识过长");
+  return { name, description, ownerId };
+}
+
+function mapQuestionBank(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    status: row.status,
+    ownerId: row.owner_id || "",
+    version: Number(row.version),
+    questionCount: Number(row.question_count || 0),
+    activeQuestionCount: Number(row.active_question_count ?? row.question_count ?? 0),
+    examCount: Number(row.exam_count || 0)
+  };
+}
+
 function normalizeStoredOptions(options) {
   const source = Array.isArray(options)
     ? options
@@ -64,28 +107,226 @@ const QUESTION_SELECT = `
 
 async function listQuestions(pool) {
   const result = await pool.query(`${QUESTION_SELECT}
-    WHERE q.status = 'active'
+    WHERE q.status = 'active' AND qb.status = 'active'
     ORDER BY qb.name, COALESCE(q.external_id, q.id), q.id;`);
   return result.rows.map(mapQuestion);
 }
 
 async function listQuestionBanks(pool) {
   const result = await pool.query(`
-    SELECT qb.id, qb.name, qb.description, qb.status, qb.owner_id,
+    SELECT qb.id, qb.name, qb.description, qb.status, qb.owner_id, qb.version,
       count(q.id)::integer AS question_count
     FROM question_banks qb
     LEFT JOIN questions q ON q.bank_id = qb.id AND q.status = 'active'
     WHERE qb.status = 'active'
     GROUP BY qb.id
     ORDER BY qb.name, qb.id;`);
-  return result.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description || "",
-    status: row.status,
-    ownerId: row.owner_id || "",
-    questionCount: Number(row.question_count || 0)
-  }));
+  return result.rows.map(mapQuestionBank);
+}
+
+async function listManagedQuestionBanks(pool) {
+  const result = await pool.query(`
+    SELECT qb.id, qb.name, qb.description, qb.status, qb.owner_id, qb.version,
+      count(DISTINCT q.id)::integer AS question_count,
+      count(DISTINCT q.id) FILTER (WHERE q.status = 'active')::integer AS active_question_count,
+      count(DISTINCT e.id)::integer AS exam_count
+    FROM question_banks qb
+    LEFT JOIN questions q ON q.bank_id = qb.id
+    LEFT JOIN exams e ON e.question_bank_id = qb.id
+    GROUP BY qb.id
+    ORDER BY (qb.status = 'archived'), qb.name, qb.id;`);
+  return result.rows.map(mapQuestionBank);
+}
+
+async function getQuestionBank(queryable, bankId) {
+  const result = await queryable.query(`
+    SELECT qb.id, qb.name, qb.description, qb.status, qb.owner_id, qb.version,
+      count(DISTINCT q.id)::integer AS question_count,
+      count(DISTINCT q.id) FILTER (WHERE q.status = 'active')::integer AS active_question_count,
+      count(DISTINCT e.id)::integer AS exam_count
+    FROM question_banks qb
+    LEFT JOIN questions q ON q.bank_id = qb.id
+    LEFT JOIN exams e ON e.question_bank_id = qb.id
+    WHERE qb.id = $1
+    GROUP BY qb.id;`, [bankId]);
+  return result.rows[0] ? mapQuestionBank(result.rows[0]) : null;
+}
+
+async function insertQuestionBankAudit(client, actorUserId, action, bankId, before, after) {
+  await client.query(`
+    INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+    VALUES ($1, $2, $3, 'question_bank', $4, $5::jsonb, $6::jsonb);`, [
+    crypto.randomUUID(), actorUserId, action, bankId,
+    before === null ? null : JSON.stringify(before),
+    after === null ? null : JSON.stringify(after)
+  ]);
+}
+
+async function createQuestionBank(pool, input, actorUserId) {
+  const metadata = normalizeBankMetadata({ ...input, ownerId: input?.ownerId ?? actorUserId });
+  const bankId = `question_bank_${crypto.randomUUID()}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`
+      INSERT INTO question_banks (id, name, description, status, owner_id, version)
+      VALUES ($1, $2, $3, 'active', $4, 1);`, [
+      bankId, metadata.name, metadata.description, metadata.ownerId
+    ]);
+    const created = await getQuestionBank(client, bankId);
+    await insertQuestionBankAudit(client, actorUserId, "create_question_bank", bankId, null, created);
+    await client.query("COMMIT");
+    return created;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23503") throw new QuestionBankError("题库负责人不存在");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function lockQuestionBank(client, bankId, expectedVersion) {
+  const result = await client.query(`
+    SELECT id, name, description, status, owner_id, version
+    FROM question_banks
+    WHERE id = $1
+    FOR UPDATE;`, [bankId]);
+  const bank = result.rows[0];
+  if (!bank) throw new QuestionBankError("未找到题库", 404);
+  if (Number(bank.version) !== expectedVersion) {
+    throw new QuestionBankError("题库已被其他管理员修改，请刷新后重试", 409);
+  }
+  return bank;
+}
+
+function bankSnapshot(bank) {
+  return {
+    name: bank.name,
+    description: bank.description || "",
+    status: bank.status,
+    ownerId: bank.owner_id || bank.ownerId || "",
+    version: Number(bank.version)
+  };
+}
+
+async function updateQuestionBank(pool, bankId, input, actorUserId) {
+  const expectedVersion = normalizeBankVersion(input?.version);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await lockQuestionBank(client, bankId, expectedVersion);
+    const metadata = normalizeBankMetadata(input, existing);
+    const before = bankSnapshot(existing);
+    await client.query(`
+      UPDATE question_banks
+      SET name = $2, description = $3, owner_id = $4, version = version + 1
+      WHERE id = $1;`, [bankId, metadata.name, metadata.description, metadata.ownerId]);
+    const updated = await getQuestionBank(client, bankId);
+    await insertQuestionBankAudit(client, actorUserId, "update_question_bank", bankId, before, updated);
+    await client.query("COMMIT");
+    return updated;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23503") throw new QuestionBankError("题库负责人不存在");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function copyQuestionBank(pool, sourceBankId, input, actorUserId) {
+  const expectedVersion = normalizeBankVersion(input?.version);
+  const targetBankId = `question_bank_${crypto.randomUUID()}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const source = await lockQuestionBank(client, sourceBankId, expectedVersion);
+    const metadata = normalizeBankMetadata({
+      name: input?.name ?? `${source.name}（副本）`,
+      description: input?.description ?? source.description,
+      ownerId: input?.ownerId ?? actorUserId
+    });
+    await client.query(`
+      INSERT INTO question_banks (id, name, description, status, owner_id, version)
+      VALUES ($1, $2, $3, 'active', $4, 1);`, [
+      targetBankId, metadata.name, metadata.description, metadata.ownerId
+    ]);
+    const questionResult = await client.query(`
+      SELECT id, external_id, type, stem, images_json, options_json, answer_json,
+        explanation, version, status
+      FROM questions
+      WHERE bank_id = $1
+      ORDER BY id
+      FOR SHARE;`, [sourceBankId]);
+    for (const question of questionResult.rows) {
+      await client.query(`
+        INSERT INTO questions (
+          id, bank_id, external_id, type, stem, images_json, options_json, answer_json,
+          explanation, version, status
+        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, 1, $10);`, [
+        `question_copy_${crypto.randomUUID()}`,
+        targetBankId,
+        question.external_id,
+        question.type,
+        question.stem,
+        JSON.stringify(question.images_json || []),
+        JSON.stringify(question.options_json || []),
+        JSON.stringify(question.answer_json),
+        question.explanation || "",
+        question.status
+      ]);
+    }
+    const copied = await getQuestionBank(client, targetBankId);
+    await insertQuestionBankAudit(client, actorUserId, "copy_question_bank", targetBankId, null, {
+      ...copied,
+      sourceBankId,
+      sourceVersion: Number(source.version)
+    });
+    await client.query("COMMIT");
+    return copied;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23503") throw new QuestionBankError("题库负责人不存在");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function setQuestionBankStatus(pool, bankId, input, actorUserId, targetStatus) {
+  const expectedVersion = normalizeBankVersion(input?.version);
+  const action = targetStatus === "archived" ? "archive_question_bank" : "restore_question_bank";
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await lockQuestionBank(client, bankId, expectedVersion);
+    if (existing.status === targetStatus) {
+      throw new QuestionBankError(targetStatus === "archived" ? "题库已归档" : "题库已恢复", 409);
+    }
+    const before = bankSnapshot(existing);
+    await client.query(`
+      UPDATE question_banks
+      SET status = $2, version = version + 1
+      WHERE id = $1;`, [bankId, targetStatus]);
+    const updated = await getQuestionBank(client, bankId);
+    await insertQuestionBankAudit(client, actorUserId, action, bankId, before, updated);
+    await client.query("COMMIT");
+    return updated;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function archiveQuestionBank(pool, bankId, input, actorUserId) {
+  return setQuestionBankStatus(pool, bankId, input, actorUserId, "archived");
+}
+
+async function restoreQuestionBank(pool, bankId, input, actorUserId) {
+  return setQuestionBankStatus(pool, bankId, input, actorUserId, "active");
 }
 
 function normalizeEditedOptions(type, options, existingOptions) {
@@ -192,6 +433,13 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const bank = await client.query(`
+      SELECT id
+      FROM question_banks
+      WHERE id = (SELECT bank_id FROM questions WHERE id = $1)
+        AND status = 'active'
+      FOR SHARE;`, [questionId]);
+    if (!bank.rows.length) throw new Error("未找到可编辑的题目，或题库已归档");
     const locked = await client.query(`
       SELECT id, bank_id, external_id, type, stem, options_json, answer_json,
         images_json, explanation, version, status
@@ -313,15 +561,26 @@ async function createQuestion(pool, input, actorUserId) {
 }
 
 module.exports = {
+  QuestionBankError,
+  archiveQuestionBank,
+  copyQuestionBank,
+  createQuestionBank,
   createQuestion,
+  getQuestionBank,
+  listManagedQuestionBanks,
   listQuestions,
   listQuestionBanks,
   mapQuestion,
+  mapQuestionBank,
+  normalizeBankMetadata,
+  normalizeBankVersion,
   normalizeEditedImages,
   normalizeEditedAnswer,
   normalizeEditedOptions,
   normalizeQuestionCreate,
   normalizeQuestionEdit,
   normalizeStoredOptions,
+  restoreQuestionBank,
+  updateQuestionBank,
   updateQuestion
 };

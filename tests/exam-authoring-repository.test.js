@@ -37,7 +37,8 @@ function createDatabase(overrides = {}) {
     questions: overrides.questions || [
       { id: "q-1", external_id: "1", type: "single", stem: "第一题", status: "active" },
       { id: "q-2", external_id: "2", type: "qa", stem: "第二题", status: "active" }
-    ]
+    ],
+    bankStatus: overrides.bankStatus || "active"
   };
 
   const client = {
@@ -60,7 +61,9 @@ function createDatabase(overrides = {}) {
         })) };
       }
       if (compact.includes("FROM question_banks") && compact.includes("FOR SHARE")) {
-        return { rows: params[0] === "bank-1" || params[0] === "bank-2" ? [{ id: params[0], name: "可用题库" }] : [] };
+        return { rows: state.bankStatus === "active" && (params[0] === "bank-1" || params[0] === "bank-2")
+          ? [{ id: params[0], name: "可用题库" }]
+          : [] };
       }
       if (compact.startsWith("INSERT INTO exams")) {
         const copying = params.length === 9;
@@ -449,6 +452,46 @@ test("草稿重新发布校验题库、题目和总分并增加版本", async ()
     questions: [{ id: "q-1", external_id: "1", type: "qa", stem: "旧题", status: "archived", bank_id: "bank-1" }]
   });
   await assert.rejects(publishExam(archived.pool, "exam-1", { version: 3 }, "admin-1"), /已归档/);
+});
+
+test("归档题库阻止全部新增或修改组卷路径且不触碰历史答卷", async () => {
+  const cases = [
+    ["新增试卷", (database) => createExam(database.pool, {
+      title: "新试卷", durationSeconds: 600, passRate: 0.6, questionBankId: "bank-1"
+    }, "admin-1")],
+    ["复制试卷", (database) => copyExam(database.pool, "exam-1", { version: 3 }, "admin-1")],
+    ["开启修订", (database) => reopenExamRevision(database.pool, "exam-1", { version: 3 }, "admin-1")],
+    ["修改参数", (database) => updateExamSettings(database.pool, "exam-1", {
+      version: 3, title: "修改后", durationSeconds: 900, passRate: 0.7
+    }, "admin-1")],
+    ["绑定题库", (database) => bindExamQuestionBank(database.pool, "exam-1", {
+      version: 3, bankId: "bank-2"
+    }, "admin-1")],
+    ["修改选题", (database) => setExamQuestions(database.pool, "exam-1", {
+      version: 3, questionIds: ["q-1"]
+    }, "admin-1")],
+    ["调整排序", (database) => reorderExamQuestions(database.pool, "exam-1", {
+      version: 3, questionIds: ["q-1"]
+    }, "admin-1")],
+    ["修改单题分值", (database) => updateExamQuestionScore(database.pool, "exam-1", "q-1", {
+      version: 3, score: 6
+    }, "admin-1")],
+    ["修改全部分值", (database) => updateAllExamQuestionScores(database.pool, "exam-1", {
+      version: 3, score: 6
+    }, "admin-1")],
+    ["发布试卷", (database) => publishExam(database.pool, "exam-1", { version: 3 }, "admin-1")]
+  ];
+  for (const [name, operation] of cases) {
+    const database = createDatabase({
+      bankStatus: "archived",
+      exam: name === "开启修订" ? { status: "published" } : {}
+    });
+    await assert.rejects(operation(database), /题库|可用/);
+    const sql = database.calls.map((call) => call.sql).join("\n");
+    assert.doesNotMatch(sql, /\b(submissions|submission_questions)\b/, name);
+    assert.doesNotMatch(sql, /UPDATE\s+exam_questions|DELETE\s+FROM\s+exam_questions|INSERT\s+INTO\s+exam_questions/i, name);
+    assert.equal(database.calls.at(-1).sql, "ROLLBACK", name);
+  }
 });
 
 test("试卷参数校验拒绝空标题、无效时长和越界通过比例", async () => {

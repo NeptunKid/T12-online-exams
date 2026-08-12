@@ -195,6 +195,16 @@ async function loadSelection(client, examId, lock = false) {
   }));
 }
 
+async function assertActiveQuestionBank(client, bankId) {
+  if (!bankId) throw new ExamAuthoringError("请先为试卷绑定题库");
+  const result = await client.query(`
+    SELECT id
+    FROM question_banks
+    WHERE id = $1 AND status = 'active'
+    FOR SHARE;`, [bankId]);
+  if (!result.rows.length) throw new ExamAuthoringError("当前题库已归档，不能用于新组卷", 409);
+}
+
 function assertSelectionBelongsToBank(selected, bankId) {
   if (!bankId) throw new ExamAuthoringError("请先为试卷绑定题库");
   if (selected.some((item) => item.bankId !== bankId || item.status !== "active")) {
@@ -336,6 +346,7 @@ async function copyExam(pool, sourceExamId, input, actorUserId) {
     if (Number(source.version) !== expectedVersion) {
       throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
     }
+    if (source.question_bank_id) await assertActiveQuestionBank(client, source.question_bank_id);
     const title = input?.title === undefined ? `${source.title}（副本）` : normalizeTitle(input.title);
     await client.query(`
       INSERT INTO exams (
@@ -393,6 +404,7 @@ async function reopenExamRevision(pool, examId, input, actorUserId) {
     if (!new Set(["published", "scheduled", "paused", "closed"]).has(exam.status)) {
       throw new ExamAuthoringError("当前试卷状态不支持开始新版本", 409);
     }
+    await assertActiveQuestionBank(client, exam.question_bank_id);
     const questions = await loadSelection(client, examId, true);
     const before = snapshotExam(exam, questions);
     const updated = await client.query(`
@@ -416,6 +428,7 @@ async function reopenExamRevision(pool, examId, input, actorUserId) {
 
 async function updateExamSettings(pool, examId, input, actorUserId) {
   return mutateExam(pool, examId, input, actorUserId, "update_exam_settings", async (client, exam) => {
+    await assertActiveQuestionBank(client, exam.question_bank_id);
     const settings = normalizeExamSettings(input, exam);
     await client.query(`
       UPDATE exams
@@ -432,6 +445,7 @@ async function publishExam(pool, examId, input, actorUserId) {
   try {
     await client.query("BEGIN");
     const exam = await lockDraftExam(client, examId, expectedVersion);
+    await assertActiveQuestionBank(client, exam.question_bank_id);
     const questions = await loadSelection(client, examId, true);
     if (!questions.length) throw new ExamAuthoringError("试卷至少需要选择一道试题");
     assertSelectionBelongsToBank(questions, exam.question_bank_id);
@@ -478,7 +492,7 @@ async function setExamQuestions(pool, examId, input, actorUserId) {
   const selectAll = input?.selectAll === true;
   const requestedIds = selectAll ? null : normalizeQuestionIds(input?.questionIds);
   return mutateExam(pool, examId, input, actorUserId, "set_exam_questions", async (client, exam, selected) => {
-    if (!exam.question_bank_id) throw new ExamAuthoringError("请先为试卷绑定题库");
+    await assertActiveQuestionBank(client, exam.question_bank_id);
     let questionIds = requestedIds;
     if (selectAll) {
       const result = await client.query(`
@@ -519,6 +533,7 @@ async function setExamQuestions(pool, examId, input, actorUserId) {
 async function reorderExamQuestions(pool, examId, input, actorUserId) {
   const orderedIds = normalizeQuestionIds(input?.questionIds, { allowEmpty: false });
   return mutateExam(pool, examId, input, actorUserId, "reorder_exam_questions", async (client, _exam, selected) => {
+    await assertActiveQuestionBank(client, _exam.question_bank_id);
     assertSelectionBelongsToBank(selected, _exam.question_bank_id);
     const selectedIds = new Set(selected.map((item) => item.questionId));
     if (orderedIds.length !== selected.length || orderedIds.some((id) => !selectedIds.has(id))) {
@@ -539,6 +554,7 @@ async function updateExamQuestionScore(pool, examId, questionId, input, actorUse
   if (!normalizedQuestionId) throw new ExamAuthoringError("题目标识不能为空");
   const score = normalizeScore(input?.score);
   return mutateExam(pool, examId, input, actorUserId, "update_exam_question_score", async (client, exam, selected) => {
+    await assertActiveQuestionBank(client, exam.question_bank_id);
     assertSelectionBelongsToBank(selected, exam.question_bank_id);
     const result = await client.query(`
       UPDATE exam_questions
@@ -552,6 +568,7 @@ async function updateExamQuestionScore(pool, examId, questionId, input, actorUse
 async function updateAllExamQuestionScores(pool, examId, input, actorUserId) {
   const score = normalizeScore(input?.score);
   return mutateExam(pool, examId, input, actorUserId, "update_all_exam_question_scores", async (client, _exam, selected) => {
+    await assertActiveQuestionBank(client, _exam.question_bank_id);
     if (!selected.length) throw new ExamAuthoringError("当前试卷没有可修改分值的题目");
     assertSelectionBelongsToBank(selected, _exam.question_bank_id);
     await client.query("UPDATE exam_questions SET score = $2 WHERE exam_id = $1;", [examId, score]);

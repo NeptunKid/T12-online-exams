@@ -25,7 +25,7 @@ test("Phase 1 schema 覆盖多考试、快照、权限和通知基础表", () =>
 test("每份迁移都提供同名回滚文件", () => {
   for (const migration of listMigrations()) {
     assert.match(migration.downPath, /db\/migrations\/down\/\d{4}_.+\.sql$/);
-    assert.match(require("node:fs").readFileSync(migration.downPath, "utf8"), /(DROP TABLE|DELETE FROM|DROP CONSTRAINT)/);
+    assert.match(require("node:fs").readFileSync(migration.downPath, "utf8"), /(DROP TABLE|DELETE FROM|DROP CONSTRAINT|DROP COLUMN)/);
   }
 });
 
@@ -116,4 +116,13 @@ test("0009 自动备份迁移不读写历史答卷", () => {
   assert.match(migration.sql, /ON DELETE CASCADE/);
   assert.match(migration.sql, /retention_expires_at timestamptz/);
   assert.doesNotMatch(migration.sql, /\b(submissions|submission_questions)\b/i);
+});
+
+test("0010 为题库生命周期增加可回滚的乐观锁版本", () => {
+  const migration = listMigrations().find((item) => item.name === "0010_question_bank_versions");
+  assert.ok(migration);
+  assert.match(migration.sql, /ALTER TABLE question_banks/);
+  assert.match(migration.sql, /ADD COLUMN version integer NOT NULL DEFAULT 1/);
+  assert.doesNotMatch(migration.sql, /\b(submissions|submission_questions)\b/i);
+  assert.match(require("node:fs").readFileSync(migration.downPath, "utf8"), /DROP COLUMN version/);
 });

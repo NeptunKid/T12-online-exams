@@ -44,9 +44,9 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
       calls.push({ name: "isSameOriginJsonRequest", args: [req] });
       return sameOrigin;
     },
-    async listQuestionBanks(receivedPool) {
-      calls.push({ name: "listQuestionBanks", args: [receivedPool] });
-      return [{ id: "bank-1", name: "测试题库" }];
+    async listManagedQuestionBanks(receivedPool) {
+      calls.push({ name: "listManagedQuestionBanks", args: [receivedPool] });
+      return [{ id: "bank-1", name: "测试题库", status: "active" }];
     }
   };
 
@@ -105,7 +105,7 @@ test("试卷列表和组卷详情返回约定的响应结构并解码路径参�
   assert.equal(detailRes.response.status, 200);
   assert.deepEqual(detailRes.response.body.authoring, {
     exam: { id: "exam/2026", title: "测试试卷", version: 3 },
-    banks: [{ id: "bank-1", name: "测试题库" }],
+    banks: [{ id: "bank-1", name: "测试题库", status: "active" }],
     questions: []
   });
   assert.deepEqual(callFor(detailHarness, "getExamAuthoring").args, [{ name: "pool" }, "exam/2026"]);
@@ -121,7 +121,7 @@ test("绑定题库路由传递试卷、请求体和当前管理员", async () =>
   assert.equal(res.response.status, 200);
   assert.deepEqual(res.response.body, { authoring: {
     exam: { id: "exam-1", title: "测试试卷", version: 4 },
-    banks: [{ id: "bank-1", name: "测试题库" }],
+    banks: [{ id: "bank-1", name: "测试题库", status: "active" }],
     questions: []
   } });
   assert.deepEqual(callFor(harness, "bindExamQuestionBank").args, [
