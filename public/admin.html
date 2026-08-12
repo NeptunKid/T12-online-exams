@@ -165,7 +165,10 @@
           <h2>试卷组卷</h2>
           <p class="brand-sub">从一个题库选择试题并设置试卷分值</p>
         </div>
-        <button class="btn secondary compact-btn" id="closeExamAuthoringBtn" type="button">关闭</button>
+        <div class="admin-dialog-actions">
+          <button class="btn primary compact-btn" id="newExamBtn" type="button">新增试卷</button>
+          <button class="btn secondary compact-btn" id="closeExamAuthoringBtn" type="button">关闭</button>
+        </div>
       </div>
       <div id="examAuthoringMsg" class="notice hidden" role="status"></div>
       <div class="exam-authoring-layout">
@@ -199,7 +202,7 @@
             <select id="questionExamFilter"></select>
           </div>
           <div class="brand-sub question-count" id="questionCount"></div>
-          <input id="questionSearch" type="search" placeholder="搜索当前试卷题目">
+          <input id="questionSearch" type="search" placeholder="搜索当前题库题目">
           <div id="questionList" class="question-manager-list"></div>
         </aside>
         <section id="questionEditor" class="question-editor">

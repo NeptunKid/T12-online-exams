@@ -1225,6 +1225,7 @@ select:focus {
 .exam-authoring-list-head,
 .exam-authoring-editor-head,
 .exam-authoring-section-head,
+.exam-editor-head-actions,
 .exam-bank-controls,
 .exam-selection-actions,
 .exam-bulk-score,
@@ -1254,6 +1255,27 @@ select:focus {
 .exam-authoring-editor-head h3 {
   margin-top: 8px;
   font-size: 20px;
+}
+
+.exam-editor-head-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.exam-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) repeat(2, minmax(130px, 0.75fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.exam-settings-grid .field {
+  margin: 0;
+}
+
+.exam-settings-save {
+  min-height: 40px;
 }
 
 .exam-score-summary {
@@ -2082,6 +2104,7 @@ select:focus {
 
   .exam-authoring-editor-head,
   .exam-authoring-section-head,
+  .exam-editor-head-actions,
   .exam-bank-controls,
   .exam-selection-actions,
   .exam-bulk-score,
@@ -2097,6 +2120,10 @@ select:focus {
   .exam-bulk-score .btn,
   .exam-question-actions .btn {
     width: 100%;
+  }
+
+  .exam-settings-grid {
+    grid-template-columns: 1fr;
   }
 
   .exam-question-row {

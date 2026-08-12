@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { loadQuestionResourceManifest, mapQuestionImages, mapQuestionOptions, resourceUrl } = require("../src/resources/question-resources");
+const { detectImageMimeType } = require("../src/db/question-resource-repository");
 
 test("历史对象格式选项可转换为统一选项数组", () => {
   assert.deepEqual(mapQuestionOptions({ A: "选项 A", B: "选项 B" }, {}), [
@@ -23,6 +24,14 @@ test("数据库上传的题目图片 URL 保持为受控 API 路径", () => {
     "/api/question-resources/question_resource_123",
     "/api/question-resources/invalid"
   ]), ["/api/question-resources/question_resource_123"]);
+});
+
+test("题目图片资源映射会去除同一来源中的重复 URL", () => {
+  assert.deepEqual(mapQuestionImages([
+    "resource:coffee-siphon",
+    "resource:coffee-siphon",
+    "/question-resources/coffee/coffee-siphon.jpeg"
+  ]), ["/question-resources/coffee/coffee-siphon.jpeg"]);
 });
 
 test("萃取原理图表资源清单包含 17/18 题全部受控图片", () => {
@@ -51,5 +60,13 @@ test("咖啡题库的果实结构图和虹吸壶图片使用受控资源", () =>
     const file = path.join(__dirname, "../public", resourceUrl(id, resources).replace(/^\//, ""));
     const sha = crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
     assert.equal(resources[id].sha256, sha);
+  }
+});
+
+test("全部静态题目图片的清单 MIME 与真实文件一致", () => {
+  const resources = loadQuestionResourceManifest();
+  for (const [id, resource] of Object.entries(resources)) {
+    const file = path.join(__dirname, "../public/question-resources", resource.file);
+    assert.equal(detectImageMimeType(fs.readFileSync(file)), resource.mediaType, id);
   }
 });

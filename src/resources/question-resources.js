@@ -21,12 +21,12 @@ function resourceUrl(resourceId, resources = loadQuestionResourceManifest()) {
 
 function mapQuestionImages(images, resources = loadQuestionResourceManifest()) {
   if (!Array.isArray(images)) return [];
-  return images.map((image) => {
+  return [...new Set(images.map((image) => {
     if (typeof image !== "string") return "";
     if (/^\/question-resources\/[A-Za-z0-9_./-]+$/.test(image) && !image.includes("..")) return image;
     if (UPLOADED_RESOURCE_URL_PATTERN.test(image)) return image;
     return resourceUrl(image, resources);
-  }).filter(Boolean);
+  }).filter(Boolean))];
 }
 
 function uploadedResourceId(value) {

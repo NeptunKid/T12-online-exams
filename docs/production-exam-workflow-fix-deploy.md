@@ -10,8 +10,9 @@
 sudo -u codexdeploy -H git -C /opt/t12-online-exams pull --ff-only origin main
 sudo -u codexdeploy -H /usr/bin/npm --prefix /opt/t12-online-exams ci
 
-sudo install -d -o postgres -g postgres -m 700 /var/backups/t12-online-exams
-BACKUP="/var/backups/t12-online-exams/t12_exams-before-workflow-fix-$(date +%Y%m%d%H%M%S).dump"
+sudo install -d -o root -g root -m 711 /var/backups/t12-online-exams
+sudo install -d -o postgres -g postgres -m 700 /var/backups/t12-online-exams/postgres
+BACKUP="/var/backups/t12-online-exams/postgres/t12_exams-before-workflow-fix-$(date +%Y%m%d%H%M%S).dump"
 sudo -u postgres pg_dump -Fc -f "$BACKUP" t12_exams
 sudo test -s "$BACKUP" && sudo ls -lh "$BACKUP"
 ```

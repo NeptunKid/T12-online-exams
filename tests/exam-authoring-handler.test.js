@@ -13,6 +13,11 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
   const repositoryNames = [
     "listAuthoringExams",
     "getExamAuthoring",
+    "createExam",
+    "copyExam",
+    "reopenExamRevision",
+    "publishExam",
+    "updateExamSettings",
     "bindExamQuestionBank",
     "setExamQuestions",
     "reorderExamQuestions",
@@ -183,6 +188,26 @@ test("批量分值路由调用当前试卷的全题分值操作", async () => {
   ]);
 });
 
+test("新增、复制、开始修订、参数修改和发布路由使用统一响应结构", async () => {
+  const cases = [
+    ["POST", "/api/admin/exams", "createExam", { title: "新试卷", durationSeconds: 600, passRate: 0.6 }, []],
+    ["POST", "/api/admin/exams/exam-1/copy", "copyExam", { version: 3, title: "副本" }, ["exam-1"]],
+    ["POST", "/api/admin/exams/exam-1/revision", "reopenExamRevision", { version: 3 }, ["exam-1"]],
+    ["PATCH", "/api/admin/exams/exam-1", "updateExamSettings", { version: 3, title: "新标题", durationSeconds: 900, passRate: 0.8 }, ["exam-1"]],
+    ["POST", "/api/admin/exams/exam-1/publish", "publishExam", { version: 3 }, ["exam-1"]]
+  ];
+  for (const [method, pathname, repositoryName, body, idArgs] of cases) {
+    const harness = createHarness();
+    const res = {};
+    assert.equal(await harness.handler(request(method, body), res, pathname, MANAGER_ACCESS), true);
+    assert.equal(res.response.status, 200, pathname);
+    assert.deepEqual(callFor(harness, repositoryName).args, [
+      { name: "pool" }, ...idArgs, body, "admin-1"
+    ], pathname);
+    assert.deepEqual(Object.keys(res.response.body), ["authoring"]);
+  }
+});
+
 test("组卷路由要求题库管理权限且数据库必须已配置", async () => {
   const forbiddenHarness = createHarness();
   const forbiddenRes = {};
@@ -203,6 +228,11 @@ test("组卷路由要求题库管理权限且数据库必须已配置", async ()
 
 test("所有组卷写路由都拒绝非同源 JSON 请求", async () => {
   const writes = [
+    ["POST", "/api/admin/exams", "createExam"],
+    ["POST", "/api/admin/exams/exam-1/copy", "copyExam"],
+    ["POST", "/api/admin/exams/exam-1/revision", "reopenExamRevision"],
+    ["PATCH", "/api/admin/exams/exam-1", "updateExamSettings"],
+    ["POST", "/api/admin/exams/exam-1/publish", "publishExam"],
     ["PUT", "/api/admin/exams/exam-1/question-bank", "bindExamQuestionBank"],
     ["PUT", "/api/admin/exams/exam-1/questions", "setExamQuestions"],
     ["PUT", "/api/admin/exams/exam-1/question-order", "reorderExamQuestions"],

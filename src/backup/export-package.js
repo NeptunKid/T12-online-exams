@@ -6,6 +6,7 @@ const {
   resourceUrl,
   uploadedResourceId
 } = require("../resources/question-resources");
+const { detectImageMimeType } = require("../db/question-resource-repository");
 
 const BACKUP_FORMAT = "t12-online-exams-backup";
 const BACKUP_FORMAT_VERSION = 1;
@@ -151,15 +152,20 @@ function normalizeResource(resource) {
     : Buffer.from(resource.base64 || "", "base64");
   const digest = sha256(content);
   if (resource.sha256 && resource.sha256 !== digest) throw new Error(`资源 ${resource.id} 的 SHA-256 校验失败`);
-  if (!/^image\/(jpeg|png|webp)$/.test(resource.mime_type ?? resource.mimeType ?? "")) {
+  const declaredMimeType = resource.mime_type ?? resource.mimeType ?? "";
+  if (!/^image\/(jpeg|png|webp)$/.test(declaredMimeType)) {
     throw new Error(`资源 ${resource.id} 的 MIME 类型无效`);
+  }
+  const detectedMimeType = detectImageMimeType(content);
+  if (!detectedMimeType || detectedMimeType !== declaredMimeType) {
+    throw new Error(`资源 ${resource.id} 的 MIME 类型与图片内容不一致`);
   }
   if (resource.size_bytes !== undefined && Number(resource.size_bytes) !== content.length) {
     throw new Error(`资源 ${resource.id} 的大小校验失败`);
   }
   return {
     id: String(resource.id),
-    mimeType: resource.mime_type ?? resource.mimeType,
+    mimeType: declaredMimeType,
     sizeBytes: content.length,
     sha256: digest,
     base64: content.toString("base64")
@@ -176,7 +182,9 @@ function staticResource(id, resources) {
   const file = path.join(STATIC_RESOURCE_ROOT, url.replace(/^\//, ""));
   if (!file.startsWith(STATIC_RESOURCE_ROOT + path.sep) || !fs.existsSync(file)) return null;
   const content = fs.readFileSync(file);
-  return normalizeResource({ id, mimeType: entry?.mediaType, sha256: entry?.sha256, content });
+  const mimeType = detectImageMimeType(content);
+  if (!mimeType) throw new Error(`资源 ${id} 的图片格式无效`);
+  return normalizeResource({ id, mimeType, sha256: entry?.sha256, content });
 }
 
 function buildBackupPackage(input = {}) {
