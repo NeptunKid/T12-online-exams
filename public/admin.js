@@ -11,6 +11,9 @@ let adminQuestionBanks = [];
 let currentQuestionFilterId = "";
 let currentQuestionId = "";
 let newQuestionDraft = null;
+let questionBankEditorMode = "";
+let questionBankBusy = false;
+let questionBankNotice = { text: "", type: "" };
 let questionImageDraft = null;
 let questionImageUploadBusy = false;
 let sessionHeartbeatId = 0;
@@ -168,13 +171,13 @@ function renderBackupAutomation() {
 }
 
 async function loadBackupCatalog() {
-  const [examData, questionData] = await Promise.all([
+  const [examData, bankData] = await Promise.all([
     api("/api/admin/exams"),
-    api("/api/admin/questions")
+    api("/api/admin/question-banks")
   ]);
   backupCatalog = {
     exams: examData.exams || [],
-    banks: questionData.banks || []
+    banks: bankData.banks || []
   };
   renderBackupCatalog();
 }
@@ -650,6 +653,7 @@ function renderExamAuthoringEditor() {
   const hasArchivedSelection = selected.some((question) => question.status !== "active");
   const selectedIndex = new Map(selected.map((question, index) => [question.id, index]));
   const bankId = exam.questionBankId || exam.question_bank_id || "";
+  const visibleBanks = banks.filter((bank) => bank.status !== "archived" || bank.id === bankId);
   const passRate = Number(exam.passRate ?? exam.pass_rate ?? 0);
   const displayQuestions = [...selected, ...questions.filter((question) => !question.selected)];
   editor.innerHTML = `
@@ -697,7 +701,7 @@ function renderExamAuthoringEditor() {
         <div class="exam-bank-controls">
           <select id="examQuestionBankSelect" aria-label="试卷题库" ${editable && !examAuthoringBusy ? "" : "disabled"}>
             <option value="">请选择题库</option>
-            ${banks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === bankId ? "selected" : ""}>${esc(bank.name)}（${Number(bank.questionCount || 0)} 题）</option>`).join("")}
+            ${visibleBanks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === bankId ? "selected" : ""} ${bank.status === "archived" ? "disabled" : ""}>${esc(bank.name)}（${Number(bank.questionCount || 0)} 题${bank.status === "archived" ? "·已归档" : ""}）</option>`).join("")}
           </select>
           <button class="btn secondary compact-btn" id="saveExamBankBtn" type="button" ${editable && !examAuthoringBusy ? "" : "disabled"}>绑定题库</button>
         </div>
@@ -1062,6 +1066,180 @@ function renderQuestionList() {
   }
 }
 
+function currentQuestionBank() {
+  const bankId = currentQuestionFilterId.startsWith("bank:") ? currentQuestionFilterId.slice(5) : "";
+  return adminQuestionBanks.find((bank) => bank.id === bankId) || null;
+}
+
+function questionBankStatus(bank) {
+  return bank?.status === "archived" ? "已归档" : "启用中";
+}
+
+function renderQuestionBankManager() {
+  const list = document.getElementById("questionBankList");
+  const editor = document.getElementById("questionBankEditor");
+  const selected = currentQuestionBank();
+  document.getElementById("newQuestionBankBtn").disabled = questionBankBusy;
+  list.innerHTML = adminQuestionBanks.length ? adminQuestionBanks.map((bank) => `
+    <button class="question-bank-item ${bank.id === selected?.id ? "active" : ""}" type="button"
+      data-bank-id="${esc(bank.id)}" ${questionBankBusy ? "disabled" : ""}>
+      <span class="question-bank-item-main">
+        <strong>${esc(bank.name || "未命名题库")}</strong>
+        <small>${Number(bank.questionCount || 0)} 道题 · 版本 ${Number(bank.version || 0)}</small>
+      </span>
+      <span class="badge ${bank.status === "archived" ? "bank-archived" : "bank-active"}">${questionBankStatus(bank)}</span>
+    </button>`).join("") : `<div class="empty-state question-bank-empty">暂无题库</div>`;
+
+  for (const button of list.querySelectorAll(".question-bank-item")) {
+    button.addEventListener("click", () => selectQuestionBank(button.dataset.bankId));
+  }
+
+  const notice = questionBankNotice.text
+    ? `<div class="notice ${questionBankNotice.type}">${esc(questionBankNotice.text)}</div>`
+    : "";
+  if (questionBankEditorMode === "new" || questionBankEditorMode === "edit") {
+    const editing = questionBankEditorMode === "edit" ? selected : null;
+    editor.innerHTML = `
+      <form id="questionBankForm" class="question-bank-form">
+        <div class="field">
+          <label for="questionBankName">题库名称</label>
+          <input id="questionBankName" value="${esc(editing?.name || "")}" maxlength="120" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="questionBankDescription">说明</label>
+          <textarea id="questionBankDescription" maxlength="1000" placeholder="选填">${esc(editing?.description || "")}</textarea>
+        </div>
+        <div class="question-bank-form-actions">
+          <button class="btn primary compact-btn" type="submit" ${questionBankBusy ? "disabled" : ""}>${editing ? "保存" : "创建题库"}</button>
+          <button class="btn secondary compact-btn" id="cancelQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>取消</button>
+        </div>
+        ${notice}
+      </form>`;
+    document.getElementById("questionBankForm").addEventListener("submit", saveQuestionBank);
+    document.getElementById("cancelQuestionBankBtn").addEventListener("click", () => {
+      questionBankEditorMode = "";
+      questionBankNotice = { text: "", type: "" };
+      renderQuestionBankManager();
+    });
+    return;
+  }
+
+  if (!selected) {
+    editor.innerHTML = `${notice}<p class="brand-sub">新建题库后即可手动录题。</p>`;
+    return;
+  }
+  const archived = selected.status === "archived";
+  editor.innerHTML = `
+    <div class="question-bank-summary">
+      <div>
+        <strong>${esc(selected.name)}</strong>
+        <span class="badge ${archived ? "bank-archived" : "bank-active"}">${questionBankStatus(selected)}</span>
+      </div>
+      <p>${esc(selected.description || "暂无说明")}</p>
+      ${archived ? `<p class="question-bank-archived-note">已归档题库不可新增题目，恢复后可继续录题。</p>` : ""}
+    </div>
+    <div class="question-bank-actions">
+      <button class="btn secondary compact-btn" id="editQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>编辑</button>
+      <button class="btn secondary compact-btn" id="copyQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>复制</button>
+      ${archived
+        ? `<button class="btn success compact-btn" id="restoreQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>恢复</button>`
+        : `<button class="btn danger compact-btn" id="archiveQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>归档</button>`}
+    </div>
+    ${notice}`;
+  document.getElementById("editQuestionBankBtn").addEventListener("click", () => {
+    questionBankEditorMode = "edit";
+    questionBankNotice = { text: "", type: "" };
+    renderQuestionBankManager();
+  });
+  document.getElementById("copyQuestionBankBtn").addEventListener("click", copyQuestionBank);
+  document.getElementById(archived ? "restoreQuestionBankBtn" : "archiveQuestionBankBtn")
+    .addEventListener("click", archived ? restoreQuestionBank : archiveQuestionBank);
+}
+
+function selectQuestionBank(bankId) {
+  if (questionBankBusy || questionImageUploadBusy) return;
+  currentQuestionFilterId = `bank:${bankId}`;
+  currentQuestionId = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId)[0]?.id || "";
+  newQuestionDraft = null;
+  questionImageDraft = null;
+  questionBankEditorMode = "";
+  questionBankNotice = { text: "", type: "" };
+  document.getElementById("questionSearch").value = "";
+  renderQuestionFilter();
+  renderQuestionBankManager();
+  renderQuestionList();
+  renderQuestionEditor();
+}
+
+async function runQuestionBankMutation(action, successText) {
+  if (questionBankBusy) return;
+  questionBankBusy = true;
+  questionBankNotice = { text: "正在处理", type: "" };
+  renderQuestionBankManager();
+  try {
+    const data = await action();
+    if (data.bank?.id) currentQuestionFilterId = `bank:${data.bank.id}`;
+    questionBankEditorMode = "";
+    questionBankNotice = { text: successText, type: "success" };
+    await loadQuestions();
+  } catch (error) {
+    questionBankNotice = { text: error.message || "题库操作失败", type: "error" };
+    renderQuestionBankManager();
+  } finally {
+    questionBankBusy = false;
+    renderQuestionFilter();
+    renderQuestionBankManager();
+  }
+}
+
+function saveQuestionBank(event) {
+  event.preventDefault();
+  const bank = currentQuestionBank();
+  const name = document.getElementById("questionBankName").value.trim();
+  const description = document.getElementById("questionBankDescription").value.trim();
+  if (!name) {
+    questionBankNotice = { text: "请填写题库名称", type: "error" };
+    return renderQuestionBankManager();
+  }
+  if (questionBankEditorMode === "edit" && bank) {
+    return runQuestionBankMutation(() => api(`/api/admin/question-banks/${encodeURIComponent(bank.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ version: bank.version, name, description })
+    }), "题库信息已保存。");
+  }
+  runQuestionBankMutation(() => api("/api/admin/question-banks", {
+    method: "POST",
+    body: JSON.stringify({ name, description })
+  }), "题库已创建，可以开始录题。");
+}
+
+function copyQuestionBank() {
+  const bank = currentQuestionBank();
+  if (!bank) return;
+  runQuestionBankMutation(() => api(`/api/admin/question-banks/${encodeURIComponent(bank.id)}/copy`, {
+    method: "POST",
+    body: JSON.stringify({ version: bank.version })
+  }), "已复制为新的启用题库。");
+}
+
+function archiveQuestionBank() {
+  const bank = currentQuestionBank();
+  if (!bank || !window.confirm(`确认归档题库“${bank.name}”吗？归档后不可新增题目。`)) return;
+  runQuestionBankMutation(() => api(`/api/admin/question-banks/${encodeURIComponent(bank.id)}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ version: bank.version })
+  }), "题库已归档。");
+}
+
+function restoreQuestionBank() {
+  const bank = currentQuestionBank();
+  if (!bank) return;
+  runQuestionBankMutation(() => api(`/api/admin/question-banks/${encodeURIComponent(bank.id)}/restore`, {
+    method: "POST",
+    body: JSON.stringify({ version: bank.version })
+  }), "题库已恢复，可以继续录题。");
+}
+
 function renderQuestionFilter() {
   const filters = window.QuestionAdminModel.listQuestionFilters(adminQuestions, adminQuestionBanks);
   const select = document.getElementById("questionExamFilter");
@@ -1071,6 +1249,10 @@ function renderQuestionFilter() {
   const values = filters.banks.map((item) => item.value);
   if (!values.includes(currentQuestionFilterId)) currentQuestionFilterId = values[0] || "";
   select.value = currentQuestionFilterId;
+  const bank = currentQuestionBank();
+  const newQuestionButton = document.getElementById("newQuestionBtn");
+  newQuestionButton.disabled = !bank || bank.status === "archived" || questionBankBusy;
+  newQuestionButton.title = bank?.status === "archived" ? "已归档题库不可新增题目" : "";
 }
 
 function currentAnswerLabels(question) {
@@ -1231,7 +1413,7 @@ function renderNewQuestionEditor() {
       <div class="question-create-grid">
         <div class="field">
           <label for="newQuestionBank">题库</label>
-          <select id="newQuestionBank" required>${adminQuestionBanks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === draft.bankId ? "selected" : ""}>${esc(bank.name)}</option>`).join("")}</select>
+          <select id="newQuestionBank" required>${adminQuestionBanks.filter((bank) => bank.status !== "archived").map((bank) => `<option value="${esc(bank.id)}" ${bank.id === draft.bankId ? "selected" : ""}>${esc(bank.name)}</option>`).join("")}</select>
         </div>
         <div class="field">
           <label for="newQuestionType">题型</label>
@@ -1311,8 +1493,9 @@ function readNewQuestionDraft() {
 
 function startNewQuestion() {
   if (questionImageUploadBusy) return;
-  if (!adminQuestionBanks.length) {
-    document.getElementById("questionEditor").innerHTML = `<div class="notice error">当前没有可用题库，请先通过题库导入流程创建题库。</div>`;
+  const bank = currentQuestionBank();
+  if (!bank || bank.status === "archived") {
+    document.getElementById("questionEditor").innerHTML = `<div class="notice error">当前题库已归档或不可用，请选择启用题库或先恢复题库。</div>`;
     return;
   }
   currentQuestionId = "";
@@ -1440,11 +1623,15 @@ function selectQuestion(questionId) {
 
 async function loadQuestions() {
   document.getElementById("questionList").innerHTML = `<div class="empty-state admin-user-empty">正在载入题目</div>`;
-  const data = await api("/api/admin/questions");
-  adminQuestions = data.questions;
+  const [questionData, bankData] = await Promise.all([
+    api("/api/admin/questions"),
+    api("/api/admin/question-banks")
+  ]);
+  adminQuestions = questionData.questions || [];
   questionImageDraft = null;
-  adminQuestionBanks = data.banks || [];
+  adminQuestionBanks = bankData.banks || [];
   renderQuestionFilter();
+  renderQuestionBankManager();
   const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
   if (!filtered.some((question) => question.id === currentQuestionId)) currentQuestionId = filtered[0]?.id || "";
   renderQuestionList();
@@ -1470,6 +1657,7 @@ async function saveNewQuestion(event) {
     currentQuestionId = data.question.id;
     currentQuestionFilterId = `bank:${data.question.bankId}`;
     renderQuestionFilter();
+    renderQuestionBankManager();
     renderQuestionList();
     renderQuestionEditor();
     document.getElementById("questionSaveMsg").textContent = "已保存到题库，尚未加入试卷。";
@@ -1891,6 +2079,12 @@ document.getElementById("manageExamsBtn").addEventListener("click", openExamAuth
 document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
 document.getElementById("manageBackupsBtn").addEventListener("click", openBackupManager);
 document.getElementById("newQuestionBtn").addEventListener("click", startNewQuestion);
+document.getElementById("newQuestionBankBtn").addEventListener("click", () => {
+  if (questionBankBusy) return;
+  questionBankEditorMode = "new";
+  questionBankNotice = { text: "", type: "" };
+  renderQuestionBankManager();
+});
 document.getElementById("newExamBtn").addEventListener("click", startNewExam);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
   document.getElementById("adminManagerDialog").close();
@@ -1960,6 +2154,9 @@ document.getElementById("questionExamFilter").addEventListener("change", (event)
   currentQuestionId = filtered[0]?.id || "";
   document.getElementById("questionSearch").value = "";
   renderQuestionList();
+  questionBankEditorMode = "";
+  questionBankNotice = { text: "", type: "" };
+  renderQuestionBankManager();
   renderQuestionEditor();
 });
 document.getElementById("logoutBtn").addEventListener("click", async () => {

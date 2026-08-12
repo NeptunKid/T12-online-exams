@@ -1426,6 +1426,126 @@ select:focus {
   margin-bottom: 8px;
 }
 
+.question-bank-manager {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.question-bank-manager-head,
+.question-bank-item,
+.question-bank-summary > div,
+.question-bank-form-actions,
+.question-bank-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.question-bank-manager-head,
+.question-bank-item,
+.question-bank-summary > div {
+  justify-content: space-between;
+}
+
+.question-bank-manager-head h3,
+.question-bank-manager-head p,
+.question-bank-summary p {
+  margin: 0;
+}
+
+.question-bank-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.question-bank-item {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.question-bank-item.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.question-bank-item-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.question-bank-item-main strong,
+.question-bank-item-main small {
+  overflow-wrap: anywhere;
+}
+
+.question-bank-item-main small {
+  color: var(--muted);
+}
+
+.badge.bank-active {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.badge.bank-archived {
+  background: #eef2f6;
+  color: #596779;
+}
+
+.question-bank-editor,
+.question-bank-form {
+  display: grid;
+  gap: 10px;
+}
+
+.question-bank-editor .field {
+  margin: 0;
+}
+
+.question-bank-editor textarea {
+  min-height: 76px;
+}
+
+.question-bank-actions,
+.question-bank-form-actions {
+  flex-wrap: wrap;
+}
+
+.question-bank-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.question-bank-summary > p {
+  overflow-wrap: anywhere;
+}
+
+.question-bank-archived-note {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.question-bank-editor .notice {
+  margin-top: 0;
+}
+
+.question-bank-empty {
+  min-height: 72px;
+}
+
 .question-count {
   margin-bottom: 10px;
 }
@@ -2072,6 +2192,21 @@ select:focus {
 
   .question-manager-layout {
     grid-template-columns: 1fr;
+  }
+
+  .question-bank-list {
+    max-height: 210px;
+  }
+
+  .question-bank-actions,
+  .question-bank-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .question-bank-actions .btn,
+  .question-bank-form-actions .btn {
+    width: 100%;
   }
 
   .exam-authoring-layout {

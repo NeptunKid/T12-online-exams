@@ -7,11 +7,13 @@ const { createPostgresPool, isPostgresConfigured } = require("./src/db/postgres-
 const { createSubmission, getPublishedExam, getStudentDashboard, getStudentSubmission, listPublishedExams, listStudentSubmissions } = require("./src/db/exam-repository");
 const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdminSubmissions } = require("./src/db/admin-submission-repository");
 const examAuthoringRepository = require("./src/db/exam-authoring-repository");
+const questionRepository = require("./src/db/question-repository");
 const { createQuestionResource, detectImageMimeType, getQuestionResource } = require("./src/db/question-resource-repository");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
+const { createAdminQuestionBankHandler } = require("./src/http/admin-question-bank-handler");
 const backupExportRepository = require("./src/backup/export-package");
 const backupImportRepository = require("./src/backup/import-package");
 const backupRepository = require("./src/db/backup-repository");
@@ -357,7 +359,15 @@ function isSameOriginJsonRequest(req) {
 
 const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
   repository: examAuthoringRepository,
-  listQuestionBanks,
+  listManagedQuestionBanks: questionRepository.listManagedQuestionBanks,
+  getPool: getPostgresPool,
+  readBody,
+  json,
+  isSameOriginJsonRequest
+});
+
+const handleAdminQuestionBank = createAdminQuestionBankHandler({
+  repository: questionRepository,
   getPool: getPostgresPool,
   readBody,
   json,
@@ -822,6 +832,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (await handleAdminExamAuthoring(req, res, pathname, adminAccess)) return;
+  if (await handleAdminQuestionBank(req, res, pathname, adminAccess)) return;
   if (await handleAdminBackup(req, res, pathname, adminAccess)) return;
 
   if (req.method === "POST" && pathname === "/api/admin/question-resources") {
