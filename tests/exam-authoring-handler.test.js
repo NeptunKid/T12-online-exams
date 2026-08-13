@@ -192,7 +192,7 @@ test("新增、复制、开始修订、参数修改和发布路由使用统一�
   const cases = [
     ["POST", "/api/admin/exams", "createExam", { title: "新试卷", durationSeconds: 600, passRate: 0.6 }, []],
     ["POST", "/api/admin/exams/exam-1/copy", "copyExam", { version: 3, title: "副本" }, ["exam-1"]],
-    ["POST", "/api/admin/exams/exam-1/revision", "reopenExamRevision", { version: 3 }, ["exam-1"]],
+    ["POST", "/api/admin/exams/exam-1/revision", "getExamAuthoring", { version: 3 }, ["exam-1"]],
     ["PATCH", "/api/admin/exams/exam-1", "updateExamSettings", { version: 3, title: "新标题", durationSeconds: 900, passRate: 0.8 }, ["exam-1"]],
     ["POST", "/api/admin/exams/exam-1/publish", "publishExam", { version: 3 }, ["exam-1"]]
   ];
@@ -201,9 +201,10 @@ test("新增、复制、开始修订、参数修改和发布路由使用统一�
     const res = {};
     assert.equal(await harness.handler(request(method, body), res, pathname, MANAGER_ACCESS), true);
     assert.equal(res.response.status, 200, pathname);
-    assert.deepEqual(callFor(harness, repositoryName).args, [
-      { name: "pool" }, ...idArgs, body, "admin-1"
-    ], pathname);
+    const expectedArgs = repositoryName === "getExamAuthoring"
+      ? [{ name: "pool" }, ...idArgs]
+      : [{ name: "pool" }, ...idArgs, body, "admin-1"];
+    assert.deepEqual(callFor(harness, repositoryName).args, expectedArgs, pathname);
     assert.deepEqual(Object.keys(res.response.body), ["authoring"]);
   }
 });

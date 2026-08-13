@@ -344,7 +344,9 @@ function renderQuestion(q, no) {
   let answerHtml = "";
 
   if (["fill", "qa"].includes(q.type)) {
-    answerHtml = `<div class="qa-box"><textarea id="answer_${q.id}" name="${inputName}" placeholder="请在此作答"></textarea></div>`;
+    answerHtml = q.type === "fill" && Number(q.fillSlotCount || 0) > 0
+      ? `<div class="qa-box fill-answer-box">${Array.from({ length: Number(q.fillSlotCount) }, (_, index) => `<input type="text" name="${inputName}" data-fill-index="${index}" placeholder="第 ${index + 1} 空">`).join("")}</div>`
+      : `<div class="qa-box"><textarea id="answer_${q.id}" name="${inputName}" placeholder="请在此作答"></textarea></div>`;
   } else {
     const inputType = q.type === "multi" ? "checkbox" : "radio";
     const optionKeys = Array.from(new Set([...Object.keys(options), ...Object.keys(images.options || {})])).sort();
@@ -367,7 +369,10 @@ function collectAnswers() {
   for (const q of exam.questions) {
     const name = `q_${q.id}`;
     if (q.type === "multi") answers[q.id] = Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
-    else if (["fill", "qa"].includes(q.type)) answers[q.id] = document.querySelector(`[name="${name}"]`)?.value.trim() || "";
+    else if (q.type === "fill") {
+      const fields = Array.from(document.querySelectorAll(`[name="${name}"]`));
+      answers[q.id] = fields.length > 1 ? fields.map((field) => field.value.trim()) : (fields[0]?.value.trim() || "");
+    } else if (q.type === "qa") answers[q.id] = document.querySelector(`[name="${name}"]`)?.value.trim() || "";
     else answers[q.id] = document.querySelector(`input[name="${name}"]:checked`)?.value || "";
   }
   return answers;

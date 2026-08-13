@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const {
   loadQuestionResourceManifest,
   mapQuestionImages,
+  mapQuestionOptions,
   uploadedResourceId
 } = require("../resources/question-resources");
 
@@ -74,11 +75,15 @@ function mapQuestion(row) {
     type: row.type,
     stem: row.stem,
     images: mapQuestionImages(row.images_json || []),
-    options: options.map((option) => ({
-      label: option.label,
-      text: option.text,
-      hasImage: Boolean(option.image)
-    })),
+    options: options.map((option) => {
+      const image = mapQuestionOptions([option])[0]?.image || "";
+      return {
+        label: option.label,
+        text: option.text,
+        ...(image ? { image } : {}),
+        hasImage: Boolean(option.image)
+      };
+    }),
     answer: row.answer_json,
     explanation: row.explanation || "",
     version: Number(row.version),
@@ -336,7 +341,8 @@ function normalizeEditedOptions(type, options, existingOptions) {
   const imageByLabel = new Map(normalizeStoredOptions(existingOptions).map((option) => [option.label, option.image]));
   const normalized = options.map((option) => ({
     label: String(option?.label || "").trim().toUpperCase(),
-    text: String(option?.text || "").trim()
+    text: String(option?.text || "").trim(),
+    image: option?.image === undefined ? imageByLabel.get(String(option?.label || "").trim().toUpperCase()) : String(option.image || "").trim()
   }));
   if (normalized.some((option) => !/^[A-J]$/.test(option.label))) throw new Error("选项编号只允许 A 到 J");
   if (new Set(normalized.map((option) => option.label)).size !== normalized.length) throw new Error("选项编号不能重复");
@@ -345,10 +351,14 @@ function normalizeEditedOptions(type, options, existingOptions) {
   }
 
   normalized.sort((left, right) => left.label.localeCompare(right.label));
-  return normalized.map((option) => ({
-    ...option,
-    ...(imageByLabel.get(option.label) ? { image: imageByLabel.get(option.label) } : {})
-  }));
+  const staticUrls = new Set(Object.values(loadQuestionResourceManifest()).map((item) => item?.url).filter(Boolean));
+  for (const option of normalized) {
+    if (!option.image) continue;
+    if (!staticUrls.has(option.image) && !uploadedResourceId(option.image) && !/^resource:[A-Za-z0-9_-]+$/.test(option.image)) {
+      throw new Error("选项图片必须使用已登记的受控资源");
+    }
+  }
+  return normalized.map((option) => option.image ? option : { label: option.label, text: option.text });
 }
 
 function normalizeEditedAnswer(type, answer, options) {
@@ -365,6 +375,13 @@ function normalizeEditedAnswer(type, answer, options) {
     return normalized;
   }
   if (type === "fill") {
+    if (answer && typeof answer === "object" && !Array.isArray(answer)) {
+      const blanks = Array.isArray(answer.blanks) ? answer.blanks : [];
+      const normalizedBlanks = blanks.map((blank) => [...new Set((Array.isArray(blank) ? blank : [blank])
+        .map((item) => String(item || "").trim()).filter(Boolean))]);
+      if (!normalizedBlanks.length || normalizedBlanks.some((blank) => !blank.length)) throw new Error("填空题每个空至少需要一个参考答案");
+      return { ordered: answer.ordered !== false, blanks: normalizedBlanks };
+    }
     const source = Array.isArray(answer) ? answer : [answer];
     const normalized = [...new Set(source.map((item) => String(item || "").trim()).filter(Boolean))];
     if (!normalized.length) throw new Error("填空题至少需要一个参考答案");
@@ -391,13 +408,21 @@ function normalizeEditedImages(images, existingImages = []) {
 }
 
 async function assertUploadedImagesExist(queryable, images) {
-  const ids = images.map(uploadedResourceId).filter(Boolean);
+  const ids = images.flatMap((image) => Array.isArray(image) ? image : [image])
+    .map(uploadedResourceId).filter(Boolean);
   if (!ids.length) return;
   const result = await queryable.query(`
     SELECT id
     FROM question_resources
     WHERE id = ANY($1::text[]);`, [ids]);
   if (result.rows.length !== new Set(ids).size) throw new Error("题目图片资源不存在，请重新上传");
+}
+
+function questionImageReferences(images, options) {
+  return [
+    ...(Array.isArray(images) ? images : []),
+    ...(Array.isArray(options) ? options.map((option) => option.image).filter(Boolean) : [])
+  ];
 }
 
 function normalizeQuestionEdit(existing, input) {
@@ -453,7 +478,7 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     }
 
     const edited = normalizeQuestionEdit(existing, input);
-    await assertUploadedImagesExist(client, edited.images);
+    await assertUploadedImagesExist(client, questionImageReferences(edited.images, edited.options));
     const before = {
       stem: existing.stem,
       images: mapQuestionImages(existing.images_json || []),
@@ -516,7 +541,7 @@ async function createQuestion(pool, input, actorUserId) {
       WHERE id = $1 AND status = 'active'
       FOR UPDATE;`, [created.bankId]);
     if (!bank.rows.length) throw new Error("未找到可用题库");
-    await assertUploadedImagesExist(client, created.images);
+    await assertUploadedImagesExist(client, questionImageReferences(created.images, created.options));
     await client.query(`
       INSERT INTO questions (
         id, bank_id, external_id, type, stem, images_json, options_json, answer_json,

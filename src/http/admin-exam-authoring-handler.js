@@ -70,7 +70,9 @@ function createAdminExamAuthoringHandler({
       } else if (route.action === "copy") {
         detail = await repository.copyExam(pool, examId, body, adminAccess.userId);
       } else if (route.action === "revision") {
-        detail = await repository.reopenExamRevision(pool, examId, body, adminAccess.userId);
+        // Entering edit mode is local-only. Keep the legacy route read-only so
+        // old clients cannot pause a published exam without saving changes.
+        detail = await repository.getExamAuthoring(pool, examId);
       } else if (route.action === "publish") {
         detail = await repository.publishExam(pool, examId, body, adminAccess.userId);
       } else if (route.action === "settings") {

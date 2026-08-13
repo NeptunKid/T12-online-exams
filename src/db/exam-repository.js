@@ -11,6 +11,7 @@ function mapExam(row) {
 }
 
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
+const { fillAnswerMatches } = require("../answer-rules");
 const { lockUserIdentityMutation } = require("./user-repository");
 
 function mapQuestion(row) {
@@ -26,7 +27,8 @@ function mapQuestion(row) {
       stem: mapQuestionImages(row.images_json || []),
       options: Object.fromEntries(options.filter((option) => option.image).map((option) => [option.label, option.image]))
     },
-    score: Number(row.score)
+    score: Number(row.score),
+    ...(Number(row.fill_slot_count || 0) > 0 ? { fillSlotCount: Number(row.fill_slot_count) } : {})
   };
 }
 
@@ -116,6 +118,8 @@ async function getPublishedExam(pool, examId, identity) {
       ), '') AS stem,
       q.options_json,
       q.images_json,
+      CASE WHEN q.type = 'fill' AND jsonb_typeof(to_jsonb(q) -> ('answer_' || 'json')) = 'object'
+        THEN jsonb_array_length(COALESCE((to_jsonb(q) -> ('answer_' || 'json'))->'blanks', '[]'::jsonb)) ELSE 0 END AS fill_slot_count,
       eq.position,
       eq.score
     FROM exams e
@@ -146,10 +150,7 @@ function sameAnswer(actual, expected) {
 }
 
 function matchesFillAnswer(actual, expected) {
-  const normalizedActual = String(actual ?? "").trim().toLocaleLowerCase();
-  if (!normalizedActual) return false;
-  const accepted = Array.isArray(expected) ? expected : [expected];
-  return accepted.some((item) => normalizedActual === String(item ?? "").trim().toLocaleLowerCase());
+  return fillAnswerMatches(actual, expected);
 }
 
 function gradePublishedQuestions(rows, answers) {
@@ -414,7 +415,8 @@ function mapStudentQuestion(row, graded) {
     options: mapQuestionOptions(snapshot.options || row.current_options || []),
     images: {
       stem: mapQuestionImages(snapshot.images || row.current_images || []),
-      options: {}
+      options: Object.fromEntries(mapQuestionOptions(snapshot.options || row.current_options || [])
+        .filter((option) => option.image).map((option) => [option.label, option.image]))
     },
     score: Number(snapshot.score ?? row.current_score ?? 0),
     submittedAnswer: row.answer_json,

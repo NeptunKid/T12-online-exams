@@ -152,7 +152,7 @@ async function getExamAuthoring(queryable, examId) {
   return { ...exam, questions: questions.rows.map(mapAuthoringQuestion) };
 }
 
-async function lockDraftExam(client, examId, expectedVersion) {
+async function lockDraftExam(client, examId, expectedVersion, allowRevision = false) {
   const result = await client.query(`
     SELECT e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
       e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id, qb.name AS question_bank_name
@@ -162,7 +162,11 @@ async function lockDraftExam(client, examId, expectedVersion) {
     FOR UPDATE OF e;`, [examId]);
   const exam = result.rows[0];
   if (!exam) throw new ExamAuthoringError("未找到试卷", 404);
-  if (exam.status !== "draft") throw new ExamAuthoringError("只能修改草稿试卷的题目", 409);
+  if (exam.status !== "draft") {
+    if (!allowRevision || !new Set(["published", "scheduled", "paused", "closed"]).has(exam.status)) {
+      throw new ExamAuthoringError("只能修改草稿试卷的题目", 409);
+    }
+  }
   if (Number(exam.version) !== expectedVersion) {
     throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
   }
@@ -227,20 +231,21 @@ function snapshotExam(exam, questions) {
   };
 }
 
-async function recalculateExam(client, examId) {
+async function recalculateExam(client, examId, allowRevision = false) {
   const result = await client.query(`
     UPDATE exams e
-    SET total_score = totals.total_score,
+    SET status = CASE WHEN $2::boolean AND e.status <> 'draft' THEN 'draft' ELSE e.status END,
+      total_score = totals.total_score,
       pass_score = ROUND(totals.total_score * e.pass_rate, 2),
       version = e.version + 1
     FROM (
       SELECT COALESCE(SUM(eq.score), 0)::numeric AS total_score
       FROM exam_questions eq
-      WHERE eq.exam_id = $1
+    WHERE eq.exam_id = $1
     ) totals
     WHERE e.id = $1
     RETURNING e.id, e.title, e.status, e.duration_seconds, e.total_score, e.pass_score,
-      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id;`, [examId]);
+      e.pass_rate, e.version, e.answer_rules_json, e.question_bank_id;`, [examId, allowRevision]);
   return result.rows[0];
 }
 
@@ -249,11 +254,12 @@ async function mutateExam(pool, examId, input, actorUserId, action, mutation) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const exam = await lockDraftExam(client, examId, expectedVersion);
+    const allowRevision = input?.revision === true;
+    const exam = await lockDraftExam(client, examId, expectedVersion, allowRevision);
     const beforeQuestions = await loadSelection(client, examId, true);
     const before = snapshotExam(exam, beforeQuestions);
     await mutation(client, exam, beforeQuestions);
-    const updated = await recalculateExam(client, examId);
+    const updated = await recalculateExam(client, examId, allowRevision);
     const afterQuestions = await loadSelection(client, examId);
     const after = snapshotExam(updated, afterQuestions);
     await insertExamAudit(client, actorUserId, action, examId, before, after);
@@ -386,6 +392,7 @@ async function copyExam(pool, sourceExamId, input, actorUserId) {
 
 async function reopenExamRevision(pool, examId, input, actorUserId) {
   const expectedVersion = normalizeVersion(input?.version);
+  if (input?.legacy === true) return getExamAuthoring(pool, examId);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
