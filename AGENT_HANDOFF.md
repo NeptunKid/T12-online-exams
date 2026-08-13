@@ -249,6 +249,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 质量门：`npm test` 276/276，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 均通过。
 - 本轮无数据库迁移，无生产数据库写入，无 GitHub 网络操作，无浏览器验收。生产部署前仍需新建 `pg_dump -Fc`；界面和真实多空填空验收由用户执行。
 - 生产部署 `fc166bd` 后，按用户截图继续完成题目编辑精简：单选/多选答案并入选项行，判断题隐藏选项栏，左侧移除重复分类和题库名称；本轮改动尚未提交，详见 `docs/development-summary/2026-08-13-question-editor-simplification.md`。完整质量门 279 项通过，无新迁移。
+- 用户验收发现新增题目上传图片会清空未保存题干/选项，且上传控件持续禁用；已在本地修复并新增 `tests/question-image-upload-ui.test.js` 回归覆盖。上传前同步草稿，成功/失败均在清除 busy 状态后重绘；本轮尚未提交、推送或部署。
 
 按详细实施计划继续：
 

@@ -21,6 +21,13 @@ test("图片上传使用同源 JSON 资源接口并在保存题目时提交 URL"
   assert.match(script, /newQuestionDraft\.images = images/);
 });
 
+test("图片上传前保留新题草稿，且只刷新媒体区域", () => {
+  assert.match(script, /if \(newQuestionDraft\) readNewQuestionDraft\(\);\n  questionImageUploadBusy = true;/);
+  assert.match(script, /finally \{\n    questionImageUploadBusy = false;\n    refreshQuestionImageEditor\(\);/);
+  assert.match(script, /function refreshQuestionImageEditor\(\)/);
+  assert.match(script, /if \(newQuestionDraft\) readNewQuestionDraft\(\);\n  const images = editingQuestionImages\(\);/);
+});
+
 test("前端限制最多五张且单张不超过 5MB", () => {
   assert.match(script, /images\.length \+ files\.length > 5/);
   assert.match(script, /file\.size > 5 \* 1024 \* 1024/);
