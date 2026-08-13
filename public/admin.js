@@ -1076,7 +1076,7 @@ function renderQuestionList() {
   list.innerHTML = filtered.length ? filtered.map((question) => `
     <button class="question-list-item ${question.id === currentQuestionId ? "active" : ""}" type="button" data-question-id="${esc(question.id)}">
       <span class="question-list-stem">${questionText(question.stem)}</span>
-      <span class="brand-sub">${esc(question.bankName)} · ${typeLabel(question.type)}</span>
+      <span class="brand-sub">${question.externalId ? `${esc(question.externalId)} · ` : ""}${typeLabel(question.type)}</span>
     </button>
   `).join("") : `<div class="empty-state admin-user-empty">暂无匹配题目</div>`;
   for (const button of document.querySelectorAll(".question-list-item")) {
@@ -1143,10 +1143,7 @@ function renderQuestionBankManager() {
   const archived = selected.status === "archived";
   editor.innerHTML = `
     <div class="question-bank-summary">
-      <div class="question-bank-summary-title">
-        <strong>${esc(selected.name || "未命名题库")}</strong>
-        <span class="badge ${archived ? "bank-archived" : "bank-active"}">${questionBankStatus(selected)}</span>
-      </div>
+      <div class="question-bank-summary-title"><span class="badge ${archived ? "bank-archived" : "bank-active"}">${questionBankStatus(selected)}</span></div>
       <div class="question-bank-stats"><span>题目数 <strong>${Number(selected.questionCount || 0)}</strong></span><span>版本 <strong>${Number(selected.version || 0)}</strong></span><span>关联试卷 <strong>${Number(selected.examCount || 0)}</strong></span></div>
       <p>${esc(selected.description || "暂无说明")}</p>
       ${archived ? `<p class="question-bank-archived-note">已归档题库不可新增题目，恢复后可继续录题。</p>` : ""}
@@ -1255,13 +1252,8 @@ function restoreQuestionBank() {
 
 function renderQuestionFilter() {
   const filters = window.QuestionAdminModel.listQuestionFilters(adminQuestions, adminQuestionBanks);
-  const select = document.getElementById("questionExamFilter");
-  select.innerHTML = filters.banks.length
-    ? filters.banks.map((bank) => `<option value="${esc(bank.value)}">${esc(bank.name)}</option>`).join("")
-    : `<option value="">暂无题库</option>`;
   const values = filters.banks.map((item) => item.value);
   if (!values.includes(currentQuestionFilterId)) currentQuestionFilterId = values[0] || "";
-  select.value = currentQuestionFilterId;
   const bank = currentQuestionBank();
   const newQuestionButton = document.getElementById("newQuestionBtn");
   newQuestionButton.disabled = !bank || bank.status === "archived" || questionBankBusy;
@@ -1274,13 +1266,14 @@ function currentAnswerLabels(question) {
 }
 
 function answerEditor(question) {
-  if (["single", "judge", "multi"].includes(question.type)) {
+  if (question.type === "judge") {
     const selected = currentAnswerLabels(question);
-    const options = question.options || [{ label: "A", text: "正确" }, { label: "B", text: "错误" }];
     return `<div class="field"><label>参考答案</label><div id="questionAnswerChoices" class="answer-choice-grid">
-      ${options.map((option) => `<label class="answer-choice"><input type="${question.type === "multi" ? "checkbox" : "radio"}" name="questionAnswerChoice" value="${esc(option.label)}" ${selected.has(option.label) ? "checked" : ""}><span>${question.type === "judge" ? (option.label === "A" ? "正确" : "错误") : `${esc(option.label)}. ${esc(option.text || "")}`}</span></label>`).join("")}
+      <label class="answer-choice"><input type="radio" name="questionAnswerChoice" value="A" ${selected.has("A") ? "checked" : ""}><span>正确</span></label>
+      <label class="answer-choice"><input type="radio" name="questionAnswerChoice" value="B" ${selected.has("B") ? "checked" : ""}><span>错误</span></label>
     </div></div>`;
   }
+  if (["single", "multi"].includes(question.type)) return "";
   if (question.type === "fill") {
     const rule = window.QuestionAdminModel.normalizeFillRule(question.answer);
     return `<div class="field"><label for="questionAnswerText">参考答案（每行一个空，空内用 | 分隔允许答案）</label><textarea id="questionAnswerText" placeholder="北京|北京市\n中国|中华人民共和国">${esc(rule.blanks.map((blank) => blank.join("|")).join("\n"))}</textarea><label class="inline-check"><input id="fillOrderedInput" type="checkbox" ${rule.ordered ? "checked" : ""}> 是否必须按照指定顺序填写</label></div>`;
@@ -1466,7 +1459,8 @@ function defaultNewQuestion(type = "single", bankId = selectedQuestionBankId()) 
 function renderNewQuestionEditor() {
   const draft = newQuestionDraft;
   const editor = document.getElementById("questionEditor");
-  const optionTypes = ["single", "multi", "judge"].includes(draft.type);
+  const optionTypes = ["single", "multi"].includes(draft.type);
+  const answerLabels = currentAnswerLabels(draft);
   const answer = draft.type === "fill" ? window.QuestionAdminModel.fillRuleText(draft.answer) : draft.answer;
   editor.innerHTML = `
     <form id="newQuestionForm" class="question-editor-form">
@@ -1504,8 +1498,8 @@ function renderNewQuestionEditor() {
           </div>
           <div class="question-option-editor">
             ${draft.options.map((option, index) => `
-              <div class="question-option-row" data-option-label="${esc(option.label)}">
-                <div class="question-option-label">${esc(option.label)}.</div>
+              <div class="question-option-row ${answerLabels.has(option.label) ? "current-answer" : ""}" data-option-label="${esc(option.label)}">
+                <label class="question-option-answer" title="设为参考答案"><input type="${draft.type === "multi" ? "checkbox" : "radio"}" name="questionAnswerChoice" value="${esc(option.label)}" ${answerLabels.has(option.label) ? "checked" : ""}><span>${esc(option.label)}</span></label>
                 <textarea class="new-question-option-text" data-label="${esc(option.label)}" ${option.image ? "" : "required"} ${draft.type === "judge" ? "readonly" : ""}>${esc(option.text)}</textarea>
                 ${renderQuestionOptionMedia(draft, option)}
                 ${draft.type !== "judge" ? `<button class="icon-action remove-option-btn" type="button" data-index="${index}" title="删除选项" aria-label="删除选项" ${draft.options.length <= 2 ? "disabled" : ""}>−</button>` : ""}
@@ -1532,6 +1526,7 @@ function renderNewQuestionEditor() {
   }
   bindQuestionImageEditor();
   bindQuestionOptionImages();
+  bindInlineChoiceAnswers();
 }
 
 function readNewQuestionDraft() {
@@ -1544,11 +1539,13 @@ function readNewQuestionDraft() {
     externalId: document.getElementById("newQuestionExternalId").value,
     type: document.getElementById("newQuestionType").value,
     stem: document.getElementById("questionStem").value,
-    options: Array.from(document.querySelectorAll(".new-question-option-text")).map((input) => ({
-      label: input.dataset.label,
-      text: input.value,
-      ...(newQuestionDraft.options.find((option) => option.label === input.dataset.label)?.image ? { image: newQuestionDraft.options.find((option) => option.label === input.dataset.label).image } : {})
-    })),
+    options: newQuestionDraft.type === "judge"
+      ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
+      : Array.from(document.querySelectorAll(".new-question-option-text")).map((input) => ({
+        label: input.dataset.label,
+        text: input.value,
+        ...(newQuestionDraft.options.find((option) => option.label === input.dataset.label)?.image ? { image: newQuestionDraft.options.find((option) => option.label === input.dataset.label).image } : {})
+      })),
     answer: ["single", "multi", "judge"].includes(newQuestionDraft.type)
       ? (newQuestionDraft.type === "multi" ? selectedAnswers : (selectedAnswers[0] || "A"))
       : newQuestionDraft.type === "fill"
@@ -1640,13 +1637,13 @@ function renderQuestionEditor() {
         <textarea id="questionStem" required>${esc(question.stem)}</textarea>
       </div>
       ${questionImageEditor(images)}
-      ${question.options.length ? `
+      ${["single", "multi"].includes(question.type) && question.options.length ? `
         <div class="field">
           <label>选项</label>
           <div class="question-option-editor">
             ${question.options.map((option) => `
               <div class="question-option-row ${answerLabels.has(option.label) ? "current-answer" : ""}" data-option-label="${esc(option.label)}">
-                <div class="question-option-label">${esc(option.label)}.</div>
+                <label class="question-option-answer" title="设为参考答案"><input type="${question.type === "multi" ? "checkbox" : "radio"}" name="questionAnswerChoice" value="${esc(option.label)}" ${answerLabels.has(option.label) ? "checked" : ""}><span>${esc(option.label)}</span></label>
                 <textarea class="question-option-text" data-label="${esc(option.label)}" ${option.hasImage ? "" : "required"}>${esc(option.text)}</textarea>
                 ${renderQuestionOptionMedia(question, option)}
               </div>
@@ -1666,12 +1663,15 @@ function renderQuestionEditor() {
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
   bindQuestionImageEditor();
   bindQuestionOptionImages();
+  bindInlineChoiceAnswers();
 }
 
-function updateChoiceAnswerHighlight(question) {
-  const value = document.getElementById("questionAnswerText")?.value || "";
-  const parsed = window.QuestionAdminModel.parseChoiceAnswer(question.type, value);
-  const labels = new Set(Array.isArray(parsed) ? parsed : [parsed]);
+function bindInlineChoiceAnswers() {
+  for (const input of document.querySelectorAll("input[name=questionAnswerChoice]")) input.addEventListener("change", updateChoiceAnswerHighlight);
+}
+
+function updateChoiceAnswerHighlight() {
+  const labels = new Set(Array.from(document.querySelectorAll("input[name=questionAnswerChoice]:checked")).map((input) => input.value));
   for (const row of document.querySelectorAll(".question-option-row")) {
     row.classList.toggle("current-answer", labels.has(row.dataset.optionLabel));
   }
@@ -1764,11 +1764,13 @@ async function saveQuestion(event) {
   const message = document.getElementById("questionSaveMsg");
   button.disabled = true;
   message.textContent = "正在保存";
-  const options = Array.from(document.querySelectorAll(".question-option-text")).map((input) => ({
-    label: input.dataset.label,
-    text: input.value,
-    ...(questionOptionImage(question, input.dataset.label) ? { image: questionOptionImage(question, input.dataset.label) } : {})
-  }));
+  const options = question.type === "judge"
+    ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
+    : Array.from(document.querySelectorAll(".question-option-text")).map((input) => ({
+      label: input.dataset.label,
+      text: input.value,
+      ...(questionOptionImage(question, input.dataset.label) ? { image: questionOptionImage(question, input.dataset.label) } : {})
+    }));
   try {
     const data = await api(`/api/admin/questions/${encodeURIComponent(question.id)}`, {
       method: "PUT",
@@ -2215,23 +2217,6 @@ document.getElementById("examAuthoringDialog").addEventListener("cancel", (event
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
 document.getElementById("refreshMergeCandidatesBtn").addEventListener("click", loadMergeCandidates);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
-document.getElementById("questionExamFilter").addEventListener("change", (event) => {
-  if (questionImageUploadBusy) {
-    event.target.value = currentQuestionFilterId;
-    return;
-  }
-  currentQuestionFilterId = event.target.value;
-  newQuestionDraft = null;
-  questionImageDraft = null;
-  const filtered = window.QuestionAdminModel.filterQuestions(adminQuestions, currentQuestionFilterId);
-  currentQuestionId = filtered[0]?.id || "";
-  document.getElementById("questionSearch").value = "";
-  renderQuestionList();
-  questionBankEditorMode = "";
-  questionBankNotice = { text: "", type: "" };
-  renderQuestionBankManager();
-  renderQuestionEditor();
-});
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
   location.reload();

@@ -1424,10 +1424,6 @@ select:focus {
   min-width: 0;
 }
 
-.question-exam-picker {
-  margin-bottom: 8px;
-}
-
 .question-bank-manager {
   display: grid;
   gap: 10px;
@@ -1468,7 +1464,6 @@ select:focus {
 .question-bank-select-label { color: var(--muted); font-size: 13px; font-weight: 700; }
 .question-bank-list select { width: 100%; min-width: 0; }
 .question-bank-summary-title { min-width: 0; flex-wrap: wrap; }
-.question-bank-summary-title strong { overflow-wrap: anywhere; }
 .question-bank-stats { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
 .question-bank-stats span { padding: 6px 8px; background: var(--surface-soft); border-radius: 6px; }
 .answer-choice-grid { display: grid; gap: 8px; }
@@ -1697,6 +1692,24 @@ select:focus {
   border: 1.5px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.question-option-answer {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding-top: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.question-option-answer input {
+  width: auto;
+  margin: 0;
+}
+
+.question-option-answer span {
+  font-weight: 800;
 }
 
 .question-option-row.current-answer {
