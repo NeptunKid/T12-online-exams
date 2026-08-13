@@ -29,7 +29,7 @@ test("题库维护分类只包含题库且不接受试卷筛选", () => {
   assert.deepEqual(filterQuestions(withBankIds, "bank:bank-fire").map((question) => question.id), ["q-1", "q-3"]);
 });
 
-test("选择题参考答案使用单个文本框格式读写", () => {
+test("选择题参考答案 helper 兼容勾选值和历史文本", () => {
   assert.equal(choiceAnswerText("multi", ["A", "C"]), "A|C");
   assert.deepEqual(parseChoiceAnswer("multi", "c | A、C"), ["A", "C"]);
   assert.equal(parseChoiceAnswer("single", " b "), "B");

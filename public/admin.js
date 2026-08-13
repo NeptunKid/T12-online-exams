@@ -16,6 +16,7 @@ let questionBankBusy = false;
 let questionBankNotice = { text: "", type: "" };
 let questionImageDraft = null;
 let questionImageUploadBusy = false;
+let questionOptionImageDraft = null;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
 let adminAuthProviders = { dingtalk: true, feishu: false };
@@ -25,6 +26,8 @@ let currentExamAuthoring = null;
 let examAuthoringBusy = false;
 let examSelectionDirty = false;
 let examSelectAllRequested = false;
+let examBulkScoreDraft = "1";
+let examRevisionEditing = false;
 let newExamDraft = null;
 let backupCatalog = { exams: [], banks: [] };
 let backupBusy = false;
@@ -648,7 +651,7 @@ function renderExamAuthoringEditor() {
     return;
   }
   const { exam, banks, questions } = currentExamAuthoring;
-  const editable = exam.status === "draft";
+  const editable = exam.status === "draft" || examRevisionEditing;
   const selected = selectedAuthoringQuestions();
   const hasArchivedSelection = selected.some((question) => question.status !== "active");
   const selectedIndex = new Map(selected.map((question, index) => [question.id, index]));
@@ -667,9 +670,10 @@ function renderExamAuthoringEditor() {
         ${editable
           ? `<button class="btn success compact-btn" id="publishExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>${Number(exam.version || 1) > 1 ? "重新发布" : "发布试卷"}</button>`
           : `<button class="btn primary compact-btn" id="startExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>编辑新版本</button>`}
+        ${examRevisionEditing ? `<button class="btn secondary compact-btn" id="cancelExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>取消编辑</button>` : ""}
       </div>
     </div>
-    ${editable ? "" : `<div class="notice">开始编辑后试卷将转为草稿并暂停考生进入；历史答卷保留，修改完成后可重新发布。</div>`}
+    ${editable ? "" : `<div class="notice">点击“编辑新版本”后进入本地编辑；只有保存实际修改时才会转为草稿，历史答卷保留，修改完成后可重新发布。</div>`}
     <section class="exam-authoring-section">
       <div class="exam-authoring-section-head">
         <div><h3>试卷参数</h3><p class="brand-sub">版本 ${Number(exam.version || 0)}</p></div>
@@ -719,7 +723,7 @@ function renderExamAuthoringEditor() {
       ${hasArchivedSelection ? `<div class="notice error">当前试卷包含已归档题目。请取消勾选并保存选题，之后再调整顺序或分值。</div>` : ""}
       ${editable && selected.length && !examSelectionDirty && !hasArchivedSelection ? `<div class="exam-bulk-score">
         <label for="examBulkScoreInput">全部已选题统一分值</label>
-        <input id="examBulkScoreInput" type="number" min="0" step="0.5" value="1">
+        <input id="examBulkScoreInput" type="number" min="0" step="0.5" value="${esc(examBulkScoreDraft)}">
         <button class="btn secondary compact-btn" id="saveExamBulkScoreBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>批量设置</button>
       </div>` : ""}
       <div class="exam-question-list">
@@ -745,6 +749,7 @@ function renderExamAuthoringEditor() {
   document.getElementById("examSettingsForm")?.addEventListener("submit", saveExamSettings);
   document.getElementById("copyExamBtn")?.addEventListener("click", copyExam);
   document.getElementById("startExamRevisionBtn")?.addEventListener("click", startExamRevision);
+  document.getElementById("cancelExamRevisionBtn")?.addEventListener("click", cancelExamRevision);
   document.getElementById("publishExamBtn")?.addEventListener("click", publishExam);
   document.getElementById("saveExamBankBtn")?.addEventListener("click", saveExamQuestionBank);
   document.getElementById("selectAllExamQuestionsBtn")?.addEventListener("click", () => setAllExamQuestions(true));
@@ -809,6 +814,7 @@ async function loadExamAuthoring(examId, options = {}) {
   if (examSelectionDirty && examId !== currentAuthoringExamId
       && !window.confirm("当前选题尚未保存，确认切换试卷吗？")) return;
   currentAuthoringExamId = examId;
+  examRevisionEditing = false;
   currentExamAuthoring = null;
   newExamDraft = null;
   examSelectionDirty = false;
@@ -921,17 +927,28 @@ function saveExamSettings(event) {
   }
   runExamAuthoringMutation("正在保存试卷参数", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}`, {
     method: "PATCH",
-    body: JSON.stringify({ version: exam.version, title, durationSeconds: durationMinutes * 60, passRate: passRatePercent / 100 })
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, title, durationSeconds: durationMinutes * 60, passRate: passRatePercent / 100 })
   }), "试卷参数已保存，修改记录和版本号已更新。");
 }
 
 function startExamRevision() {
   const exam = currentExamAuthoring?.exam;
   if (!exam) return;
-  runExamAuthoringMutation("正在创建可编辑版本", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/revision`, {
-    method: "POST",
-    body: JSON.stringify({ version: exam.version })
-  }), "新版本已创建，可以修改试卷参数、题库、选题和分值。");
+  examRevisionEditing = true;
+  examSelectionDirty = false;
+  showExamAuthoringMessage("已进入本地编辑状态；首次保存时才会创建新版本。", "success");
+  renderExamAuthoringEditor();
+}
+
+async function cancelExamRevision() {
+  const exam = currentExamAuthoring?.exam;
+  if (!exam || examAuthoringBusy) return;
+  if ((examSelectionDirty || examRevisionEditing) && !window.confirm("取消编辑并放弃尚未保存的修改吗？")) return;
+  examRevisionEditing = false;
+  examSelectionDirty = false;
+  examSelectAllRequested = false;
+  await loadExamAuthoring(exam.id, { preserveMessage: true });
+  showExamAuthoringMessage("已取消编辑，试卷状态未改变。", "success");
 }
 
 async function copyExam() {
@@ -999,7 +1016,7 @@ function saveExamQuestionBank() {
   if (selectedAuthoringQuestions().length) return showExamAuthoringMessage("更换题库前，请先清空并保存当前试卷的选题", "error");
   runExamAuthoringMutation("正在绑定题库", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-bank`, {
     method: "PUT",
-    body: JSON.stringify({ version: exam.version, questionBankId })
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, questionBankId })
   }));
 }
 
@@ -1009,8 +1026,8 @@ function saveExamQuestionSelection() {
   runExamAuthoringMutation("正在保存选题", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions`, {
     method: "PUT",
     body: JSON.stringify(examSelectAllRequested
-      ? { version: exam.version, selectAll: true }
-      : { version: exam.version, questionIds })
+      ? { revision: examRevisionEditing, version: exam.version, selectAll: true }
+      : { revision: examRevisionEditing, version: exam.version, questionIds })
   }));
 }
 
@@ -1024,7 +1041,7 @@ function moveExamQuestion(questionId, direction) {
   const exam = currentExamAuthoring.exam;
   runExamAuthoringMutation("正在保存题目顺序", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-order`, {
     method: "PUT",
-    body: JSON.stringify({ version: exam.version, questionIds: selected.map((question) => question.id) })
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, questionIds: selected.map((question) => question.id) })
   }));
 }
 
@@ -1036,7 +1053,7 @@ function saveExamQuestionScore(button) {
   const questionId = button.dataset.questionId;
   runExamAuthoringMutation("正在保存题目分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions/${encodeURIComponent(questionId)}/score`, {
     method: "PATCH",
-    body: JSON.stringify({ version: exam.version, score })
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, score })
   }));
 }
 
@@ -1044,9 +1061,10 @@ function saveExamBulkScore() {
   const score = Number(document.getElementById("examBulkScoreInput").value);
   if (!Number.isFinite(score) || score < 0) return showExamAuthoringMessage("批量分值必须是大于或等于 0 的数字", "error");
   const exam = currentExamAuthoring.exam;
+  examBulkScoreDraft = String(score);
   runExamAuthoringMutation("正在批量设置分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-scores`, {
     method: "PATCH",
-    body: JSON.stringify({ version: exam.version, score })
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, score })
   }));
 }
 
@@ -1080,19 +1098,13 @@ function renderQuestionBankManager() {
   const editor = document.getElementById("questionBankEditor");
   const selected = currentQuestionBank();
   document.getElementById("newQuestionBankBtn").disabled = questionBankBusy;
-  list.innerHTML = adminQuestionBanks.length ? adminQuestionBanks.map((bank) => `
-    <button class="question-bank-item ${bank.id === selected?.id ? "active" : ""}" type="button"
-      data-bank-id="${esc(bank.id)}" ${questionBankBusy ? "disabled" : ""}>
-      <span class="question-bank-item-main">
-        <strong>${esc(bank.name || "未命名题库")}</strong>
-        <small>${Number(bank.questionCount || 0)} 道题 · 版本 ${Number(bank.version || 0)}</small>
-      </span>
-      <span class="badge ${bank.status === "archived" ? "bank-archived" : "bank-active"}">${questionBankStatus(bank)}</span>
-    </button>`).join("") : `<div class="empty-state question-bank-empty">暂无题库</div>`;
-
-  for (const button of list.querySelectorAll(".question-bank-item")) {
-    button.addEventListener("click", () => selectQuestionBank(button.dataset.bankId));
-  }
+  list.innerHTML = adminQuestionBanks.length
+    ? `<label class="question-bank-select-label" for="questionBankSelect">当前题库</label>
+       <select id="questionBankSelect" ${questionBankBusy ? "disabled" : ""}>
+         ${adminQuestionBanks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === selected?.id ? "selected" : ""}>${esc(bank.name || "未命名题库")}</option>`).join("")}
+       </select>`
+    : `<div class="empty-state question-bank-empty">暂无题库</div>`;
+  document.getElementById("questionBankSelect")?.addEventListener("change", (event) => selectQuestionBank(event.target.value));
 
   const notice = questionBankNotice.text
     ? `<div class="notice ${questionBankNotice.type}">${esc(questionBankNotice.text)}</div>`
@@ -1131,10 +1143,11 @@ function renderQuestionBankManager() {
   const archived = selected.status === "archived";
   editor.innerHTML = `
     <div class="question-bank-summary">
-      <div>
-        <strong>${esc(selected.name)}</strong>
+      <div class="question-bank-summary-title">
+        <strong>${esc(selected.name || "未命名题库")}</strong>
         <span class="badge ${archived ? "bank-archived" : "bank-active"}">${questionBankStatus(selected)}</span>
       </div>
+      <div class="question-bank-stats"><span>题目数 <strong>${Number(selected.questionCount || 0)}</strong></span><span>版本 <strong>${Number(selected.version || 0)}</strong></span><span>关联试卷 <strong>${Number(selected.examCount || 0)}</strong></span></div>
       <p>${esc(selected.description || "暂无说明")}</p>
       ${archived ? `<p class="question-bank-archived-note">已归档题库不可新增题目，恢复后可继续录题。</p>` : ""}
     </div>
@@ -1262,13 +1275,62 @@ function currentAnswerLabels(question) {
 
 function answerEditor(question) {
   if (["single", "judge", "multi"].includes(question.type)) {
-    const value = window.QuestionAdminModel.choiceAnswerText(question.type, question.answer);
-    const placeholder = question.type === "multi" ? "例如 A|B|D" : "例如 A";
-    return `<div class="field"><label for="questionAnswerText">参考答案</label><input id="questionAnswerText" type="text" value="${esc(value)}" placeholder="${placeholder}" autocomplete="off"></div>`;
+    const selected = currentAnswerLabels(question);
+    const options = question.options || [{ label: "A", text: "正确" }, { label: "B", text: "错误" }];
+    return `<div class="field"><label>参考答案</label><div id="questionAnswerChoices" class="answer-choice-grid">
+      ${options.map((option) => `<label class="answer-choice"><input type="${question.type === "multi" ? "checkbox" : "radio"}" name="questionAnswerChoice" value="${esc(option.label)}" ${selected.has(option.label) ? "checked" : ""}><span>${question.type === "judge" ? (option.label === "A" ? "正确" : "错误") : `${esc(option.label)}. ${esc(option.text || "")}`}</span></label>`).join("")}
+    </div></div>`;
   }
-  const answer = Array.isArray(question.answer) ? question.answer.join("\n") : question.answer;
-  const label = question.type === "fill" ? "参考答案（每行一个可接受答案）" : "参考答案";
-  return `<div class="field"><label for="questionAnswerText">${label}</label><textarea id="questionAnswerText">${esc(answer || "")}</textarea></div>`;
+  if (question.type === "fill") {
+    const rule = window.QuestionAdminModel.normalizeFillRule(question.answer);
+    return `<div class="field"><label for="questionAnswerText">参考答案（每行一个空，空内用 | 分隔允许答案）</label><textarea id="questionAnswerText" placeholder="北京|北京市\n中国|中华人民共和国">${esc(rule.blanks.map((blank) => blank.join("|")).join("\n"))}</textarea><label class="inline-check"><input id="fillOrderedInput" type="checkbox" ${rule.ordered ? "checked" : ""}> 是否必须按照指定顺序填写</label></div>`;
+  }
+  return `<div class="field"><label for="questionAnswerText">参考答案</label><textarea id="questionAnswerText">${esc(question.answer || "")}</textarea></div>`;
+}
+
+function questionOptionImage(question, label) {
+  if (newQuestionDraft) return newQuestionDraft.options.find((option) => option.label === label)?.image || "";
+  if (!questionOptionImageDraft) questionOptionImageDraft = Object.fromEntries((question.options || []).filter((option) => option.image).map((option) => [option.label, option.image]));
+  return questionOptionImageDraft[label] || "";
+}
+
+function renderQuestionOptionMedia(question, option) {
+  const image = questionOptionImage(question, option.label);
+  return `<div class="question-option-media"><input class="question-option-image-input" type="file" accept="image/jpeg,image/png,image/webp" data-label="${esc(option.label)}" ${questionImageUploadBusy ? "disabled" : ""}>${image ? `<img class="question-option-image-preview" src="${esc(image)}" alt="选项 ${esc(option.label)} 图片"><button class="icon-action remove-question-option-image-btn" type="button" data-label="${esc(option.label)}" title="移除选项图片" aria-label="移除选项图片">×</button>` : `<span class="brand-sub">可选图片</span>`}</div>`;
+}
+
+function bindQuestionOptionImages() {
+  for (const input of document.querySelectorAll(".question-option-image-input")) input.addEventListener("change", (event) => uploadQuestionOptionImage(event, input.dataset.label));
+  for (const button of document.querySelectorAll(".remove-question-option-image-btn")) button.addEventListener("click", () => {
+    const label = button.dataset.label;
+    if (newQuestionDraft) {
+      const option = newQuestionDraft.options.find((item) => item.label === label);
+      if (option) delete option.image;
+    } else {
+      if (!questionOptionImageDraft) questionOptionImageDraft = {};
+      delete questionOptionImageDraft[label];
+    }
+    if (newQuestionDraft) renderNewQuestionEditor(); else renderQuestionEditor();
+  });
+}
+
+async function uploadQuestionOptionImage(event, label) {
+  const file = event.target.files?.[0];
+  if (!file || questionImageUploadBusy) return;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) return showQuestionImageMessage("只能上传不超过 5MB 的 JPEG、PNG 或 WebP 图片");
+  questionImageUploadBusy = true;
+  try {
+    const data = await api("/api/admin/question-resources", { method: "POST", body: JSON.stringify({ mimeType: file.type, dataUrl: await readFileAsDataUrl(file) }) });
+    if (newQuestionDraft) {
+      const option = newQuestionDraft.options.find((item) => item.label === label);
+      if (option) option.image = data.resource.url;
+      renderNewQuestionEditor();
+    } else {
+      questionOptionImageDraft = { ...(questionOptionImageDraft || {}), [label]: data.resource.url };
+      renderQuestionEditor();
+    }
+  } catch (error) { showQuestionImageMessage(error.message || "选项图片上传失败"); }
+  finally { questionImageUploadBusy = false; }
 }
 
 function questionImageEditor(images = []) {
@@ -1294,6 +1356,11 @@ function bindQuestionImageEditor() {
   for (const button of document.querySelectorAll(".remove-question-image-btn")) {
     button.addEventListener("click", () => removeQuestionImage(Number(button.dataset.imageIndex)));
   }
+}
+
+function showQuestionImageMessage(message) {
+  const element = document.getElementById("questionImageMsg");
+  if (element) element.textContent = message;
 }
 
 function editingQuestionImages() {
@@ -1400,9 +1467,7 @@ function renderNewQuestionEditor() {
   const draft = newQuestionDraft;
   const editor = document.getElementById("questionEditor");
   const optionTypes = ["single", "multi", "judge"].includes(draft.type);
-  const answer = Array.isArray(draft.answer)
-    ? (draft.type === "fill" ? draft.answer.join("\n") : draft.answer.join("|"))
-    : draft.answer;
+  const answer = draft.type === "fill" ? window.QuestionAdminModel.fillRuleText(draft.answer) : draft.answer;
   editor.innerHTML = `
     <form id="newQuestionForm" class="question-editor-form">
       <div class="question-editor-meta">
@@ -1441,12 +1506,13 @@ function renderNewQuestionEditor() {
             ${draft.options.map((option, index) => `
               <div class="question-option-row" data-option-label="${esc(option.label)}">
                 <div class="question-option-label">${esc(option.label)}.</div>
-                <textarea class="new-question-option-text" data-label="${esc(option.label)}" required ${draft.type === "judge" ? "readonly" : ""}>${esc(option.text)}</textarea>
+                <textarea class="new-question-option-text" data-label="${esc(option.label)}" ${option.image ? "" : "required"} ${draft.type === "judge" ? "readonly" : ""}>${esc(option.text)}</textarea>
+                ${renderQuestionOptionMedia(draft, option)}
                 ${draft.type !== "judge" ? `<button class="icon-action remove-option-btn" type="button" data-index="${index}" title="删除选项" aria-label="删除选项" ${draft.options.length <= 2 ? "disabled" : ""}>−</button>` : ""}
               </div>`).join("")}
           </div>
         </div>` : ""}
-      ${answerEditor({ type: draft.type, answer })}
+      ${answerEditor({ type: draft.type, answer: draft.answer, options: draft.options })}
       <div class="field">
         <label for="questionExplanation">题目解析</label>
         <textarea id="questionExplanation">${esc(draft.explanation)}</textarea>
@@ -1465,13 +1531,13 @@ function renderNewQuestionEditor() {
     button.addEventListener("click", () => removeNewQuestionOption(Number(button.dataset.index)));
   }
   bindQuestionImageEditor();
-  if (optionTypes) document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(draft));
-  updateChoiceAnswerHighlight(draft);
+  bindQuestionOptionImages();
 }
 
 function readNewQuestionDraft() {
   if (!newQuestionDraft || !document.getElementById("newQuestionForm")) return;
-  const answerText = document.getElementById("questionAnswerText").value;
+  const answerText = document.getElementById("questionAnswerText")?.value || "";
+  const selectedAnswers = Array.from(document.querySelectorAll("input[name=questionAnswerChoice]:checked")).map((input) => input.value);
   newQuestionDraft = {
     ...newQuestionDraft,
     bankId: document.getElementById("newQuestionBank").value,
@@ -1480,12 +1546,13 @@ function readNewQuestionDraft() {
     stem: document.getElementById("questionStem").value,
     options: Array.from(document.querySelectorAll(".new-question-option-text")).map((input) => ({
       label: input.dataset.label,
-      text: input.value
+      text: input.value,
+      ...(newQuestionDraft.options.find((option) => option.label === input.dataset.label)?.image ? { image: newQuestionDraft.options.find((option) => option.label === input.dataset.label).image } : {})
     })),
-    answer: newQuestionDraft.type === "multi"
-      ? window.QuestionAdminModel.parseChoiceAnswer("multi", answerText)
+    answer: ["single", "multi", "judge"].includes(newQuestionDraft.type)
+      ? (newQuestionDraft.type === "multi" ? selectedAnswers : (selectedAnswers[0] || "A"))
       : newQuestionDraft.type === "fill"
-        ? answerText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+        ? { ordered: document.getElementById("fillOrderedInput")?.checked !== false, blanks: answerText.split(/\r?\n/).map((line) => line.split("|").map((item) => item.trim()).filter(Boolean)).filter((blank) => blank.length) }
         : answerText,
     explanation: document.getElementById("questionExplanation").value
   };
@@ -1581,7 +1648,7 @@ function renderQuestionEditor() {
               <div class="question-option-row ${answerLabels.has(option.label) ? "current-answer" : ""}" data-option-label="${esc(option.label)}">
                 <div class="question-option-label">${esc(option.label)}.</div>
                 <textarea class="question-option-text" data-label="${esc(option.label)}" ${option.hasImage ? "" : "required"}>${esc(option.text)}</textarea>
-                ${option.hasImage ? `<span class="brand-sub" style="grid-column:2">保留现有选项图片</span>` : ""}
+                ${renderQuestionOptionMedia(question, option)}
               </div>
             `).join("")}
           </div>
@@ -1598,9 +1665,7 @@ function renderQuestionEditor() {
     </form>`;
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
   bindQuestionImageEditor();
-  if (["single", "judge", "multi"].includes(question.type)) {
-    document.getElementById("questionAnswerText").addEventListener("input", () => updateChoiceAnswerHighlight(question));
-  }
+  bindQuestionOptionImages();
 }
 
 function updateChoiceAnswerHighlight(question) {
@@ -1616,6 +1681,7 @@ function selectQuestion(questionId) {
   if (questionImageUploadBusy) return;
   newQuestionDraft = null;
   questionImageDraft = null;
+  questionOptionImageDraft = null;
   currentQuestionId = questionId;
   renderQuestionList();
   renderQuestionEditor();
@@ -1629,6 +1695,7 @@ async function loadQuestions() {
   ]);
   adminQuestions = questionData.questions || [];
   questionImageDraft = null;
+  questionOptionImageDraft = null;
   adminQuestionBanks = bankData.banks || [];
   renderQuestionFilter();
   renderQuestionBankManager();
@@ -1679,10 +1746,14 @@ async function openQuestionManager() {
 
 function collectQuestionAnswer(question) {
   if (["single", "judge", "multi"].includes(question.type)) {
-    return window.QuestionAdminModel.parseChoiceAnswer(question.type, document.getElementById("questionAnswerText").value);
+    const selected = Array.from(document.querySelectorAll("input[name=questionAnswerChoice]:checked")).map((input) => input.value);
+    return question.type === "multi" ? selected : (selected[0] || "A");
   }
-  const value = document.getElementById("questionAnswerText").value;
-  return question.type === "fill" ? value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) : value;
+  const value = document.getElementById("questionAnswerText")?.value || "";
+  if (question.type === "fill") {
+    return { ordered: document.getElementById("fillOrderedInput")?.checked !== false, blanks: value.split(/\r?\n/).map((line) => line.split("|").map((item) => item.trim()).filter(Boolean)).filter((blank) => blank.length) };
+  }
+  return value;
 }
 
 async function saveQuestion(event) {
@@ -1695,7 +1766,8 @@ async function saveQuestion(event) {
   message.textContent = "正在保存";
   const options = Array.from(document.querySelectorAll(".question-option-text")).map((input) => ({
     label: input.dataset.label,
-    text: input.value
+    text: input.value,
+    ...(questionOptionImage(question, input.dataset.label) ? { image: questionOptionImage(question, input.dataset.label) } : {})
   }));
   try {
     const data = await api(`/api/admin/questions/${encodeURIComponent(question.id)}`, {
@@ -1711,6 +1783,7 @@ async function saveQuestion(event) {
     });
     adminQuestions = adminQuestions.map((item) => item.id === data.question.id ? data.question : item);
     questionImageDraft = null;
+    questionOptionImageDraft = null;
     renderQuestionList();
     renderQuestionEditor();
     document.getElementById("questionSaveMsg").textContent = "已保存到题库，历史答卷不受影响。";

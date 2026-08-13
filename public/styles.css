@@ -463,6 +463,8 @@ select:focus {
   margin-left: 40px;
 }
 
+.fill-answer-box { display: grid; gap: 8px; }
+
 .sticky-submit {
   position: sticky;
   bottom: 0;
@@ -1460,8 +1462,23 @@ select:focus {
   display: grid;
   gap: 6px;
   max-height: 190px;
-  overflow: auto;
+  min-width: 0;
 }
+
+.question-bank-select-label { color: var(--muted); font-size: 13px; font-weight: 700; }
+.question-bank-list select { width: 100%; min-width: 0; }
+.question-bank-summary-title { min-width: 0; flex-wrap: wrap; }
+.question-bank-summary-title strong { overflow-wrap: anywhere; }
+.question-bank-stats { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
+.question-bank-stats span { padding: 6px 8px; background: var(--surface-soft); border-radius: 6px; }
+.answer-choice-grid { display: grid; gap: 8px; }
+.answer-choice { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.answer-choice input { width: auto; margin-top: 3px; }
+.inline-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.inline-check input { width: auto; }
+.question-option-media { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; grid-column: 2; }
+.question-option-image-preview { width: 72px; height: 54px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.question-option-media input[type=file] { max-width: 100%; }
 
 .question-bank-item {
   width: 100%;

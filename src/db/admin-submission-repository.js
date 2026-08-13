@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
+const { fillAnswerMatches } = require("../answer-rules");
 const { lockUserIdentityMutation } = require("./user-repository");
 
 function asNumber(value, fallback = 0) {
@@ -246,9 +247,7 @@ function automaticScore(question) {
   const answer = question.submittedAnswer ?? (question.type === "multi" ? [] : "");
   const expected = question.answer;
   if (question.type === "fill") {
-    const actual = String(answer).trim().toLocaleLowerCase();
-    const accepted = (Array.isArray(expected) ? expected : [expected]).map((item) => String(item).trim().toLocaleLowerCase());
-    return actual && accepted.includes(actual) ? question.score : 0;
+    return fillAnswerMatches(answer, expected) ? question.score : 0;
   }
   if (sameAnswer(answer, expected)) return question.score;
   if (question.type === "multi" && Array.isArray(answer) && Array.isArray(expected)

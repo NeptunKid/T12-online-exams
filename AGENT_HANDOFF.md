@@ -242,6 +242,13 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 
 ## 九、后续计划建议
 
+### 2026-08-13 接手状态
+
+- 当前工作区基于 `feature/question-bank-lifecycle`，本轮修复尚未提交。
+- 题库下拉、选项图片、勾选式答案、多空填空、试卷本地修订态和批量分值保持已在本机完成；详见 `docs/development-summary/2026-08-13-authoring-usability-fixes.md`。
+- 质量门：`npm test` 276/276，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 均通过。
+- 本轮无数据库迁移，无生产数据库写入，无 GitHub 网络操作，无浏览器验收。生产部署前仍需新建 `pg_dump -Fc`；界面和真实多空填空验收由用户执行。
+
 按详细实施计划继续：
 
 1. 将已完成的题库生命周期分支提交、创建 PR，在备份后执行 `0010` 并部署，再由用户验收。

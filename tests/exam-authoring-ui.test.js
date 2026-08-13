@@ -19,10 +19,10 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
   assert.match(script, /api\("\/api\/admin\/exams"\)/);
   assert.match(script, /api\(`\/api\/admin\/exams\/\$\{encodeURIComponent\(examId\)\}\/authoring`\)/);
-  assert.match(script, /const editable = exam\.status === "draft"/);
+  assert.match(script, /const editable = exam\.status === "draft" \|\| examRevisionEditing/);
   assert.match(script, /id="startExamRevisionBtn"/);
-  assert.match(script, /试卷将转为草稿并暂停考生进入/);
-  assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/revision`/);
+  assert.match(script, /只有保存实际修改时才会转为草稿/);
+  assert.doesNotMatch(script, /api\(`\/api\/admin\/exams\/\$\{encodeURIComponent\(exam\.id\)\}\/revision`/);
   assert.match(script, /id="examSettingsForm"/);
   assert.match(script, /版本号已更新/);
 });
@@ -56,7 +56,7 @@ test("所有组卷写请求携带乐观锁版本", () => {
 test("组卷支持全选、稳定排序、单题与批量分值", () => {
   assert.match(script, /id="selectAllExamQuestionsBtn"/);
   assert.match(script, /id="clearExamQuestionsBtn"/);
-  assert.match(script, /\{ version: exam\.version, selectAll: true \}/);
+  assert.match(script, /\{ revision: examRevisionEditing, version: exam\.version, selectAll: true \}/);
   assert.match(script, /selected\.forEach\(\(question, position\) => \{ question\.position = position \+ 1; \}\)/);
   assert.match(script, /id="examBulkScoreInput"/);
   assert.match(script, /class="exam-question-score-input"/);

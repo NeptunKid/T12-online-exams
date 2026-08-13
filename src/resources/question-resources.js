@@ -42,7 +42,8 @@ function mapQuestionOptions(options, resources = loadQuestionResourceManifest())
   return normalized.map((option) => ({
     ...option,
     image: option.image
-      ? /^\/question-resources\/[A-Za-z0-9_./-]+$/.test(option.image) && !option.image.includes("..")
+      ? ((/^\/question-resources\/[A-Za-z0-9_./-]+$/.test(option.image)
+        || UPLOADED_RESOURCE_URL_PATTERN.test(option.image)) && !option.image.includes(".."))
         ? option.image
         : resourceUrl(option.image, resources)
       : ""
