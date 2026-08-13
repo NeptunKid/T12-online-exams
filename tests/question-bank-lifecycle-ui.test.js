@@ -12,6 +12,7 @@ test("题库维护弹窗提供启用和已归档题库管理", () => {
   assert.match(html, /id="questionBankManagerTitle"/);
   assert.match(html, /id="newQuestionBankBtn"/);
   assert.match(html, /id="questionBankList"/);
+  assert.doesNotMatch(html, /id="questionExamFilter"/);
   assert.match(html, /id="questionBankEditor"/);
   assert.match(script, /bank\?\.status === "archived" \? "已归档" : "启用中"/);
   assert.match(script, /已归档题库不可新增题目/);

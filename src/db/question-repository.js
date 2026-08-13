@@ -346,7 +346,7 @@ function normalizeEditedOptions(type, options, existingOptions) {
   }));
   if (normalized.some((option) => !/^[A-J]$/.test(option.label))) throw new Error("选项编号只允许 A 到 J");
   if (new Set(normalized.map((option) => option.label)).size !== normalized.length) throw new Error("选项编号不能重复");
-  if (normalized.some((option) => !option.text && !imageByLabel.get(option.label))) {
+  if (normalized.some((option) => !option.text && !option.image)) {
     throw new Error("没有图片的选项内容不能为空");
   }
 

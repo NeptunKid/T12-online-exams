@@ -9,6 +9,7 @@ const { getAdminSubmission, gradeAdminSubmission, grantRetakePermission, listAdm
 const examAuthoringRepository = require("./src/db/exam-authoring-repository");
 const questionRepository = require("./src/db/question-repository");
 const { createQuestionResource, detectImageMimeType, getQuestionResource } = require("./src/db/question-resource-repository");
+const { fillAnswerMatches } = require("./src/answer-rules");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
@@ -435,10 +436,7 @@ function sameAnswer(a, b) {
 }
 
 function matchesFillAnswer(actual, expected) {
-  const normalizedActual = String(actual ?? "").trim().toLocaleLowerCase();
-  if (!normalizedActual) return false;
-  const accepted = Array.isArray(expected) ? expected : [expected];
-  return accepted.some((item) => normalizedActual === String(item ?? "").trim().toLocaleLowerCase());
+  return fillAnswerMatches(actual, expected);
 }
 
 function gradeObjective(answers) {
@@ -526,6 +524,8 @@ function cleanAnswers(input) {
     const raw = input?.[String(q.id)];
     if (q.type === "multi") {
       answers[q.id] = Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];
+    } else if (q.type === "fill" && Array.isArray(raw)) {
+      answers[q.id] = raw.map((item) => typeof item === "string" ? item.trim() : "");
     } else {
       answers[q.id] = typeof raw === "string" ? raw.trim() : "";
     }
