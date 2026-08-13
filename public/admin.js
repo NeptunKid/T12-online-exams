@@ -1311,19 +1311,39 @@ async function uploadQuestionOptionImage(event, label) {
   const file = event.target.files?.[0];
   if (!file || questionImageUploadBusy) return;
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) return showQuestionImageMessage("只能上传不超过 5MB 的 JPEG、PNG 或 WebP 图片");
+  if (newQuestionDraft) readNewQuestionDraft();
   questionImageUploadBusy = true;
+  let message = "选项图片上传失败";
   try {
     const data = await api("/api/admin/question-resources", { method: "POST", body: JSON.stringify({ mimeType: file.type, dataUrl: await readFileAsDataUrl(file) }) });
     if (newQuestionDraft) {
       const option = newQuestionDraft.options.find((item) => item.label === label);
       if (option) option.image = data.resource.url;
-      renderNewQuestionEditor();
     } else {
       questionOptionImageDraft = { ...(questionOptionImageDraft || {}), [label]: data.resource.url };
-      renderQuestionEditor();
     }
-  } catch (error) { showQuestionImageMessage(error.message || "选项图片上传失败"); }
-  finally { questionImageUploadBusy = false; }
+    message = "选项图片已上传；保存题目后才会生效。";
+  } catch (error) {
+    message = error.message || "选项图片上传失败";
+  } finally {
+    questionImageUploadBusy = false;
+    refreshQuestionOptionMedia(label);
+    showQuestionImageMessage(message);
+    const saveButton = document.getElementById("saveQuestionBtn");
+    if (saveButton) saveButton.disabled = false;
+  }
+}
+
+function refreshQuestionOptionMedia(label) {
+  const row = Array.from(document.querySelectorAll(".question-option-row"))
+    .find((item) => item.dataset.optionLabel === label);
+  const media = row?.querySelector(".question-option-media");
+  if (!media) return;
+  const question = newQuestionDraft || adminQuestions.find((item) => item.id === currentQuestionId);
+  const option = question?.options?.find((item) => item.label === label);
+  if (!question || !option) return;
+  media.outerHTML = renderQuestionOptionMedia(question, option);
+  bindQuestionOptionImages();
 }
 
 function questionImageEditor(images = []) {
@@ -1351,6 +1371,13 @@ function bindQuestionImageEditor() {
   }
 }
 
+function refreshQuestionImageEditor() {
+  const field = document.querySelector(".question-image-field");
+  if (!field) return;
+  field.outerHTML = questionImageEditor(editingQuestionImages());
+  bindQuestionImageEditor();
+}
+
 function showQuestionImageMessage(message) {
   const element = document.getElementById("questionImageMsg");
   if (element) element.textContent = message;
@@ -1376,6 +1403,7 @@ function readFileAsDataUrl(file) {
 async function uploadQuestionImages(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length || questionImageUploadBusy) return;
+  if (newQuestionDraft) readNewQuestionDraft();
   const images = editingQuestionImages();
   const target = newQuestionDraft
     ? { kind: "new", draft: newQuestionDraft }
@@ -1411,15 +1439,15 @@ async function uploadQuestionImages(event) {
     if (!targetStillOpen) throw new Error("题目已切换，本次上传未关联到题目");
     if (target.kind === "new") newQuestionDraft.images = images;
     else questionImageDraft = images;
-    questionImageUploadBusy = false;
-    if (newQuestionDraft) renderNewQuestionEditor();
-    else renderQuestionEditor();
-    document.getElementById("questionImageMsg").textContent = "图片已上传；保存题目后才会生效。";
+    message.textContent = "图片已上传；保存题目后才会生效。";
   } catch (error) {
+    message.textContent = error.message || "图片上传失败";
+  } finally {
     questionImageUploadBusy = false;
-    if (newQuestionDraft) renderNewQuestionEditor();
-    else renderQuestionEditor();
-    document.getElementById("questionImageMsg").textContent = error.message || "图片上传失败";
+    refreshQuestionImageEditor();
+    showQuestionImageMessage(message.textContent);
+    const saveButton = document.getElementById("saveQuestionBtn");
+    if (saveButton) saveButton.disabled = false;
   }
 }
 
