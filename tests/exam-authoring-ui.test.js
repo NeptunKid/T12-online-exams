@@ -58,10 +58,12 @@ test("所有组卷写请求携带乐观锁版本", () => {
 test("组卷支持全选、稳定排序、单题与批量分值", () => {
   assert.match(script, /id="selectAllExamQuestionsBtn"/);
   assert.match(script, /id="clearExamQuestionsBtn"/);
-  assert.match(script, /\{ revision: examRevisionEditing, version: exam\.version, selectAll: true \}/);
+  assert.match(script, /\{ revision: examRevisionEditing, version: exam\.version, selectAll: true, scores \}/);
   assert.match(script, /selected\.forEach\(\(question, position\) => \{ question\.position = position \+ 1; \}\)/);
   assert.match(script, /id="examBulkScoreInput"/);
   assert.match(script, /class="exam-question-score-input"/);
+  assert.match(script, /scores = Object\.fromEntries/);
+  assert.match(script, /请点击“保存选题”一起提交/);
   assert.match(script, /总分和通过分已按最新分值重新计算/);
 });
 
