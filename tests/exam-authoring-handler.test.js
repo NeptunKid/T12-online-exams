@@ -17,6 +17,8 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
     "copyExam",
     "reopenExamRevision",
     "publishExam",
+    "archiveExam",
+    "restoreExam",
     "updateExamSettings",
     "bindExamQuestionBank",
     "setExamQuestions",
@@ -194,7 +196,9 @@ test("新增、复制、开始修订、参数修改和发布路由使用统一�
     ["POST", "/api/admin/exams/exam-1/copy", "copyExam", { version: 3, title: "副本" }, ["exam-1"]],
     ["POST", "/api/admin/exams/exam-1/revision", "getExamAuthoring", { version: 3 }, ["exam-1"]],
     ["PATCH", "/api/admin/exams/exam-1", "updateExamSettings", { version: 3, title: "新标题", durationSeconds: 900, passRate: 0.8 }, ["exam-1"]],
-    ["POST", "/api/admin/exams/exam-1/publish", "publishExam", { version: 3 }, ["exam-1"]]
+    ["POST", "/api/admin/exams/exam-1/publish", "publishExam", { version: 3 }, ["exam-1"]],
+    ["POST", "/api/admin/exams/exam-1/archive", "archiveExam", { version: 3 }, ["exam-1"]],
+    ["POST", "/api/admin/exams/exam-1/restore", "restoreExam", { version: 3 }, ["exam-1"]]
   ];
   for (const [method, pathname, repositoryName, body, idArgs] of cases) {
     const harness = createHarness();
@@ -234,6 +238,8 @@ test("所有组卷写路由都拒绝非同源 JSON 请求", async () => {
     ["POST", "/api/admin/exams/exam-1/revision", "reopenExamRevision"],
     ["PATCH", "/api/admin/exams/exam-1", "updateExamSettings"],
     ["POST", "/api/admin/exams/exam-1/publish", "publishExam"],
+    ["POST", "/api/admin/exams/exam-1/archive", "archiveExam"],
+    ["POST", "/api/admin/exams/exam-1/restore", "restoreExam"],
     ["PUT", "/api/admin/exams/exam-1/question-bank", "bindExamQuestionBank"],
     ["PUT", "/api/admin/exams/exam-1/questions", "setExamQuestions"],
     ["PUT", "/api/admin/exams/exam-1/question-order", "reorderExamQuestions"],

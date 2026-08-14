@@ -14,6 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
+  assert.match(html, /\/admin\.js\?v=20260814-1/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -61,6 +62,12 @@ test("组卷支持全选、稳定排序、单题与批量分值", () => {
   assert.match(script, /id="examBulkScoreInput"/);
   assert.match(script, /class="exam-question-score-input"/);
   assert.match(script, /总分和通过分已按最新分值重新计算/);
+});
+
+test("更换题库自动清空选题并在操作前说明影响", () => {
+  assert.match(script, /更换题库会自动清空当前试卷的全部选题和分值。历史答卷不受影响，确认继续吗？/);
+  assert.match(script, /题库已更换，原有选题和分值已自动清空。/);
+  assert.doesNotMatch(script, /更换题库前，请先清空并保存当前试卷的选题/);
 });
 
 test("组卷弹窗具备桌面双栏和手机单栏布局", () => {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心</title>
-  <link rel="stylesheet" href="/styles.css?v=20260810-1">
+  <link rel="stylesheet" href="/styles.css?v=20260814-1">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -38,10 +38,15 @@
     </header>
     <main class="shell dashboard-shell">
       <section class="dashboard-heading">
-        <h1>待考核项目</h1>
+        <h1>待考核科目</h1>
         <p class="brand-sub">请选择考试查看要求并开始考核。</p>
       </section>
       <section id="examCatalog" class="exam-catalog"></section>
+      <section class="dashboard-heading history-heading">
+        <h2>已通过</h2>
+        <p class="brand-sub">已通过的科目不会继续出现在待考核科目中。</p>
+      </section>
+      <section id="passedExamCatalog" class="exam-catalog"></section>
       <section class="dashboard-heading history-heading">
         <h2>我的考试记录</h2>
         <p class="brand-sub">可查看每次提交的状态、成绩和阅卷反馈。</p>
@@ -112,6 +117,6 @@
   </div>
 
   <script src="/question-format.js?v=20260809-2"></script>
-  <script src="/exam.js?v=20260810-1"></script>
+  <script src="/exam.js?v=20260814-1"></script>
 </body>
 </html>

@@ -120,7 +120,13 @@ function renderDashboard() {
   const providerLabel = user.provider === "feishu" ? "飞书账号" : "钉钉账号";
   document.getElementById("dashboardUser").textContent = `${providerLabel}：${user.name}`;
 
-  document.getElementById("examCatalog").innerHTML = exams.map((item) => {
+  const passedExamIds = new Set(submissions
+    .filter((item) => item.status === "graded" && item.pass === true)
+    .map((item) => item.examId));
+  const pendingExams = exams.filter((item) => !passedExamIds.has(item.id));
+  const passedExams = exams.filter((item) => passedExamIds.has(item.id));
+
+  const renderExamCards = (items, passed = false) => items.length ? items.map((item) => {
     const attempt = item.attempt;
     return `
       <article class="exam-catalog-card">
@@ -129,12 +135,15 @@ function renderDashboard() {
           <span class="catalog-pass">通过线 ${item.passScore} 分</span>
         </div>
         <div class="catalog-card-bottom">
-          <div class="attempt-note ${attempt.available ? "available" : "unavailable"}">${esc(attempt.message)}</div>
-          <button class="btn primary start-exam-btn" data-exam-id="${esc(item.id)}" type="button" ${attempt.available ? "" : "disabled"}>开始考核</button>
+          <div class="attempt-note ${passed ? "available" : attempt.available ? "available" : "unavailable"}">${passed ? "该科目已通过" : esc(attempt.message)}</div>
+          ${passed ? "" : `<button class="btn primary start-exam-btn" data-exam-id="${esc(item.id)}" type="button" ${attempt.available ? "" : "disabled"}>开始考核</button>`}
         </div>
       </article>
     `;
-  }).join("");
+  }).join("") : `<div class="empty-state compact-empty">${passed ? "尚无已通过科目" : "当前没有待考核科目"}</div>`;
+
+  document.getElementById("examCatalog").innerHTML = renderExamCards(pendingExams);
+  document.getElementById("passedExamCatalog").innerHTML = renderExamCards(passedExams, true);
 
   document.getElementById("historyList").innerHTML = submissions.length ? submissions.map((item) => {
     const outcome = item.status === "graded"
