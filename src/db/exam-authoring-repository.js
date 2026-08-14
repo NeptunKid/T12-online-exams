@@ -121,8 +121,9 @@ async function listAuthoringExams(pool) {
     FROM exams e
     LEFT JOIN question_banks qb ON qb.id = e.question_bank_id
     LEFT JOIN exam_questions eq ON eq.exam_id = e.id
+    WHERE e.status <> 'archived'
     GROUP BY e.id, qb.name
-    ORDER BY (e.status = 'archived'), e.updated_at DESC, e.id;`);
+    ORDER BY e.updated_at DESC, e.id;`);
   return result.rows.map(mapExamSummary);
 }
 
@@ -213,6 +214,20 @@ function assertSelectionBelongsToBank(selected, bankId) {
   if (selected.some((item) => item.bankId !== bankId || item.status !== "active")) {
     throw new ExamAuthoringError("试卷包含其他题库或已归档题目，请先重新选题", 409);
   }
+}
+
+function normalizeQuestionScores(value, questionIds) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ExamAuthoringError("题目分值格式无效");
+  }
+  const allowed = new Set(questionIds);
+  const scores = new Map();
+  for (const [questionId, rawScore] of Object.entries(value)) {
+    if (!allowed.has(questionId)) throw new ExamAuthoringError("题目分值包含未选中的题目");
+    scores.set(questionId, normalizeScore(rawScore));
+  }
+  return scores;
 }
 
 function snapshotExam(exam, questions) {
@@ -569,7 +584,9 @@ async function setExamQuestions(pool, examId, input, actorUserId) {
       }
     }
 
+    const scoreOverrides = normalizeQuestionScores(input?.scores, questionIds);
     const scoreByQuestion = new Map(selected.map((item) => [item.questionId, item.score]));
+    for (const [questionId, score] of scoreOverrides || []) scoreByQuestion.set(questionId, score);
     await client.query("DELETE FROM exam_questions WHERE exam_id = $1;", [examId]);
     if (questionIds.length) {
       const positions = questionIds.map((_, index) => index + 1);
@@ -640,6 +657,7 @@ module.exports = {
   mapAuthoringQuestion,
   mapExamSummary,
   normalizeQuestionIds,
+  normalizeQuestionScores,
   normalizeScore,
   publishExam,
   restoreExam,

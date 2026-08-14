@@ -8,6 +8,7 @@ const {
   getExamAuthoring,
   listAuthoringExams,
   normalizeQuestionIds,
+  normalizeQuestionScores,
   normalizeScore,
   publishExam,
   restoreExam,
@@ -205,6 +206,16 @@ test("试卷列表和组卷详情映射题库及所选题目", async () => {
   assert.equal(detail.questions[1].score, null);
 });
 
+test("管理员试卷列表排除已删除试卷", async () => {
+  let sql = "";
+  await listAuthoringExams({ query: async (query) => {
+    sql = query;
+    return { rows: [] };
+  } });
+  assert.match(sql, /WHERE e\.status <> 'archived'/);
+  assert.doesNotMatch(sql, /ORDER BY \(e\.status = 'archived'\)/);
+});
+
 test("分值和题目列表的输入校验拒绝负数、超精度和重复题目", () => {
   assert.equal(normalizeScore("0.29"), 0.29);
   assert.equal(normalizeScore("2.50"), 2.5);
@@ -213,6 +224,8 @@ test("分值和题目列表的输入校验拒绝负数、超精度和重复题�
   assert.throws(() => normalizeScore(false), /非负数/);
   assert.throws(() => normalizeScore("1.001"), /两位小数/);
   assert.throws(() => normalizeQuestionIds(["q-1", "q-1"]), /重复/);
+  assert.deepEqual([...normalizeQuestionScores({ "q-1": "2.5" }, ["q-1"]).entries()], [["q-1", 2.5]]);
+  assert.throws(() => normalizeQuestionScores({ "q-2": 1 }, ["q-1"]), /未选中/);
 });
 
 test("部分选题仅接受已绑定题库的 active 题目并保留已有分值", async () => {
@@ -231,6 +244,22 @@ test("部分选题仅接受已绑定题库的 active 题目并保留已有分值
   assert.equal(database.calls.some((call) => call.sql.includes("'exam'")), true);
   assert.equal(database.calls.some((call) => /submissions|submission_questions/.test(call.sql)), false);
   assert.equal(database.calls.at(-1).sql, "COMMIT");
+});
+
+test("新增选题时可以在同一事务同时提交每题分值", async () => {
+  const database = createDatabase();
+  const detail = await setExamQuestions(database.pool, "exam-1", {
+    version: 3,
+    questionIds: ["q-2", "q-1"],
+    scores: { "q-2": 4, "q-1": 1.5 }
+  }, "admin-1");
+  assert.deepEqual(database.state.selection, [
+    { question_id: "q-2", position: 1, score: 4 },
+    { question_id: "q-1", position: 2, score: 1.5 }
+  ]);
+  assert.equal(detail.totalScore, 5.5);
+  const insert = database.calls.find((call) => call.sql.includes("INSERT INTO exam_questions"));
+  assert.deepEqual(insert.params[3], [4, 1.5]);
 });
 
 test("全选只按题库稳定顺序加入 active 题目", async () => {

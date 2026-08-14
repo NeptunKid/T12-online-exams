@@ -19,7 +19,6 @@ function createAdminExamAuthoringHandler({
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/revision$/, action: "revision" },
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/publish$/, action: "publish" },
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/archive$/, action: "archive" },
-    { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/restore$/, action: "restore" },
     { method: "PATCH", pattern: /^\/api\/admin\/exams\/([^/]+)$/, action: "settings" },
     { method: "PUT", pattern: /^\/api\/admin\/exams\/([^/]+)\/question-bank$/, action: "bank" },
     { method: "PUT", pattern: /^\/api\/admin\/exams\/([^/]+)\/questions$/, action: "questions" },
@@ -79,8 +78,6 @@ function createAdminExamAuthoringHandler({
         detail = await repository.publishExam(pool, examId, body, adminAccess.userId);
       } else if (route.action === "archive") {
         detail = await repository.archiveExam(pool, examId, body, adminAccess.userId);
-      } else if (route.action === "restore") {
-        detail = await repository.restoreExam(pool, examId, body, adminAccess.userId);
       } else if (route.action === "settings") {
         detail = await repository.updateExamSettings(pool, examId, body, adminAccess.userId);
       } else if (route.action === "bank") {

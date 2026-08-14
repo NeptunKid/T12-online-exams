@@ -150,7 +150,7 @@ sudo systemctl restart t12-exams
 
 ```text
 npm run check:syntax   通过
-npm test               293 项通过
+npm test               295 项通过
 npm run check:secrets  通过
 ```
 
@@ -253,6 +253,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 用户验收发现新增题目上传图片会清空未保存题干/选项，且上传控件持续禁用；已在本地修复并新增 `tests/question-image-upload-ui.test.js` 回归覆盖。上传前同步草稿，成功/失败均在清除 busy 状态后重绘；本轮尚未提交、推送或部署。
 - 继续完成换绑定题库自动清空、题库/试卷可恢复软删除，以及学员“待考核科目/已通过”分类；无新迁移，不物理删除题目、组卷关系、答卷或快照。详见 `docs/development-summary/2026-08-14-exam-bank-deletion-dashboard.md`；此前完整质量门 289 项、语法和敏感信息检查通过，尚未提交、推送或部署。
 - 本轮继续修复：已归档且未被试卷引用的题库可永久删除（题库及其题目一并删除，审计保留；被引用时拒绝）；新试卷、编辑后试卷和草稿发布按钮统一为“发布”；考生重新开始考试或提交失败时恢复“提交试卷”按钮。新增 repository/API/UI/考生端回归测试，尚未提交、推送或部署。
+- 最新验收修复尚未提交：已删除试卷从管理员列表隐藏，移除应用内恢复路由和按钮，恢复只能依赖备份/数据库回滚；`setExamQuestions` 支持 `scores` 映射，在同一事务内同时保存选题和每题分值，前端未保存选题时的分值修改留在本地草稿。无新迁移，生产部署前仍需 PostgreSQL `pg_dump -Fc`。
 
 按详细实施计划继续：
 
