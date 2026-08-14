@@ -9,6 +9,7 @@ function createAdminQuestionBankHandler({
     { method: "GET", pattern: /^\/api\/admin\/question-banks$/, action: "list" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks$/, action: "create" },
     { method: "PATCH", pattern: /^\/api\/admin\/question-banks\/([^/]+)$/, action: "update" },
+    { method: "DELETE", pattern: /^\/api\/admin\/question-banks\/([^/]+)$/, action: "delete" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/copy$/, action: "copy" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/archive$/, action: "archive" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/restore$/, action: "restore" }
@@ -47,6 +48,8 @@ function createAdminQuestionBankHandler({
         bank = await repository.updateQuestionBank(pool, bankId, body, adminAccess.userId);
       } else if (route.action === "copy") {
         bank = await repository.copyQuestionBank(pool, bankId, body, adminAccess.userId);
+      } else if (route.action === "delete") {
+        bank = await repository.deleteQuestionBank(pool, bankId, body, adminAccess.userId);
       } else if (route.action === "archive") {
         bank = await repository.archiveQuestionBank(pool, bankId, body, adminAccess.userId);
       } else {

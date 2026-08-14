@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260814-1/);
+  assert.match(html, /\/admin\.js\?v=20260814-2/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -28,14 +28,15 @@ test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
   assert.match(script, /版本号已更新/);
 });
 
-test("组卷支持新增、复制、参数修改和重新发布", () => {
+test("组卷支持新增、复制、参数修改和统一发布", () => {
   assert.match(html, /id="newExamBtn"/);
   assert.match(script, /id="newExamForm"/);
   assert.match(script, /api\("\/api\/admin\/exams", \{\s*method: "POST"/);
   assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/copy`/);
   assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/publish`/);
   assert.match(script, /method: "PATCH"/);
-  assert.match(script, /"重新发布"/);
+  assert.match(script, />发布<\/button>/);
+  assert.doesNotMatch(script, /重新发布/);
   assert.match(script, /durationSeconds: durationMinutes \* 60/);
 });
 

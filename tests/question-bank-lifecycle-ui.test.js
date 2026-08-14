@@ -18,12 +18,14 @@ test("题库维护弹窗提供启用和可恢复删除题库管理", () => {
   assert.match(script, /已删除题库不可新增题目/);
 });
 
-test("题库支持新建、编辑、复制、可恢复删除和恢复", () => {
+test("题库支持新建、编辑、复制、可恢复删除、恢复和归档后永久删除", () => {
   assert.match(script, /api\("\/api\/admin\/question-banks", \{\s*method: "POST"/);
   assert.match(script, /api\(`\/api\/admin\/question-banks\/\$\{encodeURIComponent\(bank\.id\)\}`, \{\s*method: "PATCH"/);
   for (const action of ["copy", "archive", "restore"]) {
     assert.match(script, new RegExp(`question-banks\\/\\$\\{encodeURIComponent\\(bank\\.id\\)\\}\\/${action}`));
   }
+  assert.match(script, /method: "DELETE"/);
+  assert.match(script, /永久删除题库/);
   assert.match(script, /window\.confirm\(`确认删除题库/);
   assert.match(script, />删除题库<\/button>/);
 });

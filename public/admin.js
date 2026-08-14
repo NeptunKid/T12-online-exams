@@ -671,14 +671,14 @@ function renderExamAuthoringEditor() {
         ${archived
           ? `<button class="btn success compact-btn" id="restoreExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>恢复试卷</button>`
           : editable
-          ? `<button class="btn success compact-btn" id="publishExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>${Number(exam.version || 1) > 1 ? "重新发布" : "发布试卷"}</button>`
+          ? `<button class="btn success compact-btn" id="publishExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>发布</button>`
           : `<button class="btn primary compact-btn" id="startExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>编辑新版本</button>`}
         ${examRevisionEditing ? `<button class="btn secondary compact-btn" id="cancelExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>取消编辑</button>` : ""}
         ${archived ? "" : `<button class="btn danger compact-btn" id="archiveExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>删除试卷</button>`}
       </div>
     </div>
     ${archived ? `<div class="notice">该试卷已删除并保留在系统中；历史答卷和版本记录未删除。恢复后将成为草稿，不会自动开放考试。</div>` : ""}
-    ${archived || editable ? "" : `<div class="notice">点击“编辑新版本”后进入本地编辑；只有保存实际修改时才会转为草稿，历史答卷保留，修改完成后可重新发布。</div>`}
+    ${archived || editable ? "" : `<div class="notice">点击“编辑新版本”后进入本地编辑；只有保存实际修改时才会转为草稿，历史答卷保留，修改完成后可以发布。</div>`}
     <section class="exam-authoring-section">
       <div class="exam-authoring-section-head">
         <div><h3>试卷参数</h3><p class="brand-sub">版本 ${Number(exam.version || 0)}</p></div>
@@ -1006,7 +1006,7 @@ function restoreExam() {
   runExamAuthoringMutation("正在恢复试卷", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/restore`, {
     method: "POST",
     body: JSON.stringify({ version: exam.version })
-  }), "试卷已恢复为草稿，确认内容后可重新发布。");
+  }), "试卷已恢复为草稿，确认内容后可以发布。");
 }
 
 function toggleExamQuestion(questionId, selected) {
@@ -1177,7 +1177,8 @@ function renderQuestionBankManager() {
       <button class="btn secondary compact-btn" id="editQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>编辑</button>
       <button class="btn secondary compact-btn" id="copyQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>复制</button>
       ${archived
-        ? `<button class="btn success compact-btn" id="restoreQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>恢复</button>`
+        ? `<button class="btn success compact-btn" id="restoreQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>恢复</button>
+           <button class="btn danger compact-btn" id="deleteQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>永久删除题库</button>`
         : `<button class="btn danger compact-btn" id="archiveQuestionBankBtn" type="button" ${questionBankBusy ? "disabled" : ""}>删除题库</button>`}
     </div>
     ${notice}`;
@@ -1187,6 +1188,7 @@ function renderQuestionBankManager() {
     renderQuestionBankManager();
   });
   document.getElementById("copyQuestionBankBtn").addEventListener("click", copyQuestionBank);
+  document.getElementById("deleteQuestionBankBtn")?.addEventListener("click", deleteQuestionBank);
   document.getElementById(archived ? "restoreQuestionBankBtn" : "archiveQuestionBankBtn")
     .addEventListener("click", archived ? restoreQuestionBank : archiveQuestionBank);
 }
@@ -1273,6 +1275,16 @@ function restoreQuestionBank() {
     method: "POST",
     body: JSON.stringify({ version: bank.version })
   }), "题库已恢复，可以继续录题。");
+}
+
+function deleteQuestionBank() {
+  const bank = currentQuestionBank();
+  if (!bank || bank.status !== "archived") return;
+  if (!window.confirm(`确认永久删除题库“${bank.name}”吗？\n\n只有未被任何试卷引用的已归档题库可以删除，删除后无法恢复。`)) return;
+  runQuestionBankMutation(() => api(`/api/admin/question-banks/${encodeURIComponent(bank.id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ version: bank.version })
+  }), "题库已永久删除。");
 }
 
 function renderQuestionFilter() {
