@@ -17,6 +17,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 - 每次只推进一个可独立验证、可回滚的步骤，并记录修改文件、测试、风险、回滚和飞书同步状态。
 - GitHub 网络操作容易卡顿。用户已明确：`git push`、`gh pr create`、PR 检查和合并优先由用户在本机终端执行；连接异常时停止重试并请用户协助。
 - 每条服务器命令必须标明执行位置（本机终端、阿里云 Workbench、GitHub 页面或飞书）。
+- 每次 PR 合并后的生产部署统一按 `docs/production-deployment-runbook.md` 执行；其中固定包含版本确认、`pg_dump -Fc`、以 `codexdeploy` 拉取/安装、迁移、重启、健康检查和人工验收。
 
 ## 二、当前 Git 与工作树
 
@@ -250,6 +251,7 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 本轮无数据库迁移，无生产数据库写入，无 GitHub 网络操作，无浏览器验收。生产部署前仍需新建 `pg_dump -Fc`；界面和真实多空填空验收由用户执行。
 - 生产部署 `fc166bd` 后，按用户截图继续完成题目编辑精简：单选/多选答案并入选项行，判断题隐藏选项栏，左侧移除重复分类和题库名称；本轮改动尚未提交，详见 `docs/development-summary/2026-08-13-question-editor-simplification.md`。完整质量门 279 项通过，无新迁移。
 - 用户验收发现新增题目上传图片会清空未保存题干/选项，且上传控件持续禁用；已在本地修复并新增 `tests/question-image-upload-ui.test.js` 回归覆盖。上传前同步草稿，成功/失败均在清除 busy 状态后重绘；本轮尚未提交、推送或部署。
+- 继续完成换绑定题库自动清空、题库/试卷可恢复软删除，以及学员“待考核科目/已通过”分类；无新迁移，不物理删除题目、组卷关系、答卷或快照。详见 `docs/development-summary/2026-08-14-exam-bank-deletion-dashboard.md`；完整质量门 289 项、语法和敏感信息检查通过，尚未提交、推送或部署。
 
 按详细实施计划继续：
 

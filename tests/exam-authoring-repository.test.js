@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  archiveExam,
   bindExamQuestionBank,
   copyExam,
   createExam,
@@ -9,6 +10,7 @@ const {
   normalizeQuestionIds,
   normalizeScore,
   publishExam,
+  restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
   setExamQuestions,
@@ -147,6 +149,11 @@ function createDatabase(overrides = {}) {
         state.exam.version = String(Number(state.exam.version) + 1);
         return { rows: [{ ...state.exam }] };
       }
+      if (compact.startsWith("UPDATE exams SET status = $2")) {
+        state.exam.status = params[1];
+        state.exam.version = String(Number(state.exam.version) + 1);
+        return { rows: [{ ...state.exam }] };
+      }
       if (compact.startsWith("UPDATE exams e") && compact.includes("totals.total_score")) {
         const total = state.selection.reduce((sum, item) => sum + Number(item.score), 0);
         state.exam.total_score = String(total);
@@ -252,13 +259,27 @@ test("部分选题发现跨题库或归档题时回滚", async () => {
   assert.equal(database.calls.some((call) => call.sql.includes("DELETE FROM exam_questions")), false);
 });
 
-test("有选题时拒绝直接更换题库", async () => {
+test("更换题库在同一事务中自动清空选题并重算分数", async () => {
   const database = createDatabase();
-  await assert.rejects(bindExamQuestionBank(database.pool, "exam-1", {
+  const detail = await bindExamQuestionBank(database.pool, "exam-1", {
     version: 3,
     bankId: "bank-2"
-  }, "admin-1"), /先清空选题/);
-  assert.equal(database.calls.at(-1).sql, "ROLLBACK");
+  }, "admin-1");
+  assert.equal(detail.questionBankId, "bank-2");
+  assert.equal(detail.questionCount, 0);
+  assert.equal(detail.totalScore, 0);
+  assert.equal(detail.passScore, 0);
+  assert.equal(detail.version, 4);
+  const deletion = database.calls.findIndex((call) => call.sql.startsWith("DELETE FROM exam_questions"));
+  const binding = database.calls.findIndex((call) => call.sql.startsWith("UPDATE exams SET question_bank_id"));
+  assert.ok(deletion > database.calls.findIndex((call) => call.sql === "BEGIN"));
+  assert.ok(binding > deletion);
+  const audit = database.calls.find((call) => call.sql.includes("INSERT INTO audit_logs"));
+  assert.equal(audit.params[2], "bind_exam_question_bank");
+  assert.equal(JSON.parse(audit.params[4]).questions.length, 1);
+  assert.equal(JSON.parse(audit.params[5]).questions.length, 0);
+  assert.equal(database.calls.some((call) => /submissions|submission_questions|exam_snapshots/.test(call.sql)), false);
+  assert.equal(database.calls.at(-1).sql, "COMMIT");
 });
 
 test("空草稿可以绑定 active 题库并记录审计", async () => {
@@ -277,16 +298,19 @@ test("空草稿可以绑定 active 题库并记录审计", async () => {
   assert.equal(database.calls.at(-1).sql, "COMMIT");
 });
 
-test("旧试卷未绑定题库时也拒绝将跨题库选题绑到新题库", async () => {
+test("旧试卷未绑定题库时绑定题库也自动清空遗留的跨题库选题", async () => {
   const database = createDatabase({
     exam: { question_bank_id: null, question_bank_name: null },
     questions: [{ id: "q-1", external_id: "1", type: "qa", stem: "旧题", status: "active", bank_id: "bank-other" }]
   });
-  await assert.rejects(bindExamQuestionBank(database.pool, "exam-1", {
+  const detail = await bindExamQuestionBank(database.pool, "exam-1", {
     version: 3,
     bankId: "bank-1"
-  }, "admin-1"), /其他题库/);
-  assert.equal(database.calls.at(-1).sql, "ROLLBACK");
+  }, "admin-1");
+  assert.equal(detail.questionBankId, "bank-1");
+  assert.equal(detail.questionCount, 0);
+  assert.equal(database.calls.some((call) => call.sql.startsWith("DELETE FROM exam_questions")), true);
+  assert.equal(database.calls.at(-1).sql, "COMMIT");
 });
 
 test("排序必须提交当前试卷的完整题目集", async () => {
@@ -452,6 +476,37 @@ test("草稿重新发布校验题库、题目和总分并增加版本", async ()
     questions: [{ id: "q-1", external_id: "1", type: "qa", stem: "旧题", status: "archived", bank_id: "bank-1" }]
   });
   await assert.rejects(publishExam(archived.pool, "exam-1", { version: 3 }, "admin-1"), /已归档/);
+});
+
+test("删除和恢复试卷只切换状态、增加版本并保留选题与历史数据", async () => {
+  const database = createDatabase({ exam: { status: "published" } });
+  const archived = await archiveExam(database.pool, "exam-1", { version: 3 }, "admin-1");
+  assert.equal(archived.status, "archived");
+  assert.equal(archived.version, 4);
+  assert.equal(database.state.selection.length, 1);
+
+  const restored = await restoreExam(database.pool, "exam-1", { version: 4 }, "admin-1");
+  assert.equal(restored.status, "draft");
+  assert.equal(restored.version, 5);
+  assert.equal(database.state.selection.length, 1);
+
+  const sql = database.calls.map((call) => call.sql).join("\n");
+  assert.doesNotMatch(sql, /DELETE\s+FROM\s+(exams|exam_questions|submissions|submission_questions)/i);
+  assert.doesNotMatch(sql, /UPDATE\s+(submissions|submission_questions)/i);
+  assert.deepEqual(
+    database.calls.filter((call) => call.sql.includes("INSERT INTO audit_logs")).map((call) => call.params[2]),
+    ["archive_exam", "restore_exam"]
+  );
+});
+
+test("删除和恢复试卷执行乐观锁校验", async () => {
+  const database = createDatabase({ exam: { status: "published" } });
+  await assert.rejects(archiveExam(database.pool, "exam-1", { version: 2 }, "admin-1"), /其他管理员修改/);
+  assert.equal(database.calls.at(-1).sql, "ROLLBACK");
+
+  database.state.exam.status = "archived";
+  await assert.rejects(restoreExam(database.pool, "exam-1", { version: 2 }, "admin-1"), /其他管理员修改/);
+  assert.equal(database.calls.at(-1).sql, "ROLLBACK");
 });
 
 test("归档题库阻止全部新增或修改组卷路径且不触碰历史答卷", async () => {

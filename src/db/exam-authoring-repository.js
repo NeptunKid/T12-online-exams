@@ -121,9 +121,8 @@ async function listAuthoringExams(pool) {
     FROM exams e
     LEFT JOIN question_banks qb ON qb.id = e.question_bank_id
     LEFT JOIN exam_questions eq ON eq.exam_id = e.id
-    WHERE e.status <> 'archived'
     GROUP BY e.id, qb.name
-    ORDER BY e.updated_at DESC, e.id;`);
+    ORDER BY (e.status = 'archived'), e.updated_at DESC, e.id;`);
   return result.rows.map(mapExamSummary);
 }
 
@@ -477,20 +476,68 @@ async function publishExam(pool, examId, input, actorUserId) {
   }
 }
 
+async function setExamArchiveStatus(pool, examId, input, actorUserId, restore = false) {
+  const expectedVersion = normalizeVersion(input?.version);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(`
+      SELECT id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id
+      FROM exams
+      WHERE id = $1
+      FOR UPDATE;`, [examId]);
+    const exam = result.rows[0];
+    if (!exam) throw new ExamAuthoringError("未找到试卷", 404);
+    if (Number(exam.version) !== expectedVersion) {
+      throw new ExamAuthoringError("试卷已被其他管理员修改，请刷新后重试", 409);
+    }
+    if (restore ? exam.status !== "archived" : exam.status === "archived") {
+      throw new ExamAuthoringError(restore ? "试卷未处于已删除状态" : "试卷已删除", 409);
+    }
+    const questions = await loadSelection(client, examId, true);
+    const before = snapshotExam(exam, questions);
+    const targetStatus = restore ? "draft" : "archived";
+    const updated = await client.query(`
+      UPDATE exams
+      SET status = $2, version = version + 1
+      WHERE id = $1
+      RETURNING id, title, status, duration_seconds, total_score, pass_score, pass_rate,
+        version, answer_rules_json, question_bank_id;`, [examId, targetStatus]);
+    const after = snapshotExam(updated.rows[0], questions);
+    await insertExamAudit(client, actorUserId, restore ? "restore_exam" : "archive_exam", examId, before, after);
+    const detail = await getExamAuthoring(client, examId);
+    await client.query("COMMIT");
+    return detail;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function archiveExam(pool, examId, input, actorUserId) {
+  return setExamArchiveStatus(pool, examId, input, actorUserId, false);
+}
+
+async function restoreExam(pool, examId, input, actorUserId) {
+  return setExamArchiveStatus(pool, examId, input, actorUserId, true);
+}
+
 async function bindExamQuestionBank(pool, examId, input, actorUserId) {
   const bankId = String(input?.bankId || "").trim();
   if (!bankId) throw new ExamAuthoringError("请选择题库");
-  return mutateExam(pool, examId, input, actorUserId, "bind_exam_question_bank", async (client, exam, selected) => {
+  return mutateExam(pool, examId, input, actorUserId, "bind_exam_question_bank", async (client, exam) => {
     const bank = await client.query(`
       SELECT id, name
       FROM question_banks
       WHERE id = $1 AND status = 'active'
       FOR SHARE;`, [bankId]);
     if (!bank.rows.length) throw new ExamAuthoringError("未找到可用题库");
-    if (exam.question_bank_id && exam.question_bank_id !== bankId && selected.length > 0) {
-      throw new ExamAuthoringError("试卷已有题目，请先清空选题再更换题库", 409);
+    if (exam.question_bank_id !== bankId) {
+      await client.query("DELETE FROM exam_questions WHERE exam_id = $1;", [examId]);
     }
-    if (selected.length) assertSelectionBelongsToBank(selected, bankId);
     await client.query("UPDATE exams SET question_bank_id = $2 WHERE id = $1;", [examId, bankId]);
   });
 }
@@ -584,6 +631,7 @@ async function updateAllExamQuestionScores(pool, examId, input, actorUserId) {
 
 module.exports = {
   ExamAuthoringError,
+  archiveExam,
   bindExamQuestionBank,
   copyExam,
   createExam,
@@ -594,6 +642,7 @@ module.exports = {
   normalizeQuestionIds,
   normalizeScore,
   publishExam,
+  restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
   setExamQuestions,
