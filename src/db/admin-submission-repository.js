@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
 const { fillAnswerMatches } = require("../answer-rules");
 const { lockUserIdentityMutation } = require("./user-repository");
+const { enqueueSubmissionGraded } = require("./notification-repository");
 
 function asNumber(value, fallback = 0) {
   const number = Number(value);
@@ -341,6 +342,16 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
       grader.name || "", String(input.graderComment || "").trim(), gradedAt
     ]);
     const detail = await getAdminSubmission(client, submissionId);
+    await enqueueSubmissionGraded(client, {
+      submissionId,
+      userId: submission.user_id,
+      examId: submission.exam_id,
+      examTitle: detail?.exam?.title || "",
+      totalScore,
+      passScore: requestedPass,
+      pass: totalScore >= requestedPass,
+      gradedAt
+    });
     await client.query("COMMIT");
     return detail;
   } catch (error) {

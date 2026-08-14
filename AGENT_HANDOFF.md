@@ -1,6 +1,6 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-12
+更新时间：2026-08-15
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
@@ -21,12 +21,11 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`feature/question-bank-lifecycle`；分支基线：`3b9940e`；最新合并且已部署生产的 `main` 提交：`664bac7`
+当前开发分支：`codex/notification-outbox-enqueue`；分支基线：`e4bb061`；最新合并至 `origin/main` 的提交：`e4bb061`
 
 ```text
-本轮已提交并合并：`3b9940e` 试卷版本化编辑、备份完整性修正和题目图片去重；合并提交为 `664bac7`
-已部署生产：无新迁移，`t12-exams` active，`/healthz` 和 `/readyz` 通过，用户手动完成五项功能验收。
-当前未提交：题库新建/元数据编辑/全量复制/软归档/恢复/审计，以及归档题库对全部组卷写路径的隔离；新增必须先执行的 `0010_question_bank_versions` 迁移。
+本轮已提交并合并：`e4bb061`（PR #49），包含试卷生命周期、删除隐藏和组卷选题/分值保存修复；生产部署状态需以用户在阿里云 Workbench 返回的版本、备份和健康检查为准，本线程尚未确认 `e4bb061` 已部署。
+当前未提交：通知 Outbox 事务入队（`submission.created`、`submission.graded`），无新迁移；后续仍需实现发送 worker、失败重试、人工重发和状态管理。
 新版题库备份已只读校验：`002 历史题库：清洁卫生入职培训考试-20260812.t12backup`，文件 SHA-256 `a79a3cf361e92bdc4c72c1c889a13816f0fba1c7bbd8be0ca05f3ded26bf7084`，1 题库/37 题/47 资源通过严格回导校验。
 ```
 
@@ -146,15 +145,15 @@ sudo systemctl restart t12-exams
 
 ## 五、质量验证记录
 
-截至当前生命周期和考生端修复步骤，本机质量门结果：
+截至当前 Outbox 入队步骤，本机质量门结果：
 
 ```text
 npm run check:syntax   通过
-npm test               295 项通过
+npm test               300 项通过
 npm run check:secrets  通过
 ```
 
-新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、历史数据不变，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。本步未连接生产 PostgreSQL，未做真实管理员浏览器验收。
+新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、历史数据不变，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。本步未连接生产 PostgreSQL，未做真实管理员浏览器验收。
 
 ## 六、未确认事项与风险
 
