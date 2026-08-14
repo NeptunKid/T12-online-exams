@@ -183,6 +183,9 @@ async function startExam(examId) {
       return;
     }
     submitted = false;
+    // 上一份答卷提交成功后按钮会被禁用；开始新考试时必须恢复可点击状态。
+    const submitButton = document.getElementById("submitBtn");
+    submitButton.disabled = false;
     startedAt = new Date().toISOString();
     document.getElementById("studentMeta").textContent = currentUser.name;
     document.getElementById("examTitle").textContent = exam.title;

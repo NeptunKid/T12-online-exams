@@ -4,6 +4,7 @@ const {
   archiveQuestionBank,
   copyQuestionBank,
   createQuestionBank,
+  deleteQuestionBank,
   listManagedQuestionBanks,
   listQuestionBanks,
   normalizeBankMetadata,
@@ -145,4 +146,35 @@ test("归档和恢复只改题库状态，不物理删除题目、试卷或答�
     JSON.parse(call.params[4]).status,
     JSON.parse(call.params[5]).status
   ]), [["active", "archived"], ["archived", "active"]]);
+});
+
+test("已归档且未被试卷引用的题库可以永久删除并写审计", async () => {
+  const state = lifecycleClient({ existing: bankRow({ status: "archived", version: 4 }), questions: [{ id: "q-1" }] });
+  const deleted = await deleteQuestionBank({ connect: async () => state.client }, "bank-1", { version: 4 }, "admin-1");
+  assert.deepEqual(deleted, { id: "bank-1", status: "deleted", version: 5 });
+  const sql = state.calls.map((call) => call.sql).join("\n");
+  assert.match(sql, /DELETE FROM questions/);
+  assert.match(sql, /DELETE FROM question_banks/);
+  const audit = state.calls.find((call) => call.sql.includes("INSERT INTO audit_logs") && call.params[2] === "delete_question_bank");
+  assert.equal(audit.params[2], "delete_question_bank");
+  assert.equal(JSON.parse(audit.params[4]).status, "archived");
+  assert.equal(JSON.parse(audit.params[5]).status, "deleted");
+  assert.equal(state.calls.at(-1).sql, "COMMIT");
+});
+
+test("未归档或仍被试卷引用的题库不能永久删除", async () => {
+  const active = lifecycleClient({ existing: bankRow({ status: "active" }) });
+  await assert.rejects(deleteQuestionBank({ connect: async () => active.client }, "bank-1", { version: 2 }, "admin-1"), /请先删除题库/);
+  assert.equal(active.calls.at(-1).sql, "ROLLBACK");
+
+  const referenced = lifecycleClient({ existing: bankRow({ status: "archived" }) });
+  referenced.client.query = async function query(sql, params) {
+    referenced.calls.push({ sql, params });
+    if (sql.includes("FROM question_banks") && sql.includes("FOR UPDATE")) return { rows: [{ ...bankRow({ status: "archived" }) }] };
+    if (sql.includes("SELECT COUNT(*)::integer AS count") && sql.includes("FROM exams")) return { rows: [{ count: 1 }] };
+    return { rows: [] };
+  };
+  await assert.rejects(deleteQuestionBank({ connect: async () => referenced.client }, "bank-1", { version: 2 }, "admin-1"), /仍被试卷引用/);
+  assert.equal(referenced.calls.some((call) => call.sql.includes("DELETE FROM questions")), false);
+  assert.equal(referenced.calls.at(-1).sql, "ROLLBACK");
 });

@@ -21,13 +21,13 @@ function harness({ sameOrigin = true, pool = { id: "pool" }, error = null } = {}
   const repository = {};
   for (const name of [
     "listManagedQuestionBanks", "createQuestionBank", "updateQuestionBank",
-    "copyQuestionBank", "archiveQuestionBank", "restoreQuestionBank"
+    "copyQuestionBank", "archiveQuestionBank", "restoreQuestionBank", "deleteQuestionBank"
   ]) {
     repository[name] = async (...args) => {
       calls.push({ name, args });
       if (error && name !== "listManagedQuestionBanks") throw error;
       if (name === "listManagedQuestionBanks") return [{ id: "bank-1", status: "active", version: 2 }];
-      return { id: args[1] || "bank-new", status: name === "archiveQuestionBank" ? "archived" : "active", version: 3 };
+      return { id: args[1] || "bank-new", status: name === "archiveQuestionBank" ? "archived" : name === "deleteQuestionBank" ? "deleted" : "active", version: 3 };
     };
   }
   const handler = createAdminQuestionBankHandler({
@@ -46,7 +46,8 @@ test("题库生命周期路由传递题库、版本和当前管理员", async ()
     ["PATCH", "/api/admin/question-banks/bank%2F1", "updateQuestionBank", { version: 2, name: "新名称" }, 200],
     ["POST", "/api/admin/question-banks/bank%2F1/copy", "copyQuestionBank", { version: 2 }, 200],
     ["POST", "/api/admin/question-banks/bank%2F1/archive", "archiveQuestionBank", { version: 2 }, 200],
-    ["POST", "/api/admin/question-banks/bank%2F1/restore", "restoreQuestionBank", { version: 2 }, 200]
+    ["POST", "/api/admin/question-banks/bank%2F1/restore", "restoreQuestionBank", { version: 2 }, 200],
+    ["DELETE", "/api/admin/question-banks/bank%2F1", "deleteQuestionBank", { version: 4 }, 200]
   ];
   for (const [method, pathname, name, body, status] of cases) {
     const current = harness();

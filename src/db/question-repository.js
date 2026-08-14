@@ -334,6 +334,52 @@ async function restoreQuestionBank(pool, bankId, input, actorUserId) {
   return setQuestionBankStatus(pool, bankId, input, actorUserId, "active");
 }
 
+async function deleteQuestionBank(pool, bankId, input, actorUserId) {
+  const expectedVersion = normalizeBankVersion(input?.version);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await lockQuestionBank(client, bankId, expectedVersion);
+    if (existing.status !== "archived") {
+      throw new QuestionBankError("请先删除题库，再执行永久删除", 409);
+    }
+    const examRefs = await client.query(`
+      SELECT COUNT(*)::integer AS count
+      FROM exams e
+      WHERE e.question_bank_id = $1
+         OR EXISTS (
+           SELECT 1
+           FROM exam_questions eq
+           JOIN questions q ON q.id = eq.question_id
+           WHERE eq.exam_id = e.id AND q.bank_id = $1
+         );`, [bankId]);
+    if (Number(examRefs.rows[0]?.count || 0) > 0) {
+      throw new QuestionBankError("该题库仍被试卷引用，不能永久删除；可以保留为已删除状态", 409);
+    }
+    const questionCount = await client.query(
+      "SELECT COUNT(*)::integer AS count FROM questions WHERE bank_id = $1;",
+      [bankId]
+    );
+    const before = bankSnapshot(existing);
+    await client.query("DELETE FROM questions WHERE bank_id = $1;", [bankId]);
+    await client.query("DELETE FROM question_banks WHERE id = $1;", [bankId]);
+    await insertQuestionBankAudit(client, actorUserId, "delete_question_bank", bankId, before, {
+      ...before,
+      status: "deleted",
+      version: Number(existing.version) + 1,
+      questionCount: Number(questionCount.rows[0]?.count || 0),
+      examCount: 0
+    });
+    await client.query("COMMIT");
+    return { id: bankId, status: "deleted", version: Number(existing.version) + 1 };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function normalizeEditedOptions(type, options, existingOptions) {
   if (!OPTION_TYPES.has(type)) return [];
   if (!Array.isArray(options) || options.length < 2) throw new Error("选择题至少需要两个选项");
@@ -588,6 +634,7 @@ async function createQuestion(pool, input, actorUserId) {
 module.exports = {
   QuestionBankError,
   archiveQuestionBank,
+  deleteQuestionBank,
   copyQuestionBank,
   createQuestionBank,
   createQuestion,
