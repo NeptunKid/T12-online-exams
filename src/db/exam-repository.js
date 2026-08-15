@@ -13,6 +13,7 @@ function mapExam(row) {
 const { mapQuestionImages, mapQuestionOptions } = require("../resources/question-resources");
 const { fillAnswerMatches } = require("../answer-rules");
 const { lockUserIdentityMutation } = require("./user-repository");
+const { enqueueSubmissionCreated } = require("./notification-repository");
 
 function mapQuestion(row) {
   const options = mapQuestionOptions(row.options_json || []);
@@ -291,6 +292,13 @@ async function createSubmission(pool, examId, identity, input = {}) {
         detail?.earned || 0, detail ? detail.automaticEarned : null
       ]);
     }
+    await enqueueSubmissionCreated(client, {
+      submissionId,
+      examId,
+      examTitle: first.title,
+      studentName: identity?.name || "历史答卷用户",
+      submittedAt
+    });
     await client.query("COMMIT");
     return { id: submissionId, status, objectiveScore: grading.objectiveScore, attemptNo };
   } catch (error) {
