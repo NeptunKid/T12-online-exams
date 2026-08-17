@@ -32,6 +32,8 @@ let newExamDraft = null;
 let backupCatalog = { exams: [], banks: [] };
 let backupBusy = false;
 let backupAutomation = { automation: null, runs: [] };
+let notificationManager = { worker: null, stats: {}, notifications: [] };
+let notificationBusy = false;
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -78,7 +80,7 @@ async function api(path, options = {}) {
 }
 
 function closeOpenAdminDialogs() {
-  for (const id of ["adminManagerDialog", "questionManagerDialog", "examAuthoringDialog", "backupManagerDialog"]) {
+  for (const id of ["adminManagerDialog", "questionManagerDialog", "examAuthoringDialog", "backupManagerDialog", "notificationManagerDialog"]) {
     const dialog = document.getElementById(id);
     if (dialog?.open) dialog.close();
   }
@@ -106,7 +108,94 @@ function applyAdminAccess(access) {
   document.getElementById("manageQuestionsBtn").classList.toggle("hidden", !access.canManageQuestions);
   document.getElementById("manageExamsBtn").classList.toggle("hidden", !access.canManageQuestions);
   document.getElementById("manageBackupsBtn").classList.toggle("hidden", !access.canManageQuestions);
+  document.getElementById("manageNotificationsBtn").classList.toggle("hidden", !access.canManageAdmins);
   currentAdminUserId = access.currentUserId || "";
+}
+
+const notificationStatusLabels = {
+  pending: "待发送",
+  processing: "发送中",
+  delivered: "已送达",
+  failed: "等待重试",
+  abandoned: "已放弃"
+};
+
+const notificationEventLabels = {
+  "submission.created": "待批阅提醒",
+  "submission.graded": "成绩通知"
+};
+
+function showNotificationMessage(message, tone = "") {
+  const element = document.getElementById("notificationManagerMsg");
+  element.textContent = message;
+  element.className = `notice${tone ? ` ${tone}` : ""}`;
+}
+
+function renderNotificationManager() {
+  const worker = notificationManager.worker || {};
+  const channels = Array.isArray(worker.channels) && worker.channels.length ? worker.channels.join("、") : "未配置";
+  const notBefore = worker.notBefore ? ` · 仅处理 ${fmtTime(worker.notBefore)} 之后的任务` : "";
+  document.getElementById("notificationWorkerMeta").textContent = worker.enabled
+    ? `Worker 已启用 · 通道：${channels}${notBefore}${worker.running ? " · 正在运行" : ""}`
+    : "Worker 未启用，任务将保留在待发送队列";
+  const stats = notificationManager.stats || {};
+  document.getElementById("notificationSummary").innerHTML = Object.entries(notificationStatusLabels)
+    .map(([status, label]) => `<span><strong>${Number(stats[status] || 0)}</strong>${label}</span>`).join("");
+  const list = document.getElementById("notificationList");
+  list.innerHTML = notificationManager.notifications.length
+    ? notificationManager.notifications.map((item) => `
+      <div class="notification-row">
+        <div class="notification-main">
+          <div class="notification-title">
+            <strong>${esc(notificationEventLabels[item.eventType] || item.eventType)}</strong>
+            <span class="badge ${item.status === "delivered" ? "graded" : "pending"}">${esc(notificationStatusLabels[item.status] || item.status)}</span>
+          </div>
+          <span>${esc(item.examTitle || "未命名考试")} · ${esc(item.channel)} · 收件人 ${esc(item.recipientRef)}</span>
+          <span>尝试 ${Number(item.attempts || 0)} 次 · 创建于 ${fmtTime(item.createdAt)}</span>
+          ${item.nextAttemptAt ? `<span>下次重试：${fmtTime(item.nextAttemptAt)}</span>` : ""}
+          ${item.lastError ? `<span class="notification-error">${esc(item.lastError)}</span>` : ""}
+        </div>
+        ${item.retryable
+          ? `<button class="btn secondary compact-btn notification-retry-btn" type="button" data-notification-id="${esc(item.id)}" ${notificationBusy ? "disabled" : ""}>重发</button>`
+          : ""}
+      </div>`).join("")
+    : `<div class="empty-state">当前筛选下没有通知任务</div>`;
+}
+
+async function loadNotifications() {
+  const status = document.getElementById("notificationStatusFilter").value || "all";
+  notificationManager = await api(`/api/admin/notifications?status=${encodeURIComponent(status)}&limit=100`);
+  renderNotificationManager();
+}
+
+async function openNotificationManager() {
+  const dialog = document.getElementById("notificationManagerDialog");
+  dialog.showModal();
+  document.getElementById("notificationManagerMsg").classList.add("hidden");
+  notificationManager = { worker: null, stats: {}, notifications: [] };
+  renderNotificationManager();
+  try {
+    await loadNotifications();
+  } catch (error) {
+    showNotificationMessage(error.message || "通知任务读取失败", "error");
+  }
+}
+
+async function retryNotification(notificationId) {
+  if (notificationBusy || !notificationId) return;
+  notificationBusy = true;
+  renderNotificationManager();
+  showNotificationMessage("正在重新加入发送队列");
+  try {
+    await api(`/api/admin/notifications/${encodeURIComponent(notificationId)}/retry`, { method: "POST", body: "{}" });
+    showNotificationMessage("已重新加入发送队列");
+    await loadNotifications();
+  } catch (error) {
+    showNotificationMessage(error.message || "通知重发失败", "error");
+  } finally {
+    notificationBusy = false;
+    renderNotificationManager();
+  }
 }
 
 function showBackupMessage(message, tone = "") {
@@ -2246,6 +2335,7 @@ document.getElementById("manageAdminsBtn").addEventListener("click", openAdminMa
 document.getElementById("manageExamsBtn").addEventListener("click", openExamAuthoring);
 document.getElementById("manageQuestionsBtn").addEventListener("click", openQuestionManager);
 document.getElementById("manageBackupsBtn").addEventListener("click", openBackupManager);
+document.getElementById("manageNotificationsBtn").addEventListener("click", openNotificationManager);
 document.getElementById("newQuestionBtn").addEventListener("click", startNewQuestion);
 document.getElementById("newQuestionBankBtn").addEventListener("click", () => {
   if (questionBankBusy) return;
@@ -2280,6 +2370,22 @@ document.getElementById("runBackupAutomationBtn").addEventListener("click", trig
 document.getElementById("backupRunList").addEventListener("click", (event) => {
   const button = event.target.closest(".stored-backup-download-btn");
   if (button) downloadStoredBackup(button.dataset.artifactId);
+});
+document.getElementById("closeNotificationManagerBtn").addEventListener("click", () => {
+  if (!notificationBusy) document.getElementById("notificationManagerDialog").close();
+});
+document.getElementById("notificationManagerDialog").addEventListener("cancel", (event) => {
+  if (notificationBusy) event.preventDefault();
+});
+document.getElementById("refreshNotificationsBtn").addEventListener("click", async () => {
+  try { await loadNotifications(); } catch (error) { showNotificationMessage(error.message || "通知任务刷新失败", "error"); }
+});
+document.getElementById("notificationStatusFilter").addEventListener("change", async () => {
+  try { await loadNotifications(); } catch (error) { showNotificationMessage(error.message || "通知任务筛选失败", "error"); }
+});
+document.getElementById("notificationList").addEventListener("click", (event) => {
+  const button = event.target.closest(".notification-retry-btn");
+  if (button) retryNotification(button.dataset.notificationId);
 });
 document.getElementById("closeQuestionManagerBtn").addEventListener("click", () => {
   if (questionImageUploadBusy) {

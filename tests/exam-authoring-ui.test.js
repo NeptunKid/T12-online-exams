@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260814-2/);
+  assert.match(html, /\/admin\.js\?v=20260817-1/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {

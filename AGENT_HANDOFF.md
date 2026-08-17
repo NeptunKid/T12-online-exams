@@ -21,11 +21,12 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`codex/notification-outbox-enqueue`；分支基线：`e4bb061`；最新合并至 `origin/main` 的提交：`e4bb061`
+当前开发分支：`codex/notification-delivery-worker`；分支基线：`dc318ab`；最新已部署生产的 `main` 提交：`23e08a0`
 
 ```text
-本轮已提交并合并：`e4bb061`（PR #49），包含试卷生命周期、删除隐藏和组卷选题/分值保存修复；生产部署状态需以用户在阿里云 Workbench 返回的版本、备份和健康检查为准，本线程尚未确认 `e4bb061` 已部署。
-当前未提交：通知 Outbox 事务入队（`submission.created`、`submission.graded`），无新迁移；后续仍需实现发送 worker、失败重试、人工重发和状态管理。
+通知 Outbox 事务入队已提交、合并并部署为 `23e08a0`：`submission.created` 与 `submission.graded` 均在生产生成 pending 任务；无新迁移。生产服务 active，`/readyz` 和公网 `/healthz` 通过。
+部署前备份：`/var/backups/t12-online-exams/postgres/t12_exams-before-23e08a0-20260817164318.dump`，3.3M，SHA-256 `81dd16e75884bfb022843aee01319f1239457cd015e5c22c9fbde8fc8f5dc2c7`。
+当前本地实现：飞书通知发送 Worker、失败退避、送达回执、系统管理员脱敏列表和人工重发；新增必须先执行的 `0011_notification_delivery_receipts`。Worker 默认关闭并要求固定启用时间，生产现有 12 条历史 pending 不会自动补发。钉钉发送仍未实现。
 新版题库备份已只读校验：`002 历史题库：清洁卫生入职培训考试-20260812.t12backup`，文件 SHA-256 `a79a3cf361e92bdc4c72c1c889a13816f0fba1c7bbd8be0ca05f3ded26bf7084`，1 题库/37 题/47 资源通过严格回导校验。
 ```
 
@@ -149,11 +150,11 @@ sudo systemctl restart t12-exams
 
 ```text
 npm run check:syntax   通过
-npm test               300 项通过
+npm test               318 项通过
 npm run check:secrets  通过
 ```
 
-新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、历史数据不变，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。本步未连接生产 PostgreSQL，未做真实管理员浏览器验收。
+新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、历史数据不变，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。Outbox 已在生产 PostgreSQL 通过实际交卷和阅卷验证，未使用浏览器控制技能。
 
 ## 六、未确认事项与风险
 
@@ -168,7 +169,7 @@ npm run check:secrets  通过
 7. `0007`、`0008`、`0009` 已在生产应用；后续任何迁移、身份合并、备份回导或其他生产写入前仍必须新建 `pg_dump -Fc`。
 8. 试卷版本化编辑、题库分类、图片去重与飞书管理员入口已部署并由用户手动验收。用户本轮仅验收界面和入口，未对生产试卷执行实际复制、修订或重新发布。
 9. 新 `20260812` 题库包已完成浏览器下载和双重只读严格校验；尚未真实导入生产，避免为测试产生额外题库。旧 `20260811` 包不可导入。
-10. 题库生命周期代码尚未提交、合并或部署；生产必须先创建新 `pg_dump -Fc`，执行 `0010`，再重启依赖 `question_banks.version` 的新代码。
+10. 飞书通知 Worker 已在本机完成但尚未提交、合并或部署；生产必须先备份并执行 `0011`，保持 Worker 关闭验收后台列表，再确认飞书权限和启用时间。钉钉发送尚未实现。
 
 ## 七、接手后的最小行动顺序
 

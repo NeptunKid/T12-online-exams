@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T12学习考核中心 - 管理员阅卷后台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260814-2">
+  <link rel="stylesheet" href="/styles.css?v=20260817-1">
 </head>
 <body>
   <div id="loginPage" class="start-layout">
@@ -31,6 +31,7 @@
           <button class="btn secondary hidden" id="manageExamsBtn" type="button">试卷</button>
           <button class="btn secondary hidden" id="manageQuestionsBtn" type="button">题库</button>
           <button class="btn secondary hidden" id="manageBackupsBtn" type="button">备份</button>
+          <button class="btn secondary hidden" id="manageNotificationsBtn" type="button">通知</button>
           <button class="btn secondary hidden" id="manageAdminsBtn" type="button">管理员</button>
           <button class="btn secondary" id="refreshBtn" type="button">刷新</button>
           <button class="btn danger" id="logoutBtn" type="button">退出登录</button>
@@ -158,6 +159,35 @@
     </div>
   </dialog>
 
+  <dialog id="notificationManagerDialog" class="admin-dialog notification-dialog">
+    <div class="admin-dialog-shell">
+      <div class="admin-dialog-head">
+        <div>
+          <h2>通知任务</h2>
+          <p class="brand-sub" id="notificationWorkerMeta">正在读取 Worker 状态</p>
+        </div>
+        <div class="admin-dialog-actions">
+          <button class="btn secondary compact-btn" id="refreshNotificationsBtn" type="button">刷新</button>
+          <button class="btn secondary compact-btn" id="closeNotificationManagerBtn" type="button">关闭</button>
+        </div>
+      </div>
+      <div id="notificationManagerMsg" class="notice hidden" role="status"></div>
+      <div class="notification-toolbar">
+        <div id="notificationSummary" class="notification-summary"></div>
+        <label for="notificationStatusFilter">状态</label>
+        <select id="notificationStatusFilter">
+          <option value="all">全部</option>
+          <option value="pending">待发送</option>
+          <option value="processing">发送中</option>
+          <option value="delivered">已送达</option>
+          <option value="failed">等待重试</option>
+          <option value="abandoned">已放弃</option>
+        </select>
+      </div>
+      <div id="notificationList" class="notification-list"></div>
+    </div>
+  </dialog>
+
   <dialog id="examAuthoringDialog" class="admin-dialog exam-authoring-dialog">
     <div class="admin-dialog-shell">
       <div class="admin-dialog-head">
@@ -221,6 +251,6 @@
 
   <script src="/question-format.js?v=20260809-2"></script>
   <script src="/question-admin-model.js?v=20260813-2"></script>
-  <script src="/admin.js?v=20260814-2"></script>
+  <script src="/admin.js?v=20260817-1"></script>
 </body>
 </html>
