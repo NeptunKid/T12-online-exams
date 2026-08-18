@@ -2332,8 +2332,13 @@ select:focus {
     width: 100%;
   }
 }
-.notification-dialog .admin-dialog-shell {
+.notification-dialog {
   width: min(960px, calc(100vw - 32px));
+}
+
+.notification-dialog .admin-dialog-shell {
+  width: 100%;
+  min-width: 0;
 }
 
 .notification-toolbar {

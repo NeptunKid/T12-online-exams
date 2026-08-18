@@ -28,3 +28,9 @@ test("通知任务布局在手机端改为单列且操作按钮不溢出", () =>
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.notification-row[\s\S]*flex-direction:\s*column/);
   assert.match(styles, /\.notification-row \.notification-retry-btn[\s\S]*width:\s*100%/);
 });
+
+test("通知弹窗宽度跟随可视窗口且内容不产生横向滚动", () => {
+  assert.match(styles, /\.notification-dialog\s*\{\s*width:\s*min\(960px,\s*calc\(100vw - 32px\)\)/);
+  assert.match(styles, /\.notification-dialog \.admin-dialog-shell\s*\{[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0/);
+  assert.doesNotMatch(styles, /\.notification-dialog \.admin-dialog-shell\s*\{[^}]*width:\s*min\(/);
+});
