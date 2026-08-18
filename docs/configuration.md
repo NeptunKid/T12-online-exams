@@ -23,6 +23,16 @@ DB_NAME=t12_exams
 DB_USER=t12_app
 DB_PASSWORD=
 DB_SSL=false
+T12_NOTIFICATION_WORKER_ENABLED=false
+T12_NOTIFICATION_CHANNELS=feishu
+T12_NOTIFICATION_INTERVAL_SECONDS=30
+T12_NOTIFICATION_START_DELAY_SECONDS=15
+T12_NOTIFICATION_BATCH_SIZE=10
+T12_NOTIFICATION_MAX_ATTEMPTS=5
+T12_NOTIFICATION_RETRY_BASE_SECONDS=60
+T12_NOTIFICATION_STALE_AFTER_SECONDS=300
+T12_PUBLIC_BASE_URL=https://exam.t12group.com
+T12_NOTIFICATION_NOT_BEFORE=
 ```
 
 飞书登录回调地址为 `https://exam.t12group.com/auth/feishu/callback`。飞书应用需要启用网页 OAuth 登录，并将该地址添加到应用的重定向 URL；服务器域名白名单按飞书开放平台页面要求填写 `exam.t12group.com`。登录接口必须返回员工真实姓名 `name`，系统不会用飞书昵称或英文昵称自动合并身份。
@@ -30,6 +40,14 @@ DB_SSL=false
 钉钉登录会优先使用 OAuth 用户信息中的真实姓名；如果该接口只返回 `nick`，服务会通过企业通讯录用户接口补取真实姓名。若登录提示“未能读取钉钉通讯录真实姓名”，请在钉钉开放平台为应用开启对应的通讯录/用户只读权限，再重新登录。系统只保存真实姓名，不把平台昵称写入用户显示名。
 
 真实凭证只允许出现在本地 `.env`、部署 Secret 或 GitHub Actions Secret。不要写入 README、测试样例、日志或开发总结。
+
+## 通知 Worker
+
+通知 Worker 默认关闭。部署包含通知发送代码后，先保持 `T12_NOTIFICATION_WORKER_ENABLED=false` 执行迁移和后台列表验收；确认飞书应用已启用机器人/应用消息能力并具备发送消息权限后，再改为 `true` 并重启服务。
+
+当前发送通道只允许 `feishu`。钉钉任务会继续保存在 `pending`，在钉钉工作通知 Agent ID 或机器人权限正式确认前不会被领取或误发。Worker 使用 PostgreSQL 锁避免多实例重复发送，失败按指数退避重试，超过上限后进入“已放弃”，系统管理员可在后台人工重发。
+
+`T12_PUBLIC_BASE_URL` 必须是无凭证、查询参数和片段的 HTTPS 地址。`T12_NOTIFICATION_NOT_BEFORE` 必须在首次启用时设置为带时区的 ISO 时间；早于该时间的历史 pending 任务只保留审计，不会突然补发。通知只包含考试名、考生显示名或成绩摘要和站内链接，不包含标准答案、题目解析或完整作答。
 
 ## 首位管理员
 
