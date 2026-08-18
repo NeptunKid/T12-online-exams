@@ -21,12 +21,12 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`codex/notification-delivery-worker`；分支基线：`dc318ab`；最新已部署生产的 `main` 提交：`23e08a0`
+当前开发分支：`codex/notification-modal-responsive`；分支基线：`e3b7fa0`；最新已部署生产的 `main` 提交：`a179c83`
 
 ```text
-通知 Outbox 事务入队已提交、合并并部署为 `23e08a0`：`submission.created` 与 `submission.graded` 均在生产生成 pending 任务；无新迁移。生产服务 active，`/readyz` 和公网 `/healthz` 通过。
-部署前备份：`/var/backups/t12-online-exams/postgres/t12_exams-before-23e08a0-20260817164318.dump`，3.3M，SHA-256 `81dd16e75884bfb022843aee01319f1239457cd015e5c22c9fbde8fc8f5dc2c7`。
-当前本地实现：飞书通知发送 Worker、失败退避、送达回执、系统管理员脱敏列表和人工重发；新增必须先执行的 `0011_notification_delivery_receipts`。Worker 默认关闭并要求固定启用时间，生产现有 12 条历史 pending 不会自动补发。钉钉发送仍未实现。
+飞书通知 Worker Phase A 已合并并部署为 `a179c83`：`0011_notification_delivery_receipts` 已执行，生产服务 active，`/readyz` 和公网 `/healthz` 通过；Worker 保持关闭。
+部署前备份：`/var/backups/t12-online-exams/postgres/t12_exams-before-a179c83-20260818223352.dump`，3.3M，SHA-256 `def2fdf9c37419dab19f4a3d03d6d07d90abd89cc76bb1f8c1987d81eb610744`。
+生产验收确认原有 10 条 `submission.created` 与 2 条 `submission.graded` 仍为 pending，飞书未收到新消息。当前本地正修复通知弹窗固定宽度造成的横向滚动，无迁移或数据写入。钉钉发送仍未实现，Phase B 启用飞书 Worker 须等弹窗修复部署验收和飞书权限确认。
 新版题库备份已只读校验：`002 历史题库：清洁卫生入职培训考试-20260812.t12backup`，文件 SHA-256 `a79a3cf361e92bdc4c72c1c889a13816f0fba1c7bbd8be0ca05f3ded26bf7084`，1 题库/37 题/47 资源通过严格回导校验。
 ```
 
@@ -146,15 +146,15 @@ sudo systemctl restart t12-exams
 
 ## 五、质量验证记录
 
-截至当前 Outbox 入队步骤，本机质量门结果：
+截至当前通知弹窗修复步骤，本机质量门结果：
 
 ```text
 npm run check:syntax   通过
-npm test               318 项通过
+npm test               319 项通过
 npm run check:secrets  通过
 ```
 
-新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、历史数据不变，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。Outbox 已在生产 PostgreSQL 通过实际交卷和阅卷验证，未使用浏览器控制技能。
+新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、Worker 领取/重试/回执、脱敏列表与弹窗自适应，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。Phase A 已在生产 PostgreSQL 通过人工验收，未使用浏览器控制技能。
 
 ## 六、未确认事项与风险
 
@@ -169,7 +169,7 @@ npm run check:secrets  通过
 7. `0007`、`0008`、`0009` 已在生产应用；后续任何迁移、身份合并、备份回导或其他生产写入前仍必须新建 `pg_dump -Fc`。
 8. 试卷版本化编辑、题库分类、图片去重与飞书管理员入口已部署并由用户手动验收。用户本轮仅验收界面和入口，未对生产试卷执行实际复制、修订或重新发布。
 9. 新 `20260812` 题库包已完成浏览器下载和双重只读严格校验；尚未真实导入生产，避免为测试产生额外题库。旧 `20260811` 包不可导入。
-10. 飞书通知 Worker 已在本机完成但尚未提交、合并或部署；生产必须先备份并执行 `0011`，保持 Worker 关闭验收后台列表，再确认飞书权限和启用时间。钉钉发送尚未实现。
+10. 飞书通知 Worker Phase A 已部署且保持关闭；当前需先部署并验收通知弹窗自适应修复，再确认飞书应用消息权限和固定启用时间，才可进入 Phase B。钉钉发送尚未实现。
 
 ## 七、接手后的最小行动顺序
 
