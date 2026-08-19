@@ -20,8 +20,8 @@ function channelList(value) {
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
-  if (channels.some((channel) => channel !== "feishu")) {
-    throw new Error("T12_NOTIFICATION_CHANNELS 当前只允许 feishu");
+  if (channels.some((channel) => !["feishu", "dingtalk"].includes(channel))) {
+    throw new Error("T12_NOTIFICATION_CHANNELS 只允许 feishu 或 dingtalk");
   }
   return [...new Set(channels)];
 }
@@ -61,6 +61,12 @@ function loadNotificationConfig(env = process.env) {
   const enabled = booleanValue(env.T12_NOTIFICATION_WORKER_ENABLED, false);
   const channels = channelList(env.T12_NOTIFICATION_CHANNELS);
   if (enabled && !channels.length) throw new Error("启用通知 Worker 时必须配置 T12_NOTIFICATION_CHANNELS");
+  if (enabled && channels.includes("dingtalk")
+    && (!String(env.T12_DINGTALK_MESSAGE_APP_KEY || "").trim()
+      || !String(env.T12_DINGTALK_MESSAGE_APP_SECRET || "").trim()
+      || !String(env.T12_DINGTALK_MESSAGE_AGENT_ID || "").trim())) {
+    throw new Error("启用 dingtalk 通道时必须配置 T12_DINGTALK_MESSAGE_APP_KEY、T12_DINGTALK_MESSAGE_APP_SECRET 和 T12_DINGTALK_MESSAGE_AGENT_ID");
+  }
   const intervalSeconds = integerValue(env.T12_NOTIFICATION_INTERVAL_SECONDS, 30, "T12_NOTIFICATION_INTERVAL_SECONDS", 5, 300);
   const startDelaySeconds = integerValue(env.T12_NOTIFICATION_START_DELAY_SECONDS, 15, "T12_NOTIFICATION_START_DELAY_SECONDS", 5, 300);
   const batchSize = integerValue(env.T12_NOTIFICATION_BATCH_SIZE, 10, "T12_NOTIFICATION_BATCH_SIZE", 1, 50);

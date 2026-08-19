@@ -25,6 +25,9 @@ DB_PASSWORD=
 DB_SSL=false
 T12_NOTIFICATION_WORKER_ENABLED=false
 T12_NOTIFICATION_CHANNELS=feishu
+T12_DINGTALK_MESSAGE_APP_KEY=
+T12_DINGTALK_MESSAGE_APP_SECRET=
+T12_DINGTALK_MESSAGE_AGENT_ID=
 T12_NOTIFICATION_INTERVAL_SECONDS=30
 T12_NOTIFICATION_START_DELAY_SECONDS=15
 T12_NOTIFICATION_BATCH_SIZE=10
@@ -45,7 +48,7 @@ T12_NOTIFICATION_NOT_BEFORE=
 
 通知 Worker 默认关闭。部署包含通知发送代码后，先保持 `T12_NOTIFICATION_WORKER_ENABLED=false` 执行迁移和后台列表验收；确认飞书应用已启用机器人/应用消息能力并具备发送消息权限后，再改为 `true` 并重启服务。
 
-当前发送通道只允许 `feishu`。钉钉任务会继续保存在 `pending`，在钉钉工作通知 Agent ID 或机器人权限正式确认前不会被领取或误发。Worker 使用 PostgreSQL 锁避免多实例重复发送，失败按指数退避重试，超过上限后进入“已放弃”，系统管理员可在后台人工重发。
+当前发送通道支持 `feishu` 和 `dingtalk`。钉钉使用消息应用的 AppKey/AppSecret/AgentId，并在发送时将新任务中的 unionId 解析为工作通知所需的 userid；这些凭证与钉钉 OAuth 登录凭证分开。旧的钉钉 pending 任务可能保留旧收件人标识，启用前必须先对账。Worker 使用 PostgreSQL 锁避免多实例重复发送，失败按指数退避重试，超过上限后进入“已放弃”，系统管理员可在后台人工重发。
 
 `T12_PUBLIC_BASE_URL` 必须是无凭证、查询参数和片段的 HTTPS 地址。`T12_NOTIFICATION_NOT_BEFORE` 必须在首次启用时设置为带时区的 ISO 时间；早于该时间的历史 pending 任务只保留审计，不会突然补发。通知只包含考试名、考生显示名或成绩摘要和站内链接，不包含标准答案、题目解析或完整作答。
 

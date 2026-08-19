@@ -8,6 +8,12 @@ function supportedRecipient(row) {
   return (row.provider === "dingtalk" || row.provider === "feishu") && Boolean(row.provider_subject);
 }
 
+function recipientSubject(row) {
+  return row.provider === "dingtalk"
+    ? String(row.union_id || row.provider_subject || "")
+    : String(row.provider_subject || "");
+}
+
 function compactError(error) {
   return String(error?.message || error || "通知发送失败").replace(/[\r\n]+/g, " ").trim().slice(0, 1000) || "通知发送失败";
 }
@@ -50,7 +56,7 @@ function publicNotification(notification) {
 
 async function listActiveGraderRecipients(queryable) {
   const result = await queryable.query(`
-    SELECT DISTINCT ui.provider, ui.provider_subject
+    SELECT DISTINCT ui.provider, ui.provider_subject, ui.union_id
     FROM users u
     JOIN user_roles ur ON ur.user_id = u.id
     JOIN user_identities ui ON ui.user_id = u.id
@@ -61,13 +67,13 @@ async function listActiveGraderRecipients(queryable) {
     ORDER BY ui.provider, ui.provider_subject;`);
   return result.rows
     .filter(supportedRecipient)
-    .map((row) => ({ channel: row.provider, recipient: row.provider_subject }));
+    .map((row) => ({ channel: row.provider, recipient: recipientSubject(row) }));
 }
 
 async function listActiveUserRecipients(queryable, userId) {
   if (!userId) return [];
   const result = await queryable.query(`
-    SELECT DISTINCT ui.provider, ui.provider_subject
+    SELECT DISTINCT ui.provider, ui.provider_subject, ui.union_id
     FROM users u
     JOIN user_identities ui ON ui.user_id = u.id
     WHERE u.id = $1
@@ -77,7 +83,7 @@ async function listActiveUserRecipients(queryable, userId) {
     ORDER BY ui.provider, ui.provider_subject;`, [userId]);
   return result.rows
     .filter(supportedRecipient)
-    .map((row) => ({ channel: row.provider, recipient: row.provider_subject }));
+    .map((row) => ({ channel: row.provider, recipient: recipientSubject(row) }));
 }
 
 function mergeRecipients(...recipientLists) {

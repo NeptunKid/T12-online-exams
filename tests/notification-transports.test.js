@@ -3,6 +3,10 @@ const test = require("node:test");
 const {
   FEISHU_APP_TOKEN_URL,
   FEISHU_MESSAGE_URL,
+  DINGTALK_APP_TOKEN_URL,
+  DINGTALK_UNION_USER_URL,
+  DINGTALK_MESSAGE_URL,
+  createDingtalkNotificationTransport,
   createFeishuNotificationTransport,
   formatNotificationText
 } = require("../src/notifications/notification-transports");
@@ -57,4 +61,27 @@ test("飞书 API 错误只抛出受限平台消息", async () => {
     : jsonResponse({ code: 230001, msg: "user not in app" }, false);
   const transport = createFeishuNotificationTransport({ appId: "id", appSecret: "secret", publicBaseUrl: "https://exam.test" }, fetchImpl);
   await assert.rejects(transport.send({ eventType: "submission.created", recipient: "ou", payload: {} }), /user not in app/);
+});
+
+test("钉钉 transport 按 unionId 解析 userid 并发送工作通知", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url === DINGTALK_APP_TOKEN_URL) return jsonResponse({ accessToken: "app-token", expireIn: 7200 });
+    if (url.startsWith(DINGTALK_UNION_USER_URL)) return jsonResponse({ errcode: 0, result: { userid: "userid-1" } });
+    assert.equal(url.startsWith(DINGTALK_MESSAGE_URL), true);
+    return jsonResponse({ errcode: 0, task_id: 12345 });
+  };
+  const transport = createDingtalkNotificationTransport({
+    appKey: "app-key", appSecret: "app-secret", agentId: "agent-1", publicBaseUrl: "https://exam.test"
+  }, fetchImpl, () => new Date("2026-08-20T01:00:00Z"));
+  const receipt = await transport.send({
+    eventType: "submission.graded", recipient: "union-1",
+    payload: { examTitle: "测试考试", studentName: "学员甲", totalScore: 90, passScore: 60, pass: true }
+  });
+  assert.deepEqual(receipt, { provider: "dingtalk", taskId: "12345", sentAt: "2026-08-20T01:00:00.000Z" });
+  const body = JSON.parse(calls[2].options.body);
+  assert.equal(body.agent_id, "agent-1");
+  assert.equal(body.userid_list, "userid-1");
+  assert.match(body.msg.text.content, /考生：学员甲/);
 });

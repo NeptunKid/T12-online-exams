@@ -29,7 +29,18 @@ test("通知配置限制通道、周期、重试和 HTTPS 公网地址", () => {
   assert.equal(config.retryMaximumSeconds, 240);
   assert.equal(config.notBefore, "2026-08-17T10:00:00.000Z");
   assert.throws(() => loadNotificationConfig({ T12_NOTIFICATION_WORKER_ENABLED: "true" }), /CHANNELS/);
-  assert.throws(() => loadNotificationConfig({ T12_NOTIFICATION_CHANNELS: "dingtalk" }), /只允许 feishu/);
+  assert.throws(() => loadNotificationConfig({ T12_NOTIFICATION_CHANNELS: "wechat" }), /只允许 feishu 或 dingtalk/);
+  assert.throws(() => loadNotificationConfig({
+    T12_NOTIFICATION_WORKER_ENABLED: "true", T12_NOTIFICATION_CHANNELS: "dingtalk",
+    T12_PUBLIC_BASE_URL: "https://exam.test", T12_NOTIFICATION_NOT_BEFORE: "2026-08-17T18:00:00+08:00"
+  }), /DINGTALK_MESSAGE_APP_KEY/);
+  const dingtalk = loadNotificationConfig({
+    T12_NOTIFICATION_WORKER_ENABLED: "true", T12_NOTIFICATION_CHANNELS: "dingtalk",
+    T12_DINGTALK_MESSAGE_APP_KEY: "app-key", T12_DINGTALK_MESSAGE_APP_SECRET: "secret",
+    T12_DINGTALK_MESSAGE_AGENT_ID: "123", T12_PUBLIC_BASE_URL: "https://exam.test",
+    T12_NOTIFICATION_NOT_BEFORE: "2026-08-17T18:00:00+08:00"
+  });
+  assert.deepEqual(dingtalk.channels, ["dingtalk"]);
   assert.throws(() => loadNotificationConfig({
     T12_NOTIFICATION_WORKER_ENABLED: "true", T12_NOTIFICATION_CHANNELS: "feishu", T12_PUBLIC_BASE_URL: "http://exam.test",
     T12_NOTIFICATION_NOT_BEFORE: "2026-08-17T18:00:00+08:00"

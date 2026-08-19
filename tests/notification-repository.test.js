@@ -90,3 +90,14 @@ test("收件人查询过滤禁用账号和不支持的身份", async () => {
   assert.deepEqual(await listActiveUserRecipients(queryable, "user-1"), [{ channel: "feishu", recipient: "ou1" }]);
   assert.deepEqual(await listActiveUserRecipients(queryable, null), []);
 });
+
+test("新建钉钉通知优先使用 unionId 而非 OAuth openId", async () => {
+  const queryable = {
+    async query(sql) {
+      if (sql.includes("user_roles")) return { rows: [{ provider: "dingtalk", provider_subject: "open-1", union_id: "union-1" }] };
+      return { rows: [{ provider: "dingtalk", provider_subject: "open-1", union_id: "union-1" }] };
+    }
+  };
+  assert.deepEqual(await listActiveGraderRecipients(queryable), [{ channel: "dingtalk", recipient: "union-1" }]);
+  assert.deepEqual(await listActiveUserRecipients(queryable, "user-1"), [{ channel: "dingtalk", recipient: "union-1" }]);
+});
