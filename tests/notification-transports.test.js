@@ -21,8 +21,9 @@ test("通知文本只包含必要摘要和站内入口", () => {
   assert.doesNotMatch(created, /q1|答案|"A"/);
   const graded = formatNotificationText({
     eventType: "submission.graded",
-    payload: { examTitle: "测试考试", totalScore: 86, passScore: 60, pass: true }
+    payload: { examTitle: "测试考试", studentName: "学员甲", totalScore: 86, passScore: 60, pass: true }
   }, "https://exam.test");
+  assert.match(graded, /考生：学员甲/);
   assert.match(graded, /成绩：86/);
   assert.match(graded, /结果：通过/);
 });

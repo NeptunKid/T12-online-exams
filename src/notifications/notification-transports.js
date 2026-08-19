@@ -26,6 +26,7 @@ function formatNotificationText(notification, publicBaseUrl) {
     return [
       "【考试结果】",
       `考试：${payload.examTitle || "未命名考试"}`,
+      `考生：${payload.studentName || "学员"}`,
       `成绩：${payload.totalScore ?? "-"}`,
       `通过线：${payload.passScore ?? "-"}`,
       `结果：${payload.pass ? "通过" : "未通过"}`,

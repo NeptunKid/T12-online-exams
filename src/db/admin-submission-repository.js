@@ -347,6 +347,7 @@ async function gradeAdminSubmission(pool, submissionId, input, grader) {
       userId: submission.user_id,
       examId: submission.exam_id,
       examTitle: detail?.exam?.title || "",
+      studentName: detail?.submission?.studentName || "历史答卷用户",
       totalScore,
       passScore: requestedPass,
       pass: totalScore >= requestedPass,

@@ -40,7 +40,7 @@ test("Outbox 只为有效管理员身份创建待发送任务", async () => {
   });
 });
 
-test("成绩通知只发给答卷人的有效平台身份且不包含答案", async () => {
+test("成绩通知同时发给答卷人和所有有效管理员", async () => {
   const calls = [];
   const queryable = {
     async query(sql, params) {
@@ -49,17 +49,26 @@ test("成绩通知只发给答卷人的有效平台身份且不包含答案", as
         assert.deepEqual(params, ["user-1"]);
         return { rows: [{ provider: "feishu", provider_subject: "ou-1" }] };
       }
+      if (sql.includes("user_roles")) {
+        return { rows: [
+          { provider: "dingtalk", provider_subject: "union-admin" },
+          { provider: "feishu", provider_subject: "ou-1" }
+        ] };
+      }
       return { rowCount: 1, rows: [] };
     }
   };
   const queued = await enqueueSubmissionGraded(queryable, {
     submissionId: "s-1", userId: "user-1", examId: "exam-1", examTitle: "测试考试",
-    totalScore: 86, passScore: 60, pass: true, gradedAt: "2026-08-15T00:05:00Z"
+    studentName: "学员甲", totalScore: 86, passScore: 60, pass: true, gradedAt: "2026-08-15T00:05:00Z"
   });
-  assert.equal(queued, 1);
-  const insert = calls.find((call) => call.sql.includes("INSERT INTO notifications"));
-  const payload = JSON.parse(insert.params[5]);
-  assert.equal(payload.kind, "student");
+  assert.equal(queued, 2);
+  const inserts = calls.filter((call) => call.sql.includes("INSERT INTO notifications"));
+  assert.equal(inserts.length, 2);
+  assert.deepEqual(inserts.map((call) => call.params[3]).sort(), ["dingtalk", "feishu"]);
+  const payload = JSON.parse(inserts[0].params[5]);
+  assert.equal(payload.kind, "result");
+  assert.equal(payload.studentName, "学员甲");
   assert.equal(Object.hasOwn(payload, "answers"), false);
 });
 

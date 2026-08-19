@@ -80,6 +80,16 @@ async function listActiveUserRecipients(queryable, userId) {
     .map((row) => ({ channel: row.provider, recipient: row.provider_subject }));
 }
 
+function mergeRecipients(...recipientLists) {
+  const seen = new Set();
+  return recipientLists.flat().filter((recipient) => {
+    const key = `${recipient.channel}:${recipient.recipient}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function enqueueNotificationEvents(queryable, eventType, resourceId, recipients, payload) {
   let queued = 0;
   for (const recipient of recipients) {
@@ -110,16 +120,19 @@ async function enqueueSubmissionCreated(queryable, input) {
 }
 
 async function enqueueSubmissionGraded(queryable, input) {
-  const recipients = await listActiveUserRecipients(queryable, input.userId);
+  const studentRecipients = await listActiveUserRecipients(queryable, input.userId);
+  const adminRecipients = await listActiveGraderRecipients(queryable);
+  const recipients = mergeRecipients(studentRecipients, adminRecipients);
   return enqueueNotificationEvents(queryable, "submission.graded", input.submissionId, recipients, {
     submissionId: input.submissionId,
     examId: input.examId,
     examTitle: input.examTitle,
+    studentName: input.studentName || "历史答卷用户",
     totalScore: input.totalScore,
     passScore: input.passScore,
     pass: Boolean(input.pass),
     gradedAt: input.gradedAt,
-    kind: "student"
+    kind: "result"
   });
 }
 

@@ -21,12 +21,12 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`codex/notification-modal-responsive`；分支基线：`e3b7fa0`；最新已部署生产的 `main` 提交：`a179c83`
+当前开发分支：`codex/graded-notify-student-admins`；分支基线：`5b8d6f0`；最新已部署生产的 `main` 提交：`a179c83`
 
 ```text
 飞书通知 Worker Phase A 已合并并部署为 `a179c83`：`0011_notification_delivery_receipts` 已执行，生产服务 active，`/readyz` 和公网 `/healthz` 通过；Worker 保持关闭。
 部署前备份：`/var/backups/t12-online-exams/postgres/t12_exams-before-a179c83-20260818223352.dump`，3.3M，SHA-256 `def2fdf9c37419dab19f4a3d03d6d07d90abd89cc76bb1f8c1987d81eb610744`。
-生产验收确认原有 10 条 `submission.created` 与 2 条 `submission.graded` 仍为 pending，飞书未收到新消息。当前本地正修复通知弹窗固定宽度造成的横向滚动，无迁移或数据写入。钉钉发送仍未实现，Phase B 启用飞书 Worker 须等弹窗修复部署验收和飞书权限确认。
+生产验收确认原有 10 条 `submission.created` 与 2 条 `submission.graded` 仍为 pending，飞书未收到新消息。当前已完成通知弹窗响应式修复；本分支调整成绩通知收件人和消息内容，无新迁移、无历史通知回填。钉钉发送仍未实现。
 新版题库备份已只读校验：`002 历史题库：清洁卫生入职培训考试-20260812.t12backup`，文件 SHA-256 `a79a3cf361e92bdc4c72c1c889a13816f0fba1c7bbd8be0ca05f3ded26bf7084`，1 题库/37 题/47 资源通过严格回导校验。
 ```
 
