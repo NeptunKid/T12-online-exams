@@ -97,6 +97,25 @@ test("普通列表只读取启用题库，维护列表读取全部状态", async
   assert.match(calls[0], /WHERE qb\.status = 'active'/);
   assert.doesNotMatch(calls[1], /WHERE qb\.status = 'active'/);
   assert.match(calls[1], /ORDER BY \(qb\.status = 'archived'\)/);
+  assert.match(calls[1], /e\.status <> 'archived'/);
+});
+
+test("永久删除只把未删除试卷视为题库引用", async () => {
+  const state = lifecycleClient({ existing: bankRow({ status: "archived", version: 4 }) });
+  state.client.query = async function query(sql, params) {
+    state.calls.push({ sql, params });
+    if (sql.includes("FROM question_banks") && sql.includes("FOR UPDATE")) {
+      return { rows: [{ ...bankRow({ status: "archived", version: 4 }) }] };
+    }
+    if (sql.includes("SELECT COUNT(*)::integer AS count") && sql.includes("FROM exams")) {
+      assert.match(sql, /e\.status <> 'archived'/);
+      return { rows: [{ count: 0 }] };
+    }
+    return { rows: [] };
+  };
+  const deleted = await deleteQuestionBank({ connect: async () => state.client }, "bank-1", { version: 4 }, "admin-1");
+  assert.equal(deleted.status, "deleted");
+  assert.equal(state.calls.at(-1).sql, "COMMIT");
 });
 
 test("复制题库包含题目内容，不复制试卷关系或答卷", async () => {
@@ -159,6 +178,8 @@ test("已归档且未被试卷引用的题库可以永久删除并写审计", as
   assert.equal(audit.params[2], "delete_question_bank");
   assert.equal(JSON.parse(audit.params[4]).status, "archived");
   assert.equal(JSON.parse(audit.params[5]).status, "deleted");
+  const references = state.calls.find((call) => call.sql.includes("FROM exams") && call.sql.includes("COUNT(*)::integer"));
+  assert.match(references.sql, /e\.status <> 'archived'/);
   assert.equal(state.calls.at(-1).sql, "COMMIT");
 });
 
