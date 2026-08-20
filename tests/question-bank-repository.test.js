@@ -174,6 +174,9 @@ test("已归档且未被试卷引用的题库可以永久删除并写审计", as
   const sql = state.calls.map((call) => call.sql).join("\n");
   assert.match(sql, /DELETE FROM questions/);
   assert.match(sql, /DELETE FROM question_banks/);
+  assert.match(sql, /DELETE FROM exam_questions eq/);
+  assert.match(sql, /e\.status = 'archived'/);
+  assert.match(sql, /UPDATE exams\s+SET question_bank_id = NULL/);
   const audit = state.calls.find((call) => call.sql.includes("INSERT INTO audit_logs") && call.params[2] === "delete_question_bank");
   assert.equal(audit.params[2], "delete_question_bank");
   assert.equal(JSON.parse(audit.params[4]).status, "archived");
