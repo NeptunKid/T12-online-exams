@@ -137,7 +137,7 @@ async function listManagedQuestionBanks(pool) {
       count(DISTINCT e.id)::integer AS exam_count
     FROM question_banks qb
     LEFT JOIN questions q ON q.bank_id = qb.id
-    LEFT JOIN exams e ON e.question_bank_id = qb.id
+    LEFT JOIN exams e ON e.question_bank_id = qb.id AND e.status <> 'archived'
     GROUP BY qb.id
     ORDER BY (qb.status = 'archived'), qb.name, qb.id;`);
   return result.rows.map(mapQuestionBank);
@@ -151,7 +151,7 @@ async function getQuestionBank(queryable, bankId) {
       count(DISTINCT e.id)::integer AS exam_count
     FROM question_banks qb
     LEFT JOIN questions q ON q.bank_id = qb.id
-    LEFT JOIN exams e ON e.question_bank_id = qb.id
+    LEFT JOIN exams e ON e.question_bank_id = qb.id AND e.status <> 'archived'
     WHERE qb.id = $1
     GROUP BY qb.id;`, [bankId]);
   return result.rows[0] ? mapQuestionBank(result.rows[0]) : null;
@@ -346,13 +346,16 @@ async function deleteQuestionBank(pool, bankId, input, actorUserId) {
     const examRefs = await client.query(`
       SELECT COUNT(*)::integer AS count
       FROM exams e
-      WHERE e.question_bank_id = $1
-         OR EXISTS (
-           SELECT 1
-           FROM exam_questions eq
-           JOIN questions q ON q.id = eq.question_id
-           WHERE eq.exam_id = e.id AND q.bank_id = $1
-         );`, [bankId]);
+      WHERE e.status <> 'archived'
+        AND (
+          e.question_bank_id = $1
+          OR EXISTS (
+            SELECT 1
+            FROM exam_questions eq
+            JOIN questions q ON q.id = eq.question_id
+            WHERE eq.exam_id = e.id AND q.bank_id = $1
+          )
+        );`, [bankId]);
     if (Number(examRefs.rows[0]?.count || 0) > 0) {
       throw new QuestionBankError("该题库仍被试卷引用，不能永久删除；可以保留为已删除状态", 409);
     }
