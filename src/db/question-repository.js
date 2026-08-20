@@ -364,6 +364,19 @@ async function deleteQuestionBank(pool, bankId, input, actorUserId) {
       [bankId]
     );
     const before = bankSnapshot(existing);
+    // Archived exams are retained for audit/history, but no longer need live
+    // question-bank foreign-key relationships after the bank is purged.
+    await client.query(`
+      DELETE FROM exam_questions eq
+      USING exams e, questions q
+      WHERE eq.exam_id = e.id
+        AND eq.question_id = q.id
+        AND e.status = 'archived'
+        AND q.bank_id = $1;`, [bankId]);
+    await client.query(`
+      UPDATE exams
+      SET question_bank_id = NULL
+      WHERE status = 'archived' AND question_bank_id = $1;`, [bankId]);
     await client.query("DELETE FROM questions WHERE bank_id = $1;", [bankId]);
     await client.query("DELETE FROM question_banks WHERE id = $1;", [bankId]);
     await insertQuestionBankAudit(client, actorUserId, "delete_question_bank", bankId, before, {
