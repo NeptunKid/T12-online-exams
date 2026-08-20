@@ -8,6 +8,12 @@ function supportedRecipient(row) {
   return (row.provider === "dingtalk" || row.provider === "feishu") && Boolean(row.provider_subject);
 }
 
+function recipientSubject(row) {
+  return row.provider === "dingtalk"
+    ? String(row.union_id || row.provider_subject || "")
+    : String(row.provider_subject || "");
+}
+
 function compactError(error) {
   return String(error?.message || error || "通知发送失败").replace(/[\r\n]+/g, " ").trim().slice(0, 1000) || "通知发送失败";
 }
@@ -50,7 +56,7 @@ function publicNotification(notification) {
 
 async function listActiveGraderRecipients(queryable) {
   const result = await queryable.query(`
-    SELECT DISTINCT ui.provider, ui.provider_subject
+    SELECT DISTINCT ui.provider, ui.provider_subject, ui.union_id
     FROM users u
     JOIN user_roles ur ON ur.user_id = u.id
     JOIN user_identities ui ON ui.user_id = u.id
@@ -61,13 +67,13 @@ async function listActiveGraderRecipients(queryable) {
     ORDER BY ui.provider, ui.provider_subject;`);
   return result.rows
     .filter(supportedRecipient)
-    .map((row) => ({ channel: row.provider, recipient: row.provider_subject }));
+    .map((row) => ({ channel: row.provider, recipient: recipientSubject(row) }));
 }
 
 async function listActiveUserRecipients(queryable, userId) {
   if (!userId) return [];
   const result = await queryable.query(`
-    SELECT DISTINCT ui.provider, ui.provider_subject
+    SELECT DISTINCT ui.provider, ui.provider_subject, ui.union_id
     FROM users u
     JOIN user_identities ui ON ui.user_id = u.id
     WHERE u.id = $1
@@ -77,7 +83,17 @@ async function listActiveUserRecipients(queryable, userId) {
     ORDER BY ui.provider, ui.provider_subject;`, [userId]);
   return result.rows
     .filter(supportedRecipient)
-    .map((row) => ({ channel: row.provider, recipient: row.provider_subject }));
+    .map((row) => ({ channel: row.provider, recipient: recipientSubject(row) }));
+}
+
+function mergeRecipients(...recipientLists) {
+  const seen = new Set();
+  return recipientLists.flat().filter((recipient) => {
+    const key = `${recipient.channel}:${recipient.recipient}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function enqueueNotificationEvents(queryable, eventType, resourceId, recipients, payload) {
@@ -110,16 +126,19 @@ async function enqueueSubmissionCreated(queryable, input) {
 }
 
 async function enqueueSubmissionGraded(queryable, input) {
-  const recipients = await listActiveUserRecipients(queryable, input.userId);
+  const studentRecipients = await listActiveUserRecipients(queryable, input.userId);
+  const adminRecipients = await listActiveGraderRecipients(queryable);
+  const recipients = mergeRecipients(studentRecipients, adminRecipients);
   return enqueueNotificationEvents(queryable, "submission.graded", input.submissionId, recipients, {
     submissionId: input.submissionId,
     examId: input.examId,
     examTitle: input.examTitle,
+    studentName: input.studentName || "历史答卷用户",
     totalScore: input.totalScore,
     passScore: input.passScore,
     pass: Boolean(input.pass),
     gradedAt: input.gradedAt,
-    kind: "student"
+    kind: "result"
   });
 }
 

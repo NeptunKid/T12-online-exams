@@ -23,7 +23,7 @@ const { loadAutomaticBackupConfig, publicAutomaticBackupConfig } = require("./sr
 const { createAdminBackupHandler } = require("./src/http/admin-backup-handler");
 const notificationRepository = require("./src/db/notification-repository");
 const { loadNotificationConfig, publicNotificationConfig } = require("./src/notifications/notification-config");
-const { createFeishuNotificationTransport } = require("./src/notifications/notification-transports");
+const { createDingtalkNotificationTransport, createFeishuNotificationTransport } = require("./src/notifications/notification-transports");
 const { createNotificationWorker } = require("./src/notifications/notification-worker");
 const { createAdminNotificationHandler } = require("./src/http/admin-notification-handler");
 
@@ -56,6 +56,9 @@ const DINGTALK_REDIRECT_URI = process.env.DINGTALK_REDIRECT_URI || "";
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || "";
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || "";
 const FEISHU_REDIRECT_URI = process.env.FEISHU_REDIRECT_URI || "";
+const DINGTALK_MESSAGE_APP_KEY = process.env.T12_DINGTALK_MESSAGE_APP_KEY || "";
+const DINGTALK_MESSAGE_APP_SECRET = process.env.T12_DINGTALK_MESSAGE_APP_SECRET || "";
+const DINGTALK_MESSAGE_AGENT_ID = process.env.T12_DINGTALK_MESSAGE_AGENT_ID || "";
 const GRADER_UNION_IDS = new Set(
   (process.env.DINGTALK_GRADER_UNION_IDS || "").split(",").map((value) => value.trim()).filter(Boolean)
 );
@@ -400,6 +403,14 @@ if (NOTIFICATION_CONFIG.enabled && NOTIFICATION_CONFIG.channels.includes("feishu
   notificationTransports.feishu = createFeishuNotificationTransport({
     appId: FEISHU_APP_ID,
     appSecret: FEISHU_APP_SECRET,
+    publicBaseUrl: NOTIFICATION_CONFIG.publicBaseUrl
+  });
+}
+if (NOTIFICATION_CONFIG.enabled && NOTIFICATION_CONFIG.channels.includes("dingtalk")) {
+  notificationTransports.dingtalk = createDingtalkNotificationTransport({
+    appKey: DINGTALK_MESSAGE_APP_KEY,
+    appSecret: DINGTALK_MESSAGE_APP_SECRET,
+    agentId: DINGTALK_MESSAGE_AGENT_ID,
     publicBaseUrl: NOTIFICATION_CONFIG.publicBaseUrl
   });
 }
