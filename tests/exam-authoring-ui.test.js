@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260817-1/);
+  assert.match(html, /\/admin\.js\?v=20260820-1/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -25,7 +25,8 @@ test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
   assert.match(script, /只有保存实际修改时才会转为草稿/);
   assert.doesNotMatch(script, /api\(`\/api\/admin\/exams\/\$\{encodeURIComponent\(exam\.id\)\}\/revision`/);
   assert.match(script, /id="examSettingsForm"/);
-  assert.match(script, /版本号已更新/);
+  assert.match(script, /id="saveExamAuthoringBtn"/);
+  assert.match(script, /\/authoring`/);
 });
 
 test("组卷支持新增、复制、参数修改和统一发布", () => {
@@ -36,6 +37,8 @@ test("组卷支持新增、复制、参数修改和统一发布", () => {
   assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/publish`/);
   assert.match(script, /method: "PATCH"/);
   assert.match(script, />发布<\/button>/);
+  assert.match(script, /const canPublish = exam\.status === "draft"/);
+  assert.match(script, /保存修改后才能发布新版本/);
   assert.doesNotMatch(script, /重新发布/);
   assert.match(script, /durationSeconds: durationMinutes \* 60/);
 });
@@ -48,23 +51,24 @@ test("题库维护分类只显示题库而不显示试卷", () => {
 });
 
 test("所有组卷写请求携带乐观锁版本", () => {
-  const routes = ["question-bank", "questions", "question-order", "question-scores"];
-  for (const route of routes) assert.match(script, new RegExp(`/\\$\\{${route === "questions" ? "encodeURIComponent\\(exam\\.id\\)" : "encodeURIComponent\\(exam\\.id\\)"}\\}/${route}`));
-  assert.match(script, /questions\/\$\{encodeURIComponent\(questionId\)\}\/score/);
-  assert.ok((script.match(/version: exam\.version/g) || []).length >= 5);
+  assert.match(script, /method: "PATCH",\s*body: JSON\.stringify\(body\)/);
+  assert.match(script, /version: exam\.version/);
+  assert.match(script, /\/authoring`/);
   assert.match(script, /applyExamMutationResponse\(data\)/);
 });
 
-test("组卷支持全选、稳定排序、单题与批量分值", () => {
+test("组卷支持全选、稳定排序、题型分组批量分值和单一保存", () => {
   assert.match(script, /id="selectAllExamQuestionsBtn"/);
   assert.match(script, /id="clearExamQuestionsBtn"/);
-  assert.match(script, /\{ revision: examRevisionEditing, version: exam\.version, selectAll: true, scores \}/);
   assert.match(script, /selected\.forEach\(\(question, position\) => \{ question\.position = position \+ 1; \}\)/);
-  assert.match(script, /id="examBulkScoreInput"/);
+  assert.match(script, /class="exam-question-type-group/);
+  assert.match(script, /class="exam-type-score-input"/);
+  assert.match(script, /applyExamTypeScore/);
   assert.match(script, /class="exam-question-score-input"/);
   assert.match(script, /scores = Object\.fromEntries/);
-  assert.match(script, /请点击“保存选题”一起提交/);
-  assert.match(script, /总分和通过分已按最新分值重新计算/);
+  assert.match(script, /保存全部修改/);
+  assert.doesNotMatch(script, /保存分值/);
+  assert.doesNotMatch(script, /保存选题/);
 });
 
 test("更换题库自动清空选题并在操作前说明影响", () => {

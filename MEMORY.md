@@ -54,3 +54,4 @@
 2026-08-18 [Codex] 飞书通知 Worker Phase A 已部署生产 `a179c83`，`0011` 迁移、服务健康和 Worker 关闭验收通过，原有 10 条 `submission.created` 与 2 条 `submission.graded` 仍为 pending 且未发送；部署前备份为 `/var/backups/t12-online-exams/postgres/t12_exams-before-a179c83-20260818223352.dump`，SHA-256 `def2fdf9c37419dab19f4a3d03d6d07d90abd89cc76bb1f8c1987d81eb610744`。同时修复通知弹窗内层 960px 撑开外层 720px 导致的横向滚动，改为外层跟随视口、内层 100% 宽度；无迁移、无生产写入，完整质量门 319 项测试通过，待提交、部署和用户手动视觉验收。
 2026-08-20 [Codex] 调整成绩通知收件人：`submission.created` 仍只通知管理员；`submission.graded` 同时通知考生和所有有效管理员，消息新增考生姓名并按平台身份去重。无新迁移、不回填历史通知；`npm run check` 的319 项测试通过，待提交、PR 和生产验收。
 2026-08-21 [Codex] 完成钉钉工作通知 transport：新创建的钉钉任务使用 unionId 解析 userid 后按消息应用 AgentId 发送，通道配置支持 `feishu,dingtalk`并强制校验 AppKey/AppSecret/AgentId；旧 pending 任务不回填、不自动改写。无数据库迁移，待 PR 和分阶段生产验收。
+2026-08-20 [Codex] 完成试卷组卷统一保存：新增整体保存事务接口，一次提交试卷参数、题库、选题、排序和逐题分值；前端移除单题保存和独立保存选题，题目按单选、多选、填空、判断、问答分组并支持分类批量设分后继续手动修改。无数据库迁移、无生产写入；`npm test` 323 项、语法检查和 `git diff --check` 通过，待提交、PR、部署和用户验收。

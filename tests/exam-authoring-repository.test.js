@@ -14,6 +14,7 @@ const {
   restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
+  saveExamAuthoring,
   setExamQuestions,
   updateAllExamQuestionScores,
   updateExamQuestionScore,
@@ -260,6 +261,27 @@ test("新增选题时可以在同一事务同时提交每题分值", async () =>
   assert.equal(detail.totalScore, 5.5);
   const insert = database.calls.find((call) => call.sql.includes("INSERT INTO exam_questions"));
   assert.deepEqual(insert.params[3], [4, 1.5]);
+});
+
+test("整体组卷保存一次提交参数、题库、选题顺序和分值", async () => {
+  const database = createDatabase();
+  const detail = await saveExamAuthoring(database.pool, "exam-1", {
+    revision: true,
+    version: 3,
+    title: "更新后的试卷",
+    durationSeconds: 3600,
+    passRate: 0.8,
+    questionBankId: "bank-1",
+    questionIds: ["q-2", "q-1"],
+    scores: { "q-2": 4, "q-1": 2 }
+  }, "admin-1");
+  assert.equal(detail.title, "更新后的试卷");
+  assert.deepEqual(database.state.selection, [
+    { question_id: "q-2", position: 1, score: 4 },
+    { question_id: "q-1", position: 2, score: 2 }
+  ]);
+  assert.equal(database.calls.filter((call) => call.sql === "BEGIN").length, 1);
+  assert.equal(database.calls.at(-1).sql, "COMMIT");
 });
 
 test("全选只按题库稳定顺序加入 active 题目", async () => {

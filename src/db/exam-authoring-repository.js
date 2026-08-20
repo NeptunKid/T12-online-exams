@@ -601,6 +601,79 @@ async function setExamQuestions(pool, examId, input, actorUserId) {
   });
 }
 
+async function saveExamAuthoring(pool, examId, input, actorUserId) {
+  return mutateExam(pool, examId, input, actorUserId, "save_exam_authoring", async (client, exam, selected) => {
+    const requestedBankId = input?.questionBankId ?? input?.bankId;
+    let bankId = exam.question_bank_id;
+    const bankChanged = requestedBankId !== undefined && String(requestedBankId || "").trim() !== String(bankId || "");
+    if (requestedBankId !== undefined) {
+      bankId = String(requestedBankId || "").trim();
+      if (!bankId) throw new ExamAuthoringError("请选择题库");
+      const bank = await client.query(`
+        SELECT id
+        FROM question_banks
+        WHERE id = $1 AND status = 'active'
+        FOR SHARE;`, [bankId]);
+      if (!bank.rows.length) throw new ExamAuthoringError("未找到可用题库");
+      if (bankChanged) {
+        await client.query("UPDATE exams SET question_bank_id = $2 WHERE id = $1;", [examId, bankId]);
+      }
+    }
+    await assertActiveQuestionBank(client, bankId);
+    const settings = normalizeExamSettings(input, exam);
+    await client.query(`
+      UPDATE exams
+      SET title = $2, duration_seconds = $3, pass_rate = $4, answer_rules_json = $5::jsonb
+      WHERE id = $1;`, [
+      examId, settings.title, settings.duration, settings.passRate, JSON.stringify(settings.answerRules)
+    ]);
+
+    const hasSelectionInput = bankChanged
+      || input?.selectAll === true
+      || input?.questionIds !== undefined
+      || input?.scores !== undefined;
+    if (!hasSelectionInput) return;
+
+    const selectAll = input?.selectAll === true;
+    const requestedIds = selectAll ? null : normalizeQuestionIds(input?.questionIds);
+    let questionIds = requestedIds;
+    if (selectAll) {
+      const result = await client.query(`
+        SELECT q.id
+        FROM questions q
+        WHERE q.bank_id = $1 AND q.status = 'active'
+        ORDER BY COALESCE(NULLIF(q.external_id, ''), q.id), q.id
+        FOR SHARE;`, [bankId]);
+      questionIds = result.rows.map((row) => row.id);
+    } else if (questionIds.length) {
+      const result = await client.query(`
+        SELECT q.id
+        FROM questions q
+        WHERE q.id = ANY($1::text[])
+          AND q.bank_id = $2
+          AND q.status = 'active'
+        FOR SHARE;`, [questionIds, bankId]);
+      if (result.rows.length !== questionIds.length) {
+        throw new ExamAuthoringError("选中的题目包含其他题库或已归档题目");
+      }
+    }
+    const scoreOverrides = normalizeQuestionScores(input?.scores, questionIds);
+    const scoreByQuestion = new Map(bankChanged ? [] : selected.map((item) => [item.questionId, item.score]));
+    for (const [questionId, score] of scoreOverrides || []) scoreByQuestion.set(questionId, score);
+    await client.query("DELETE FROM exam_questions WHERE exam_id = $1;", [examId]);
+    if (questionIds.length) {
+      const positions = questionIds.map((_, index) => index + 1);
+      const scores = questionIds.map((id) => scoreByQuestion.get(id) ?? 0);
+      await client.query(`
+        INSERT INTO exam_questions (exam_id, question_id, position, score)
+        SELECT $1, selected.question_id, selected.position, selected.score
+        FROM unnest($2::text[], $3::integer[], $4::numeric[]) AS selected(question_id, position, score);`, [
+        examId, questionIds, positions, scores
+      ]);
+    }
+  });
+}
+
 async function reorderExamQuestions(pool, examId, input, actorUserId) {
   const orderedIds = normalizeQuestionIds(input?.questionIds, { allowEmpty: false });
   return mutateExam(pool, examId, input, actorUserId, "reorder_exam_questions", async (client, _exam, selected) => {
@@ -663,6 +736,7 @@ module.exports = {
   restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
+  saveExamAuthoring,
   setExamQuestions,
   updateAllExamQuestionScores,
   updateExamQuestionScore,
