@@ -1340,6 +1340,45 @@ select:focus {
   width: 100px;
 }
 
+.exam-question-type-group {
+  display: grid;
+  gap: 8px;
+}
+
+.exam-question-type-group + .exam-question-type-group {
+  margin-top: 14px;
+}
+
+.exam-question-type-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--blue);
+  background: var(--blue-soft);
+}
+
+.exam-question-type-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.exam-type-bulk-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exam-type-bulk-score input {
+  width: 94px;
+}
+
+.unselected-question-group .exam-question-type-head {
+  border-left-color: var(--line-strong);
+  background: #f8fafc;
+}
+
 .exam-question-list {
   display: grid;
   gap: 8px;
@@ -2283,6 +2322,9 @@ select:focus {
   .exam-selection-actions .btn,
   .exam-bulk-score input,
   .exam-bulk-score .btn,
+  .exam-type-bulk-score,
+  .exam-type-bulk-score input,
+  .exam-type-bulk-score .btn,
   .exam-question-actions .btn {
     width: 100%;
   }
@@ -2300,8 +2342,10 @@ select:focus {
     grid-template-columns: 32px 32px minmax(0, 1fr);
   }
 
-  .exam-question-actions .save-exam-question-score-btn {
-    grid-column: 1 / -1;
+  .exam-question-type-head,
+  .exam-type-bulk-score {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .question-create-grid {

@@ -25,6 +25,8 @@ let currentAuthoringExamId = "";
 let currentExamAuthoring = null;
 let examAuthoringBusy = false;
 let examSelectionDirty = false;
+let examAuthoringDirty = false;
+let examAuthoringBankDraft = "";
 let examSelectAllRequested = false;
 let examBulkScoreDraft = "1";
 let examRevisionEditing = false;
@@ -745,10 +747,52 @@ function renderExamAuthoringEditor() {
   const selected = selectedAuthoringQuestions();
   const hasArchivedSelection = selected.some((question) => question.status !== "active");
   const selectedIndex = new Map(selected.map((question, index) => [question.id, index]));
-  const bankId = exam.questionBankId || exam.question_bank_id || "";
+  const bankId = examAuthoringBankDraft || exam.questionBankId || exam.question_bank_id || "";
   const visibleBanks = banks.filter((bank) => bank.status !== "archived" || bank.id === bankId);
   const passRate = Number(exam.passRate ?? exam.pass_rate ?? 0);
-  const displayQuestions = [...selected, ...questions.filter((question) => !question.selected)];
+  const canPublish = exam.status === "draft";
+  const typeOrder = ["single", "multi", "fill", "judge", "qa"];
+  const selectedGroups = new Map();
+  for (const question of selected) {
+    const type = typeOrder.includes(question.type) ? question.type : "other";
+    if (!selectedGroups.has(type)) selectedGroups.set(type, []);
+    selectedGroups.get(type).push(question);
+  }
+  const renderQuestionRow = (question) => {
+    const index = selectedIndex.get(question.id);
+    const score = question.score === null ? 0 : question.score;
+    return `<article class="exam-question-row ${question.selected ? "selected" : ""}" data-question-id="${esc(question.id)}">
+      <label class="exam-question-select">
+        <input class="exam-question-checkbox" type="checkbox" data-question-id="${esc(question.id)}" ${question.selected ? "checked" : ""} ${editable && !examAuthoringBusy && (question.status === "active" || question.selected) ? "" : "disabled"}>
+        <span><strong>${questionText(question.stem || "未填写题干")}</strong><small>${esc(authoringQuestionLabel(question, index ?? 0))}</small></span>
+      </label>
+      ${question.selected ? `<div class="exam-question-actions">
+        <button class="icon-action exam-order-btn" type="button" data-direction="up" data-question-id="${esc(question.id)}" title="上移" aria-label="上移" ${editable && !examAuthoringBusy && !hasArchivedSelection && index > 0 ? "" : "disabled"}>↑</button>
+        <button class="icon-action exam-order-btn" type="button" data-direction="down" data-question-id="${esc(question.id)}" title="下移" aria-label="下移" ${editable && !examAuthoringBusy && !hasArchivedSelection && index < selected.length - 1 ? "" : "disabled"}>↓</button>
+        <label class="exam-question-score"><span>分值</span><input class="exam-question-score-input" type="number" min="0" step="0.5" value="${esc(score)}" ${editable && !examAuthoringBusy && !hasArchivedSelection ? "" : "disabled"}></label>
+      </div>` : ""}
+    </article>`;
+  };
+  const renderQuestionGroup = (type, items) => `<section class="exam-question-type-group">
+    <div class="exam-question-type-head">
+      <h4>${esc(typeLabel(type))}（${items.length} 题）</h4>
+      ${editable && !hasArchivedSelection ? `<div class="exam-type-bulk-score">
+        <label for="examBulkScore-${esc(type)}">本类统一分值</label>
+        <input id="examBulkScore-${esc(type)}" class="exam-type-score-input" data-question-type="${esc(type)}" type="number" min="0" step="0.5" placeholder="输入分值">
+        <button class="btn secondary compact-btn apply-exam-type-score-btn" type="button" data-question-type="${esc(type)}" ${examAuthoringBusy ? "disabled" : ""}>应用到本类</button>
+      </div>` : ""}
+    </div>
+    ${items.map(renderQuestionRow).join("")}
+  </section>`;
+  const selectedMarkup = typeOrder.concat([...selectedGroups.keys()].filter((type) => !typeOrder.includes(type)))
+    .filter((type) => selectedGroups.has(type))
+    .map((type) => renderQuestionGroup(type, selectedGroups.get(type)))
+    .join("");
+  const unselected = questions.filter((question) => !question.selected);
+  const questionMarkup = selectedMarkup + (unselected.length ? `<section class="exam-question-type-group unselected-question-group">
+    <div class="exam-question-type-head"><h4>未选题目（${unselected.length} 题）</h4></div>
+    ${unselected.map(renderQuestionRow).join("")}
+  </section>` : "");
   editor.innerHTML = `
     <div class="exam-authoring-editor-head">
       <div>
@@ -756,11 +800,12 @@ function renderExamAuthoringEditor() {
         <h3>${esc(exam.title || "未命名试卷")}</h3>
       </div>
       <div class="exam-editor-head-actions">
+        ${editable ? `<button class="btn primary compact-btn" id="saveExamAuthoringBtn" type="button" ${examAuthoringBusy || !examAuthoringDirty ? "disabled" : ""}>保存全部修改</button>` : ""}
         ${archived ? "" : `<button class="btn secondary compact-btn" id="copyExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>复制试卷</button>`}
         ${archived
           ? ""
           : editable
-          ? `<button class="btn success compact-btn" id="publishExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>发布</button>`
+          ? `<button class="btn success compact-btn" id="publishExamBtn" type="button" ${examAuthoringBusy || !canPublish ? "disabled" : ""} title="${canPublish ? "发布当前草稿版本" : "保存修改后才能发布新版本"}">发布</button>`
           : `<button class="btn primary compact-btn" id="startExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>编辑新版本</button>`}
         ${examRevisionEditing ? `<button class="btn secondary compact-btn" id="cancelExamRevisionBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>取消编辑</button>` : ""}
         ${archived ? "" : `<button class="btn danger compact-btn" id="archiveExamBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>删除试卷</button>`}
@@ -790,7 +835,6 @@ function renderExamAuthoringEditor() {
           <label for="examPassRateInput">通过比例（%）</label>
           <input id="examPassRateInput" type="number" min="0" max="100" step="0.01" value="${Math.round(passRate * 10000) / 100}" required ${editable && !examAuthoringBusy ? "" : "disabled"}>
         </div>
-        <button class="btn primary compact-btn exam-settings-save" type="submit" ${editable && !examAuthoringBusy ? "" : "disabled"}>保存参数</button>
       </form>
     </section>
     <section class="exam-authoring-section">
@@ -801,64 +845,81 @@ function renderExamAuthoringEditor() {
             <option value="">请选择题库</option>
             ${visibleBanks.map((bank) => `<option value="${esc(bank.id)}" ${bank.id === bankId ? "selected" : ""} ${bank.status === "archived" ? "disabled" : ""}>${esc(bank.name)}（${Number(bank.questionCount || 0)} 题${bank.status === "archived" ? "·已删除" : ""}）</option>`).join("")}
           </select>
-          <button class="btn secondary compact-btn" id="saveExamBankBtn" type="button" ${editable && !examAuthoringBusy ? "" : "disabled"}>${bankId ? "更换题库" : "绑定题库"}</button>
         </div>
       </div>
     </section>
     <section class="exam-authoring-section">
       <div class="exam-authoring-section-head">
-        <div><h3>试题与分值</h3><p class="brand-sub">已选 ${selected.length} / ${questions.length} 题；勾选保存后再调整顺序和分值</p></div>
+        <div><h3>试题与分值</h3><p class="brand-sub">已选 ${selected.length} / ${questions.length} 题；选择、排序和分值修改后点击“保存全部修改”</p></div>
         ${editable && bankId ? `<div class="exam-selection-actions">
           <button class="btn secondary compact-btn" id="selectAllExamQuestionsBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>全选</button>
           <button class="btn secondary compact-btn" id="clearExamQuestionsBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>清空</button>
-          <button class="btn primary compact-btn" id="saveExamQuestionsBtn" type="button" ${examAuthoringBusy || !examSelectionDirty ? "disabled" : ""}>保存选题</button>
         </div>` : ""}
       </div>
-      ${hasArchivedSelection ? `<div class="notice error">当前试卷包含已归档题目。请取消勾选并保存选题，之后再调整顺序或分值。</div>` : ""}
-      ${editable && selected.length && !hasArchivedSelection ? `<div class="exam-bulk-score">
-        <label for="examBulkScoreInput">全部已选题统一分值</label>
-        <input id="examBulkScoreInput" type="number" min="0" step="0.5" value="${esc(examBulkScoreDraft)}">
-        <button class="btn secondary compact-btn" id="saveExamBulkScoreBtn" type="button" ${examAuthoringBusy ? "disabled" : ""}>批量设置</button>
-      </div>` : ""}
+      ${hasArchivedSelection ? `<div class="notice error">当前试卷包含已归档题目。请取消勾选后点击“保存全部修改”，之后再调整顺序或分值。</div>` : ""}
       <div class="exam-question-list">
-        ${displayQuestions.length ? displayQuestions.map((question) => {
-          const index = selectedIndex.get(question.id);
-          const score = question.score === null ? 0 : question.score;
-          return `<article class="exam-question-row ${question.selected ? "selected" : ""}" data-question-id="${esc(question.id)}">
-            <label class="exam-question-select">
-              <input class="exam-question-checkbox" type="checkbox" data-question-id="${esc(question.id)}" ${question.selected ? "checked" : ""} ${editable && !examAuthoringBusy && (question.status === "active" || question.selected) ? "" : "disabled"}>
-              <span><strong>${questionText(question.stem || "未填写题干")}</strong><small>${esc(authoringQuestionLabel(question, index ?? 0))}</small></span>
-            </label>
-            ${question.selected ? `<div class="exam-question-actions">
-              <button class="icon-action exam-order-btn" type="button" data-direction="up" data-question-id="${esc(question.id)}" title="上移" aria-label="上移" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection && index > 0 ? "" : "disabled"}>↑</button>
-              <button class="icon-action exam-order-btn" type="button" data-direction="down" data-question-id="${esc(question.id)}" title="下移" aria-label="下移" ${editable && !examAuthoringBusy && !examSelectionDirty && !hasArchivedSelection && index < selected.length - 1 ? "" : "disabled"}>↓</button>
-              <label class="exam-question-score"><span>分值</span><input class="exam-question-score-input" type="number" min="0" step="0.5" value="${esc(score)}" ${editable && !examAuthoringBusy && !hasArchivedSelection ? "" : "disabled"}></label>
-              <button class="btn secondary compact-btn save-exam-question-score-btn" type="button" data-question-id="${esc(question.id)}" ${editable && !examAuthoringBusy && !hasArchivedSelection ? "" : "disabled"}>保存分值</button>
-            </div>` : ""}
-          </article>`;
-        }).join("") : `<div class="empty-state admin-user-empty">${bankId ? "当前题库没有可用题目" : "请先绑定题库"}</div>`}
+        ${questionMarkup || `<div class="empty-state admin-user-empty">${bankId ? "当前题库没有可用题目" : "请先绑定题库"}</div>`}
       </div>
     </section>`;
 
-  document.getElementById("examSettingsForm")?.addEventListener("submit", saveExamSettings);
+  document.getElementById("examSettingsForm")?.addEventListener("submit", saveExamAuthoring);
+  document.getElementById("saveExamAuthoringBtn")?.addEventListener("click", saveExamAuthoring);
   document.getElementById("copyExamBtn")?.addEventListener("click", copyExam);
   document.getElementById("startExamRevisionBtn")?.addEventListener("click", startExamRevision);
   document.getElementById("cancelExamRevisionBtn")?.addEventListener("click", cancelExamRevision);
   document.getElementById("publishExamBtn")?.addEventListener("click", publishExam);
   document.getElementById("archiveExamBtn")?.addEventListener("click", archiveExam);
-  document.getElementById("saveExamBankBtn")?.addEventListener("click", saveExamQuestionBank);
+  document.getElementById("examQuestionBankSelect")?.addEventListener("change", async (event) => {
+    const nextBankId = event.target.value;
+    const currentBankId = currentExamAuthoring?.exam?.questionBankId || currentExamAuthoring?.exam?.question_bank_id || "";
+    if (nextBankId && nextBankId !== currentBankId
+        && currentBankId && !window.confirm("更换题库会在保存时自动清空当前试卷的全部选题和分值。确认继续吗？")) {
+      event.target.value = examAuthoringBankDraft || currentBankId;
+      return;
+    }
+    examAuthoringBankDraft = nextBankId;
+    markExamAuthoringDirty(true);
+    if (nextBankId !== currentBankId) {
+      const bankQuestions = adminQuestions
+        .filter((question) => question.bankId === nextBankId && question.status === "active")
+        .map((question) => normalizeAuthoringQuestion({ ...question, selected: false, position: null, score: null }));
+      if (!bankQuestions.length) {
+        try {
+          const data = await api("/api/admin/questions");
+          adminQuestions = data.questions || [];
+          currentExamAuthoring.questions = adminQuestions
+            .filter((question) => question.bankId === nextBankId && question.status === "active")
+            .map((question) => normalizeAuthoringQuestion({ ...question, selected: false, position: null, score: null }));
+        } catch (error) {
+          showExamAuthoringMessage(error.message || "新题库题目载入失败", "error");
+        }
+      } else {
+        currentExamAuthoring.questions = bankQuestions;
+      }
+      renderExamAuthoringEditor();
+    }
+  });
   document.getElementById("selectAllExamQuestionsBtn")?.addEventListener("click", () => setAllExamQuestions(true));
   document.getElementById("clearExamQuestionsBtn")?.addEventListener("click", () => setAllExamQuestions(false));
-  document.getElementById("saveExamQuestionsBtn")?.addEventListener("click", saveExamQuestionSelection);
-  document.getElementById("saveExamBulkScoreBtn")?.addEventListener("click", saveExamBulkScore);
+  for (const button of document.querySelectorAll(".apply-exam-type-score-btn")) {
+    button.addEventListener("click", () => applyExamTypeScore(button.dataset.questionType));
+  }
   for (const checkbox of document.querySelectorAll(".exam-question-checkbox")) {
     checkbox.addEventListener("change", () => toggleExamQuestion(checkbox.dataset.questionId, checkbox.checked));
   }
   for (const button of document.querySelectorAll(".exam-order-btn")) {
     button.addEventListener("click", () => moveExamQuestion(button.dataset.questionId, button.dataset.direction));
   }
-  for (const button of document.querySelectorAll(".save-exam-question-score-btn")) {
-    button.addEventListener("click", () => saveExamQuestionScore(button));
+  for (const input of document.querySelectorAll(".exam-question-score-input")) {
+    input.addEventListener("input", () => {
+      const question = currentExamAuthoring?.questions.find((item) => item.id === input.closest(".exam-question-row")?.dataset.questionId);
+      const raw = input.value.trim();
+      if (question && raw && Number.isFinite(Number(raw)) && Number(raw) >= 0) question.score = Number(raw);
+      markExamAuthoringDirty(true);
+    });
+  }
+  for (const input of document.querySelectorAll("#examTitleInput, #examDurationInput, #examPassRateInput")) {
+    input.addEventListener("input", () => markExamAuthoringDirty());
   }
 }
 
@@ -866,6 +927,13 @@ function showExamAuthoringMessage(message, tone = "") {
   const element = document.getElementById("examAuthoringMsg");
   element.textContent = message;
   element.className = `notice${tone ? ` ${tone}` : ""}`;
+}
+
+function markExamAuthoringDirty(selection = false) {
+  examAuthoringDirty = true;
+  if (selection) examSelectionDirty = true;
+  const button = document.getElementById("saveExamAuthoringBtn");
+  if (button && !examAuthoringBusy) button.disabled = false;
 }
 
 function applyExamMutationResponse(data) {
@@ -890,6 +958,8 @@ function applyExamMutationResponse(data) {
       ? { ...item, ...exam, ...(bankName ? { questionBankName: bankName } : {}) }
       : item);
   }
+  examAuthoringDirty = false;
+  examAuthoringBankDraft = exam?.questionBankId || exam?.question_bank_id || examAuthoringBankDraft;
 }
 
 async function runExamAuthoringMutation(message, request, successMessage = "已保存；总分和通过分已按最新分值重新计算。") {
@@ -913,13 +983,15 @@ async function runExamAuthoringMutation(message, request, successMessage = "已�
 }
 
 async function loadExamAuthoring(examId, options = {}) {
-  if (examSelectionDirty && examId !== currentAuthoringExamId
-      && !window.confirm("当前选题尚未保存，确认切换试卷吗？")) return;
+  if ((examSelectionDirty || examAuthoringDirty) && examId !== currentAuthoringExamId
+      && !window.confirm("当前试卷存在尚未保存的修改，确认切换试卷吗？")) return;
   currentAuthoringExamId = examId;
   examRevisionEditing = false;
   currentExamAuthoring = null;
   newExamDraft = null;
   examSelectionDirty = false;
+  examAuthoringDirty = false;
+  examAuthoringBankDraft = "";
   examSelectAllRequested = false;
   renderExamAuthoringList();
   document.getElementById("examAuthoringEditor").innerHTML = `<div class="empty-state">正在载入试卷</div>`;
@@ -927,6 +999,7 @@ async function loadExamAuthoring(examId, options = {}) {
   try {
     const data = await api(`/api/admin/exams/${encodeURIComponent(examId)}/authoring`);
     currentExamAuthoring = normalizeExamAuthoring(data);
+    examAuthoringBankDraft = currentExamAuthoring.exam.questionBankId || currentExamAuthoring.exam.question_bank_id || "";
     renderExamAuthoringEditor();
   } catch (error) {
     document.getElementById("examAuthoringEditor").innerHTML = `<div class="notice error">${esc(error.message || "试卷载入失败")}</div>`;
@@ -956,10 +1029,12 @@ async function openExamAuthoring() {
 
 function startNewExam() {
   if (examAuthoringBusy) return;
-  if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认新增试卷吗？")) return;
+  if ((examSelectionDirty || examAuthoringDirty) && !window.confirm("当前试卷存在尚未保存的修改，确认新增试卷吗？")) return;
   currentAuthoringExamId = "";
   currentExamAuthoring = null;
   examSelectionDirty = false;
+  examAuthoringDirty = false;
+  examAuthoringBankDraft = "";
   examSelectAllRequested = false;
   newExamDraft = { title: "", durationMinutes: 45, passRatePercent: 60 };
   renderExamAuthoringList();
@@ -970,6 +1045,8 @@ function startNewExam() {
 async function cancelNewExam() {
   if (examAuthoringBusy) return;
   newExamDraft = null;
+  examAuthoringDirty = false;
+  examAuthoringBankDraft = "";
   currentAuthoringExamId = adminExams[0]?.id || "";
   renderExamAuthoringList();
   if (currentAuthoringExamId) await loadExamAuthoring(currentAuthoringExamId);
@@ -1014,9 +1091,14 @@ async function createExam(event) {
 }
 
 function saveExamSettings(event) {
-  event.preventDefault();
+  if (event) event.preventDefault();
+  return saveExamAuthoring();
+}
+
+function saveExamAuthoring(event) {
+  if (event?.preventDefault) event.preventDefault();
   const exam = currentExamAuthoring?.exam;
-  if (!exam) return;
+  if (!exam || examAuthoringBusy || !examAuthoringDirty) return;
   const title = document.getElementById("examTitleInput").value.trim();
   const durationMinutes = Number(document.getElementById("examDurationInput").value);
   const passRatePercent = Number(document.getElementById("examPassRateInput").value);
@@ -1027,10 +1109,24 @@ function saveExamSettings(event) {
   if (!Number.isFinite(passRatePercent) || passRatePercent < 0 || passRatePercent > 100) {
     return showExamAuthoringMessage("通过比例必须是 0% 到 100% 之间的数字", "error");
   }
-  runExamAuthoringMutation("正在保存试卷参数", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}`, {
+  if (!syncExamQuestionScoresFromForm()) return;
+  const selected = selectedAuthoringQuestions();
+  const questionIds = selected.map((question) => question.id);
+  const scores = Object.fromEntries(selected.map((question) => [question.id, question.score ?? 0]));
+  const body = {
+    revision: examRevisionEditing,
+    version: exam.version,
+    title,
+    durationSeconds: durationMinutes * 60,
+    passRate: passRatePercent / 100,
+    questionBankId: examAuthoringBankDraft || exam.questionBankId || exam.question_bank_id || "",
+    questionIds,
+    scores
+  };
+  runExamAuthoringMutation("正在保存试卷全部修改", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/authoring`, {
     method: "PATCH",
-    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, title, durationSeconds: durationMinutes * 60, passRate: passRatePercent / 100 })
-  }), "试卷参数已保存，修改记录和版本号已更新。");
+    body: JSON.stringify(body)
+  }), "试卷参数、选题、排序和分值已一次保存；总分和通过分已重新计算。");
 }
 
 function startExamRevision() {
@@ -1038,6 +1134,7 @@ function startExamRevision() {
   if (!exam) return;
   examRevisionEditing = true;
   examSelectionDirty = false;
+  examAuthoringDirty = false;
   showExamAuthoringMessage("已进入本地编辑状态；首次保存时才会创建新版本。", "success");
   renderExamAuthoringEditor();
 }
@@ -1048,6 +1145,7 @@ async function cancelExamRevision() {
   if ((examSelectionDirty || examRevisionEditing) && !window.confirm("取消编辑并放弃尚未保存的修改吗？")) return;
   examRevisionEditing = false;
   examSelectionDirty = false;
+  examAuthoringDirty = false;
   examSelectAllRequested = false;
   await loadExamAuthoring(exam.id, { preserveMessage: true });
   showExamAuthoringMessage("已取消编辑，试卷状态未改变。", "success");
@@ -1102,7 +1200,7 @@ function toggleExamQuestion(questionId, selected) {
   if (selected && question.score === null) question.score = 0;
   question.position = selected ? Number.MAX_SAFE_INTEGER : null;
   selectedAuthoringQuestions().forEach((item, index) => { item.position = index + 1; });
-  examSelectionDirty = true;
+  markExamAuthoringDirty(true);
   examSelectAllRequested = false;
   renderExamAuthoringEditor();
 }
@@ -1113,7 +1211,7 @@ function setAllExamQuestions(selected) {
     question.position = question.selected ? index + 1 : null;
     if (question.selected && question.score === null) question.score = 0;
   }
-  examSelectionDirty = true;
+  markExamAuthoringDirty(true);
   examSelectAllRequested = selected;
   renderExamAuthoringEditor();
 }
@@ -1129,19 +1227,6 @@ function saveExamQuestionBank() {
     method: "PUT",
     body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, questionBankId })
   }), currentBankId ? "题库已更换，原有选题和分值已自动清空。" : "题库已绑定，可以开始选择试题。");
-}
-
-function saveExamQuestionSelection() {
-  const exam = currentExamAuthoring.exam;
-  const questionIds = selectedAuthoringQuestions().map((question) => question.id);
-  if (!syncExamQuestionScoresFromForm()) return;
-  const scores = Object.fromEntries(selectedAuthoringQuestions().map((question) => [question.id, question.score ?? 0]));
-  runExamAuthoringMutation("正在保存选题", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions`, {
-    method: "PUT",
-    body: JSON.stringify(examSelectAllRequested
-      ? { revision: examRevisionEditing, version: exam.version, selectAll: true, scores }
-      : { revision: examRevisionEditing, version: exam.version, questionIds, scores })
-  }));
 }
 
 function syncExamQuestionScoresFromForm() {
@@ -1167,47 +1252,21 @@ function moveExamQuestion(questionId, direction) {
   if (index < 0 || nextIndex < 0 || nextIndex >= selected.length) return;
   [selected[index], selected[nextIndex]] = [selected[nextIndex], selected[index]];
   selected.forEach((question, position) => { question.position = position + 1; });
-  const exam = currentExamAuthoring.exam;
-  runExamAuthoringMutation("正在保存题目顺序", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-order`, {
-    method: "PUT",
-    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, questionIds: selected.map((question) => question.id) })
-  }));
+  markExamAuthoringDirty(true);
+  renderExamAuthoringEditor();
 }
 
-function saveExamQuestionScore(button) {
-  const row = button.closest(".exam-question-row");
-  const score = Number(row.querySelector(".exam-question-score-input").value);
+function applyExamTypeScore(type) {
+  const input = [...document.querySelectorAll(".exam-type-score-input")]
+    .find((candidate) => candidate.dataset.questionType === type);
+  const score = Number(input?.value);
   if (!Number.isFinite(score) || score < 0) return showExamAuthoringMessage("分值必须是大于或等于 0 的数字", "error");
-  const exam = currentExamAuthoring.exam;
-  const questionId = button.dataset.questionId;
-  if (examSelectionDirty) {
-    const question = currentExamAuthoring.questions.find((item) => item.id === questionId);
-    if (question) question.score = score;
-    showExamAuthoringMessage("分值已写入待保存选题，请点击“保存选题”一起提交。", "success");
-    renderExamAuthoringEditor();
-    return;
-  }
-  runExamAuthoringMutation("正在保存题目分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/questions/${encodeURIComponent(questionId)}/score`, {
-    method: "PATCH",
-    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, score })
-  }));
-}
-
-function saveExamBulkScore() {
-  const score = Number(document.getElementById("examBulkScoreInput").value);
-  if (!Number.isFinite(score) || score < 0) return showExamAuthoringMessage("批量分值必须是大于或等于 0 的数字", "error");
-  const exam = currentExamAuthoring.exam;
-  examBulkScoreDraft = String(score);
-  if (examSelectionDirty) {
-    selectedAuthoringQuestions().forEach((question) => { question.score = score; });
-    showExamAuthoringMessage("分值已写入待保存选题，请点击“保存选题”一起提交。", "success");
-    renderExamAuthoringEditor();
-    return;
-  }
-  runExamAuthoringMutation("正在批量设置分值", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/question-scores`, {
-    method: "PATCH",
-    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version, score })
-  }));
+  selectedAuthoringQuestions()
+    .filter((question) => question.type === type)
+    .forEach((question) => { question.score = score; });
+  markExamAuthoringDirty(true);
+  showExamAuthoringMessage(`${typeLabel(type)}分值已应用到本类题目，请点击“保存全部修改”。`, "success");
+  renderExamAuthoringEditor();
 }
 
 function renderQuestionList() {
@@ -2398,17 +2457,18 @@ document.getElementById("questionManagerDialog").addEventListener("cancel", (eve
   if (questionImageUploadBusy) event.preventDefault();
 });
 document.getElementById("closeExamAuthoringBtn").addEventListener("click", () => {
-  if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认关闭吗？")) return;
+  if ((examSelectionDirty || examAuthoringDirty) && !window.confirm("当前试卷存在尚未保存的修改，确认关闭吗？")) return;
   examSelectionDirty = false;
   examSelectAllRequested = false;
   newExamDraft = null;
   document.getElementById("examAuthoringDialog").close();
 });
 document.getElementById("examAuthoringDialog").addEventListener("cancel", (event) => {
-  if (examSelectionDirty && !window.confirm("当前选题尚未保存，确认关闭吗？")) {
+  if ((examSelectionDirty || examAuthoringDirty) && !window.confirm("当前试卷存在尚未保存的修改，确认关闭吗？")) {
     event.preventDefault();
     return;
   }
+  examAuthoringDirty = false;
   examSelectionDirty = false;
   examSelectAllRequested = false;
   newExamDraft = null;

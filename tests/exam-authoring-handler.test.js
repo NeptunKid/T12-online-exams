@@ -18,6 +18,7 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
     "reopenExamRevision",
     "publishExam",
     "archiveExam",
+    "saveExamAuthoring",
     "updateExamSettings",
     "bindExamQuestionBank",
     "setExamQuestions",
@@ -145,6 +146,28 @@ test("选择部分题目或全选都透传给同一组卷操作", async () => {
       { name: "pool" }, "exam-1", body, "admin-1"
     ]);
   }
+});
+
+test("整体组卷保存路由一次透传参数、选题和分值", async () => {
+  const harness = createHarness();
+  const body = {
+    revision: true,
+    version: 7,
+    title: "新版试卷",
+    durationSeconds: 1800,
+    passRate: 0.8,
+    questionBankId: "bank-1",
+    questionIds: ["q-2", "q-1"],
+    scores: { "q-2": 4, "q-1": 2 }
+  };
+  const res = {};
+  assert.equal(await harness.handler(
+    request("PATCH", body), res, "/api/admin/exams/exam-1/authoring", MANAGER_ACCESS
+  ), true);
+  assert.equal(res.response.status, 200);
+  assert.deepEqual(callFor(harness, "saveExamAuthoring").args, [
+    { name: "pool" }, "exam-1", body, "admin-1"
+  ]);
 });
 
 test("题目排序路由保留客户端提交的稳定顺序", async () => {
