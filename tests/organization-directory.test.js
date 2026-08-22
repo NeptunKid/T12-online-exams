@@ -62,3 +62,14 @@ test("飞书通讯录同步分页读取部门和人员", async () => {
   });
   assert.equal(calls.length >= 3, true);
 });
+
+test("通讯录凭证缺失或平台拒绝访问时返回可操作错误", async () => {
+  await assert.rejects(
+    syncDingtalkDirectory({ clientId: "", clientSecret: "" }, async () => response({})),
+    (error) => error.statusCode === 503 && /检查登录应用凭证/.test(error.message)
+  );
+  await assert.rejects(
+    syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async () => response({ code: 999, msg: "denied" }, false)),
+    (error) => error.statusCode === 502 && /开通通讯录读取权限/.test(error.message)
+  );
+});

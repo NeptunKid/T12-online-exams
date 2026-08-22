@@ -1864,6 +1864,44 @@ select:focus {
   min-height: 140px;
 }
 
+.organization-sync-section {
+  display: grid;
+  gap: 0;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.organization-sync-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+}
+
+.organization-sync-head h3 {
+  margin: 0 0 4px;
+}
+
+.organization-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.organization-sync-actions .btn {
+  white-space: nowrap;
+}
+
+.organization-sync-status {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .identity-merge-section {
   margin-top: 20px;
   padding-top: 18px;
@@ -2139,6 +2177,18 @@ select:focus {
   .identity-merge-pair {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .organization-sync-head {
+    grid-template-columns: 1fr;
+  }
+
+  .organization-sync-actions {
+    justify-content: stretch;
+  }
+
+  .organization-sync-actions .btn {
+    flex: 1 1 180px;
   }
 
   .identity-merge-head .btn,

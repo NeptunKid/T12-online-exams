@@ -20,6 +20,15 @@ function ensureResponse(response, payload, fallback) {
   }
 }
 
+function directorySyncError(provider, kind = "remote") {
+  const label = provider === "dingtalk" ? "钉钉" : "飞书";
+  const error = new Error(kind === "config"
+    ? `${label}通讯录同步未配置，请检查登录应用凭证`
+    : `${label}通讯录接口拒绝访问，请在开放平台开通通讯录读取权限后重试`);
+  error.statusCode = kind === "config" ? 503 : 502;
+  return error;
+}
+
 async function getDingtalkToken(fetchImpl, clientId, clientSecret) {
   const response = await fetchImpl(DINGTALK_TOKEN_URL, {
     method: "POST",
@@ -96,11 +105,15 @@ async function readDingtalkUsers(fetchImpl, token, departments) {
 async function syncDingtalkDirectory(config, fetchImpl = fetch) {
   const clientId = String(config.clientId || "");
   const clientSecret = String(config.clientSecret || "");
-  if (!clientId || !clientSecret) throw new Error("钉钉通讯录同步需要登录应用凭证");
-  const token = await getDingtalkToken(fetchImpl, clientId, clientSecret);
-  const departments = await readDingtalkDepartments(fetchImpl, token, 1);
-  const users = await readDingtalkUsers(fetchImpl, token, departments);
-  return { provider: "dingtalk", departments, users };
+  if (!clientId || !clientSecret) throw directorySyncError("dingtalk", "config");
+  try {
+    const token = await getDingtalkToken(fetchImpl, clientId, clientSecret);
+    const departments = await readDingtalkDepartments(fetchImpl, token, 1);
+    const users = await readDingtalkUsers(fetchImpl, token, departments);
+    return { provider: "dingtalk", departments, users };
+  } catch (error) {
+    throw directorySyncError("dingtalk");
+  }
 }
 
 async function getFeishuToken(fetchImpl, appId, appSecret) {
@@ -170,11 +183,15 @@ async function readFeishuUsers(fetchImpl, token, departments) {
 async function syncFeishuDirectory(config, fetchImpl = fetch) {
   const appId = String(config.appId || "");
   const appSecret = String(config.appSecret || "");
-  if (!appId || !appSecret) throw new Error("飞书通讯录同步需要应用凭证");
-  const token = await getFeishuToken(fetchImpl, appId, appSecret);
-  const departments = await readFeishuDepartments(fetchImpl, token);
-  const users = await readFeishuUsers(fetchImpl, token, departments);
-  return { provider: "feishu", departments, users };
+  if (!appId || !appSecret) throw directorySyncError("feishu", "config");
+  try {
+    const token = await getFeishuToken(fetchImpl, appId, appSecret);
+    const departments = await readFeishuDepartments(fetchImpl, token);
+    const users = await readFeishuUsers(fetchImpl, token, departments);
+    return { provider: "feishu", departments, users };
+  } catch (error) {
+    throw directorySyncError("feishu");
+  }
 }
 
 module.exports = {
