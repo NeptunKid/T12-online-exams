@@ -12,6 +12,9 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
   const responses = [];
   const repositoryNames = [
     "listAuthoringExams",
+    "listExamAssignments",
+    "addExamAssignment",
+    "removeExamAssignment",
     "getExamAuthoring",
     "createExam",
     "copyExam",
@@ -50,6 +53,10 @@ function createHarness({ pool = { name: "pool" }, sameOrigin = true, overrides =
       calls.push({ name: "listManagedQuestionBanks", args: [receivedPool] });
       return [{ id: "bank-1", name: "测试题库", status: "active" }];
     }
+  };
+  dependencies.listExamAssignmentUsers = async (receivedPool) => {
+    calls.push({ name: "listExamAssignmentUsers", args: [receivedPool] });
+    return [{ id: "user-1", name: "测试用户", department: "运营部", employeeNo: "A01" }];
   };
 
   for (const name of repositoryNames) {
@@ -113,6 +120,18 @@ test("试卷列表和组卷详情返回约定的响应结构并解码路径参�
   assert.deepEqual(callFor(detailHarness, "getExamAuthoring").args, [{ name: "pool" }, "exam/2026"]);
 });
 
+test("考试授权用户目录只返回受控用户字段", async () => {
+  const harness = createHarness();
+  const res = {};
+  assert.equal(await harness.handler(
+    request("GET"), res, "/api/admin/exam-assignment-users", MANAGER_ACCESS
+  ), true);
+  assert.deepEqual(res.response, {
+    status: 200,
+    body: { users: [{ id: "user-1", name: "测试用户", department: "运营部", employeeNo: "A01" }] }
+  });
+});
+
 test("绑定题库路由传递试卷、请求体和当前管理员", async () => {
   const harness = createHarness();
   const req = request("PUT", { version: 2, bankId: "bank-1" });
@@ -128,6 +147,35 @@ test("绑定题库路由传递试卷、请求体和当前管理员", async () =>
   } });
   assert.deepEqual(callFor(harness, "bindExamQuestionBank").args, [
     { name: "pool" }, "exam-1", { ...req.body, bankId: "bank-1" }, "admin-1"
+  ]);
+});
+
+test("考试授权路由支持读取、添加和移除用户授权", async () => {
+  const detailHarness = createHarness({ overrides: {
+    listExamAssignments: async () => [{ id: "assignment-1", subjectType: "user", subjectId: "user-1" }]
+  }});
+  const detailRes = {};
+  await detailHarness.handler(request("GET"), detailRes, "/api/admin/exams/exam-1/authoring", MANAGER_ACCESS);
+  assert.deepEqual(detailRes.response.body.authoring.assignments, [
+    { id: "assignment-1", subjectType: "user", subjectId: "user-1" }
+  ]);
+
+  const addHarness = createHarness();
+  const addBody = { version: 3, revision: true, subjectType: "user", subjectId: "user-2" };
+  const addRes = {};
+  await addHarness.handler(request("POST", addBody), addRes, "/api/admin/exams/exam-1/assignments", MANAGER_ACCESS);
+  assert.equal(addRes.response.status, 200);
+  assert.deepEqual(callFor(addHarness, "addExamAssignment").args, [
+    { name: "pool" }, "exam-1", addBody, "admin-1"
+  ]);
+
+  const removeHarness = createHarness();
+  const removeBody = { version: 4, revision: true };
+  const removeRes = {};
+  await removeHarness.handler(request("DELETE", removeBody), removeRes, "/api/admin/exams/exam-1/assignments/assignment%2F1", MANAGER_ACCESS);
+  assert.equal(removeRes.response.status, 200);
+  assert.deepEqual(callFor(removeHarness, "removeExamAssignment").args, [
+    { name: "pool" }, "exam-1", "assignment/1", removeBody, "admin-1"
   ]);
 });
 

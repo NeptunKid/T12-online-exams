@@ -1,11 +1,12 @@
-function authoringPayload(detail, banks) {
+function authoringPayload(detail, banks, assignments = []) {
   const { questions = [], ...exam } = detail;
-  return { exam, banks, questions };
+  return { exam, banks, questions, ...(assignments.length ? { assignments } : {}) };
 }
 
 function createAdminExamAuthoringHandler({
   repository,
   listManagedQuestionBanks,
+  listExamAssignmentUsers,
   getPool,
   readBody,
   json,
@@ -13,8 +14,11 @@ function createAdminExamAuthoringHandler({
 }) {
   const routes = [
     { method: "GET", pattern: /^\/api\/admin\/exams$/, action: "list" },
+    { method: "GET", pattern: /^\/api\/admin\/exam-assignment-users$/, action: "assignmentUsers" },
     { method: "POST", pattern: /^\/api\/admin\/exams$/, action: "create" },
     { method: "GET", pattern: /^\/api\/admin\/exams\/([^/]+)\/authoring$/, action: "detail" },
+    { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/assignments$/, action: "assignmentAdd" },
+    { method: "DELETE", pattern: /^\/api\/admin\/exams\/([^/]+)\/assignments\/([^/]+)$/, action: "assignmentRemove" },
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/copy$/, action: "copy" },
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/revision$/, action: "revision" },
     { method: "POST", pattern: /^\/api\/admin\/exams\/([^/]+)\/publish$/, action: "publish" },
@@ -51,13 +55,21 @@ function createAdminExamAuthoringHandler({
         return true;
       }
 
+      if (route.action === "assignmentUsers") {
+        json(res, 200, { users: await listExamAssignmentUsers(pool) });
+        return true;
+      }
+
       if (route.action === "detail") {
         const [detail, banks] = await Promise.all([
           repository.getExamAuthoring(pool, examId),
           listManagedQuestionBanks(pool)
         ]);
+        const assignments = detail && repository.listExamAssignments
+          ? await repository.listExamAssignments(pool, examId)
+          : [];
         if (!detail) json(res, 404, { error: "未找到试卷" });
-        else json(res, 200, { authoring: authoringPayload(detail, banks) });
+        else json(res, 200, { authoring: authoringPayload(detail, banks, assignments) });
         return true;
       }
 
@@ -67,7 +79,11 @@ function createAdminExamAuthoringHandler({
       }
       const body = await readBody(req);
       let detail;
-      if (route.action === "create") {
+      if (route.action === "assignmentAdd") {
+        detail = await repository.addExamAssignment(pool, examId, body, adminAccess.userId);
+      } else if (route.action === "assignmentRemove") {
+        detail = await repository.removeExamAssignment(pool, examId, questionId, body, adminAccess.userId);
+      } else if (route.action === "create") {
         detail = await repository.createExam(pool, body, adminAccess.userId);
       } else if (route.action === "copy") {
         detail = await repository.copyExam(pool, examId, body, adminAccess.userId);
@@ -98,7 +114,10 @@ function createAdminExamAuthoringHandler({
         detail = await repository.updateAllExamQuestionScores(pool, examId, body, adminAccess.userId);
       }
       const banks = await listManagedQuestionBanks(pool);
-      json(res, 200, { authoring: authoringPayload(detail, banks) });
+      const assignments = repository.listExamAssignments
+        ? await repository.listExamAssignments(pool, examId)
+        : [];
+      json(res, 200, { authoring: authoringPayload(detail, banks, assignments) });
       return true;
     } catch (error) {
       if (Number.isInteger(error?.statusCode)) {

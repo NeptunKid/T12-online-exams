@@ -234,6 +234,20 @@ async function listAdminUsers(pool) {
   return result.rows.map(mapAdminUser);
 }
 
+async function listExamAssignmentUsers(pool) {
+  const result = await pool.query(`
+    SELECT id, name, employee_no, department
+    FROM users
+    WHERE status = 'active'
+    ORDER BY name, id;`);
+  return result.rows.map((row) => ({
+    id: row.id,
+    name: row.name || "未命名用户",
+    employeeNo: row.employee_no || "",
+    department: row.department || ""
+  }));
+}
+
 async function setAdminRole(pool, targetUserId, enabled, actorUserId) {
   const client = await pool.connect();
   try {
@@ -300,6 +314,7 @@ module.exports = {
   getAdminAccess,
   getIdentityAccess,
   listAdminUsers,
+  listExamAssignmentUsers,
   mapAdminUser,
   maskIdentity,
   lockUserIdentityMutation,
