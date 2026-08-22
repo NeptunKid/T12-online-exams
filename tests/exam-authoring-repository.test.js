@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  addExamAssignment,
   archiveExam,
   bindExamQuestionBank,
   copyExam,
@@ -9,8 +10,10 @@ const {
   listAuthoringExams,
   normalizeQuestionIds,
   normalizeQuestionScores,
+  normalizeAssignmentInput,
   normalizeScore,
   publishExam,
+  removeExamAssignment,
   restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
@@ -42,7 +45,12 @@ function createDatabase(overrides = {}) {
       { id: "q-1", external_id: "1", type: "single", stem: "第一题", status: "active" },
       { id: "q-2", external_id: "2", type: "qa", stem: "第二题", status: "active" }
     ],
-    bankStatus: overrides.bankStatus || "active"
+    bankStatus: overrides.bankStatus || "active",
+    assignments: overrides.assignments || [
+      { id: "assignment-1", exam_id: "exam-1", subject_type: "group", subject_id: "all-active-users" },
+      { id: "assignment-2", exam_id: "exam-1", subject_type: "department", subject_id: "运营部" }
+    ],
+    assignmentUserActive: overrides.assignmentUserActive !== false
   };
 
   const client = {
@@ -68,6 +76,33 @@ function createDatabase(overrides = {}) {
         return { rows: state.bankStatus === "active" && (params[0] === "bank-1" || params[0] === "bank-2")
           ? [{ id: params[0], name: "可用题库" }]
           : [] };
+      }
+      if (compact.startsWith("SELECT id FROM users WHERE id = $1")) {
+        return { rows: state.assignmentUserActive ? [{ id: params[0] }] : [] };
+      }
+      if (compact.startsWith("SELECT COUNT(*)::integer AS count FROM exam_assignments")) {
+        return { rows: [{ count: state.assignments.length }] };
+      }
+      if (compact.startsWith("DELETE FROM exam_assignments")) {
+        const index = state.assignments.findIndex((assignment) => assignment.id === params[0]
+          && assignment.exam_id === params[1]);
+        if (index < 0) return { rows: [] };
+        const [removed] = state.assignments.splice(index, 1);
+        return { rows: [{ id: removed.id }] };
+      }
+      if (compact.startsWith("INSERT INTO exam_assignments")) {
+        const existing = state.assignments.find((assignment) => assignment.exam_id === params[1]
+          && assignment.subject_type === params[2] && assignment.subject_id === params[3]);
+        if (existing) {
+          existing.starts_at = params[4];
+          existing.ends_at = params[5];
+        } else {
+          state.assignments.push({
+            id: params[0], exam_id: params[1], subject_type: params[2], subject_id: params[3],
+            starts_at: params[4], ends_at: params[5]
+          });
+        }
+        return { rows: [] };
       }
       if (compact.startsWith("INSERT INTO exams")) {
         const copying = params.length === 9;
@@ -227,6 +262,76 @@ test("分值和题目列表的输入校验拒绝负数、超精度和重复题�
   assert.throws(() => normalizeQuestionIds(["q-1", "q-1"]), /重复/);
   assert.deepEqual([...normalizeQuestionScores({ "q-1": "2.5" }, ["q-1"]).entries()], [["q-1", 2.5]]);
   assert.throws(() => normalizeQuestionScores({ "q-2": 1 }, ["q-1"]), /未选中/);
+});
+
+test("考试授权输入只允许用户、部门和内置群组", () => {
+  assert.deepEqual(normalizeAssignmentInput({ subjectType: "department", subjectId: "运营部" }), {
+    subjectType: "department", subjectId: "运营部", startsAt: null, endsAt: null
+  });
+  assert.deepEqual(normalizeAssignmentInput({ subjectType: "group", subjectId: "all-active-users" }).subjectId, "all-active-users");
+  assert.throws(() => normalizeAssignmentInput({ subjectType: "group", subjectId: "custom-group" }), /内置群组/);
+  assert.throws(() => normalizeAssignmentInput({ subjectType: "department", subjectId: "" }), /授权对象/);
+  assert.throws(() => normalizeAssignmentInput({ subjectType: "user", subjectId: "u-1", startsAt: "2026-08-22", endsAt: "2026-08-21" }), /结束时间/);
+});
+
+test("新增考试授权在同一事务中校验有效用户并支持重复授权更新", async () => {
+  const database = createDatabase();
+  const first = await addExamAssignment(database.pool, "exam-1", {
+    version: 3,
+    subjectType: "user",
+    subjectId: "user-1",
+    startsAt: "2026-08-22T09:00:00+08:00"
+  }, "admin-1");
+  assert.equal(first.id, "exam-1");
+  assert.equal(database.state.assignments.some((item) => item.subject_id === "user-1"), true);
+  assert.equal(database.calls.at(-1).sql, "COMMIT");
+
+  await addExamAssignment(database.pool, "exam-1", {
+    version: 4,
+    subjectType: "department",
+    subjectId: "运营部",
+    endsAt: "2026-08-23T09:00:00+08:00"
+  }, "admin-1");
+  assert.equal(database.state.assignments.filter((item) => item.subject_id === "运营部").length, 1);
+  assert.equal(database.calls.filter((call) => call.sql === "BEGIN").length, 2);
+});
+
+test("无效用户或过期版本新增授权会回滚且不写入", async () => {
+  const missing = createDatabase({ assignmentUserActive: false });
+  await assert.rejects(addExamAssignment(missing.pool, "exam-1", {
+    version: 3, subjectType: "user", subjectId: "missing-user"
+  }, "admin-1"), /有效用户/);
+  assert.equal(missing.calls.at(-1).sql, "ROLLBACK");
+  assert.equal(missing.state.assignments.some((item) => item.subject_id === "missing-user"), false);
+
+  const stale = createDatabase();
+  await assert.rejects(addExamAssignment(stale.pool, "exam-1", {
+    version: 2, subjectType: "department", subjectId: "运营部"
+  }, "admin-1"), /其他管理员/);
+  assert.equal(stale.calls.at(-1).sql, "ROLLBACK");
+  assert.equal(stale.calls.some((call) => call.sql.startsWith("INSERT INTO exam_assignments")), false);
+});
+
+test("移除考试授权保留至少一条授权并校验记录归属", async () => {
+  const database = createDatabase();
+  const detail = await removeExamAssignment(database.pool, "exam-1", "assignment-2", {
+    version: 3
+  }, "admin-1");
+  assert.equal(detail.id, "exam-1");
+  assert.equal(database.state.assignments.some((item) => item.id === "assignment-2"), false);
+  assert.equal(database.calls.at(-1).sql, "COMMIT");
+
+  const last = createDatabase({ assignments: [{ id: "assignment-1", exam_id: "exam-1", subject_type: "group", subject_id: "all-active-users" }] });
+  await assert.rejects(removeExamAssignment(last.pool, "exam-1", "assignment-1", {
+    version: 3
+  }, "admin-1"), /至少需要保留/);
+  assert.equal(last.calls.at(-1).sql, "ROLLBACK");
+
+  const missing = createDatabase();
+  await assert.rejects(removeExamAssignment(missing.pool, "exam-1", "other-exam-assignment", {
+    version: 3
+  }, "admin-1"), /未找到授权记录/);
+  assert.equal(missing.calls.at(-1).sql, "ROLLBACK");
 });
 
 test("部分选题仅接受已绑定题库的 active 题目并保留已有分值", async () => {

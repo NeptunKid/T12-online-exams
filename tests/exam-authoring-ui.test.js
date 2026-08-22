@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260820-1/);
+  assert.match(html, /\/admin\.js\?v=20260822-1/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -69,6 +69,17 @@ test("组卷支持全选、稳定排序、题型分组批量分值和单一保�
   assert.match(script, /保存全部修改/);
   assert.doesNotMatch(script, /保存分值/);
   assert.doesNotMatch(script, /保存选题/);
+});
+
+test("组卷界面提供用户、部门和内置群组授权管理", () => {
+  assert.match(script, /考试授权/);
+  assert.ok(script.includes("/assignments`"));
+  assert.match(script, /examAssignmentType/);
+  assert.match(script, /examAssignmentDepartmentInput/);
+  assert.match(script, /examAssignmentGroupSelect/);
+  assert.match(script, /removeExamAssignment/);
+  assert.ok(script.includes("/api/admin/exam-assignment-users"));
+  assert.ok(script.includes("确认移除这条考试授权吗？"));
 });
 
 test("更换题库自动清空选题并在操作前说明影响", () => {

@@ -78,6 +78,13 @@ function activeAssignmentFilter() {
             OR (ea.subject_type = 'group'
               AND ea.subject_id = 'all-active-dingtalk-users'
               AND ci.provider IN ('dingtalk', 'legacy'))
+            OR (ea.subject_type = 'department'
+              AND EXISTS (
+                SELECT 1 FROM users assigned_user
+                WHERE assigned_user.id = ci.user_id
+                  AND assigned_user.status = 'active'
+                  AND assigned_user.department = ea.subject_id
+              ))
           )
       )`;
 }
@@ -216,6 +223,13 @@ async function createSubmission(pool, examId, identity, input = {}) {
               OR (ea.subject_type = 'group'
                 AND ea.subject_id = 'all-active-dingtalk-users'
                 AND ci.provider IN ('dingtalk', 'legacy'))
+              OR (ea.subject_type = 'department'
+                AND EXISTS (
+                  SELECT 1 FROM users assigned_user
+                  WHERE assigned_user.id = ci.user_id
+                    AND assigned_user.status = 'active'
+                    AND assigned_user.department = ea.subject_id
+                ))
             )
         )
       ORDER BY eq.position;`, [examId, current.provider, current.providerSubject, current.unionId]);
@@ -386,6 +400,13 @@ async function getStudentDashboard(pool, identity) {
             OR (ea.subject_type = 'group'
               AND ea.subject_id = 'all-active-dingtalk-users'
               AND ci.provider IN ('dingtalk', 'legacy'))
+            OR (ea.subject_type = 'department'
+              AND EXISTS (
+                SELECT 1 FROM users assigned_user
+                WHERE assigned_user.id = ci.user_id
+                  AND assigned_user.status = 'active'
+                  AND assigned_user.department = ea.subject_id
+              ))
           )
       )
     GROUP BY e.id, e.title, e.duration_seconds, e.total_score, e.pass_score, e.version, rp.remaining_count

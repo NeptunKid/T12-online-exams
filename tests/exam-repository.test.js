@@ -28,6 +28,8 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
   assert.match(detailQuery, /ui\.union_id = \$4/);
   assert.match(detailQuery, /all-active-users/);
   assert.match(detailQuery, /all-active-dingtalk-users/);
+  assert.match(detailQuery, /subject_type = 'department'/);
+  assert.match(detailQuery, /assigned_user\.department = ea\.subject_id/);
 });
 
 test("飞书身份按 provider subject 访问跨平台全员考试", async () => {
@@ -42,6 +44,7 @@ test("飞书身份按 provider subject 访问跨平台全员考试", async () =>
   assert.deepEqual(captured.params, ["feishu", "ou_feishu", "on_feishu"]);
   assert.match(captured.sql, /ea\.subject_id = 'all-active-users'/);
   assert.match(captured.sql, /ci\.provider IN \('dingtalk', 'legacy'\)/);
+  assert.match(captured.sql, /subject_type = 'department'/);
 });
 
 test("考试 repository 未找到考试时返回 null", async () => {

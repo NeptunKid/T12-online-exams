@@ -27,6 +27,7 @@ let examAuthoringBusy = false;
 let examSelectionDirty = false;
 let examAuthoringDirty = false;
 let examAuthoringBankDraft = "";
+let examAssignmentUsers = [];
 let examSelectAllRequested = false;
 let examBulkScoreDraft = "1";
 let examRevisionEditing = false;
@@ -659,7 +660,8 @@ function normalizeExamAuthoring(data) {
   return {
     exam: payload.exam || data.exam || {},
     banks: payload.banks || payload.questionBanks || data.banks || [],
-    questions: Array.from(byId.values())
+    questions: Array.from(byId.values()),
+    assignments: payload.assignments || []
   };
 }
 
@@ -793,6 +795,13 @@ function renderExamAuthoringEditor() {
     <div class="exam-question-type-head"><h4>未选题目（${unselected.length} 题）</h4></div>
     ${unselected.map(renderQuestionRow).join("")}
   </section>` : "");
+  const assignmentType = document.getElementById("examAssignmentType")?.value || "user";
+  const assignmentMarkup = (currentExamAuthoring.assignments || []).length
+    ? currentExamAuthoring.assignments.map((assignment) => `<div class="exam-assignment-row">
+        <div><strong>${esc(assignment.subjectName || assignment.subjectId)}</strong><small>${esc(assignment.subjectType === "user" ? `用户 · ${assignment.userDepartment || "未填写部门"}` : assignment.subjectType === "department" ? "部门" : "群组")}</small></div>
+        ${editable ? `<button class="btn danger compact-btn remove-exam-assignment-btn" type="button" data-assignment-id="${esc(assignment.id)}" ${examAuthoringBusy ? "disabled" : ""}>移除</button>` : ""}
+      </div>`).join("")
+    : `<div class="empty-state admin-user-empty">暂无额外授权</div>`;
   editor.innerHTML = `
     <div class="exam-authoring-editor-head">
       <div>
@@ -849,6 +858,24 @@ function renderExamAuthoringEditor() {
       </div>
     </section>
     <section class="exam-authoring-section">
+      <div class="exam-authoring-section-head"><div><h3>考试授权</h3><p class="brand-sub">控制哪些用户、部门或内置群组可以参加本试卷</p></div></div>
+      <div class="exam-assignment-list">${assignmentMarkup}</div>
+      ${editable ? `<form id="examAssignmentForm" class="exam-assignment-form">
+        <label>授权类型<select id="examAssignmentType">
+          <option value="user" ${assignmentType === "user" ? "selected" : ""}>用户</option>
+          <option value="department" ${assignmentType === "department" ? "selected" : ""}>部门</option>
+          <option value="group" ${assignmentType === "group" ? "selected" : ""}>内置群组</option>
+        </select></label>
+        <label class="exam-assignment-subject-field" data-assignment-kind="user">用户<select id="examAssignmentUserSelect">
+          <option value="">请选择用户</option>
+          ${examAssignmentUsers.map((user) => `<option value="${esc(user.id)}">${esc(user.name)}${user.department ? ` · ${esc(user.department)}` : ""}${user.employeeNo ? ` · ${esc(user.employeeNo)}` : ""}</option>`).join("")}
+        </select></label>
+        <label class="exam-assignment-subject-field hidden" data-assignment-kind="department">部门<input id="examAssignmentDepartmentInput" maxlength="200" placeholder="例如：运营部"></label>
+        <label class="exam-assignment-subject-field hidden" data-assignment-kind="group">内置群组<select id="examAssignmentGroupSelect"><option value="all-active-users">全部有效用户</option><option value="all-active-dingtalk-users">全部有效钉钉用户</option></select></label>
+        <button class="btn secondary compact-btn" type="submit" ${examAuthoringBusy ? "disabled" : ""}>添加授权</button>
+      </form>` : ""}
+    </section>
+    <section class="exam-authoring-section">
       <div class="exam-authoring-section-head">
         <div><h3>试题与分值</h3><p class="brand-sub">已选 ${selected.length} / ${questions.length} 题；选择、排序和分值修改后点击“保存全部修改”</p></div>
         ${editable && bankId ? `<div class="exam-selection-actions">
@@ -869,6 +896,11 @@ function renderExamAuthoringEditor() {
   document.getElementById("cancelExamRevisionBtn")?.addEventListener("click", cancelExamRevision);
   document.getElementById("publishExamBtn")?.addEventListener("click", publishExam);
   document.getElementById("archiveExamBtn")?.addEventListener("click", archiveExam);
+  document.getElementById("examAssignmentForm")?.addEventListener("submit", addExamAssignment);
+  document.getElementById("examAssignmentType")?.addEventListener("change", updateExamAssignmentFields);
+  for (const button of document.querySelectorAll(".remove-exam-assignment-btn")) {
+    button.addEventListener("click", () => removeExamAssignment(button.dataset.assignmentId));
+  }
   document.getElementById("examQuestionBankSelect")?.addEventListener("change", async (event) => {
     const nextBankId = event.target.value;
     const currentBankId = currentExamAuthoring?.exam?.questionBankId || currentExamAuthoring?.exam?.question_bank_id || "";
@@ -921,6 +953,43 @@ function renderExamAuthoringEditor() {
   for (const input of document.querySelectorAll("#examTitleInput, #examDurationInput, #examPassRateInput")) {
     input.addEventListener("input", () => markExamAuthoringDirty());
   }
+}
+
+function updateExamAssignmentFields() {
+  const type = document.getElementById("examAssignmentType")?.value || "user";
+  for (const field of document.querySelectorAll(".exam-assignment-subject-field")) {
+    field.classList.toggle("hidden", field.dataset.assignmentKind !== type);
+  }
+}
+
+function assignmentSubjectFromForm() {
+  const type = document.getElementById("examAssignmentType")?.value || "";
+  const subjectId = type === "user"
+    ? document.getElementById("examAssignmentUserSelect")?.value
+    : type === "department"
+    ? document.getElementById("examAssignmentDepartmentInput")?.value.trim()
+    : document.getElementById("examAssignmentGroupSelect")?.value;
+  return { subjectType: type, subjectId };
+}
+
+function addExamAssignment(event) {
+  event.preventDefault();
+  const exam = currentExamAuthoring?.exam;
+  const assignment = assignmentSubjectFromForm();
+  if (!exam || !assignment.subjectId) return showExamAuthoringMessage("请选择或填写授权对象", "error");
+  runExamAuthoringMutation("正在添加考试授权", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/assignments`, {
+    method: "POST",
+    body: JSON.stringify({ ...assignment, revision: examRevisionEditing, version: exam.version })
+  }), "考试授权已保存。");
+}
+
+function removeExamAssignment(assignmentId) {
+  const exam = currentExamAuthoring?.exam;
+  if (!exam || !assignmentId || !window.confirm("确认移除这条考试授权吗？")) return;
+  runExamAuthoringMutation("正在移除考试授权", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/assignments/${encodeURIComponent(assignmentId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ revision: examRevisionEditing, version: exam.version })
+  }), "考试授权已移除。");
 }
 
 function showExamAuthoringMessage(message, tone = "") {
@@ -1021,7 +1090,11 @@ async function openExamAuthoring() {
   document.getElementById("examAuthoringDialog").showModal();
   document.getElementById("examAuthoringMsg").classList.add("hidden");
   try {
-    await loadAdminExams({ preserveMessage: true });
+    await Promise.all([
+      loadAdminExams({ preserveMessage: true }),
+      api("/api/admin/exam-assignment-users").then((data) => { examAssignmentUsers = data.users || []; })
+    ]);
+    if (currentExamAuthoring) renderExamAuthoringEditor();
   } catch (error) {
     showExamAuthoringMessage(error.message || "试卷列表载入失败", "error");
   }

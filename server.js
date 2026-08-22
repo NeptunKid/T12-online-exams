@@ -11,7 +11,7 @@ const questionRepository = require("./src/db/question-repository");
 const { createQuestionResource, detectImageMimeType, getQuestionResource } = require("./src/db/question-resource-repository");
 const { fillAnswerMatches } = require("./src/answer-rules");
 const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
-const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
+const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, listExamAssignmentUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
 const { createAdminQuestionBankHandler } = require("./src/http/admin-question-bank-handler");
@@ -370,6 +370,7 @@ function isSameOriginJsonRequest(req) {
 const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
   repository: examAuthoringRepository,
   listManagedQuestionBanks: questionRepository.listManagedQuestionBanks,
+  listExamAssignmentUsers,
   getPool: getPostgresPool,
   readBody,
   json,

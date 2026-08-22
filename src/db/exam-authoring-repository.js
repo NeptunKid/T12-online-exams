@@ -83,6 +83,93 @@ function normalizeQuestionIds(questionIds, { allowEmpty = true } = {}) {
   return normalized;
 }
 
+const ASSIGNMENT_TYPES = new Set(["user", "department", "group"]);
+const BUILTIN_GROUPS = new Set(["all-active-users", "all-active-dingtalk-users"]);
+
+function normalizeAssignmentInput(input = {}) {
+  const subjectType = String(input.subjectType || "").trim();
+  const subjectId = String(input.subjectId || "").trim();
+  if (!ASSIGNMENT_TYPES.has(subjectType)) throw new ExamAuthoringError("授权类型无效");
+  if (!subjectId || subjectId.length > 200) throw new ExamAuthoringError("授权对象不能为空或过长");
+  if (subjectType === "group" && !BUILTIN_GROUPS.has(subjectId)) {
+    throw new ExamAuthoringError("暂只支持系统内置群组");
+  }
+  const startsAt = input.startsAt ? new Date(input.startsAt) : null;
+  const endsAt = input.endsAt ? new Date(input.endsAt) : null;
+  if ((startsAt && Number.isNaN(startsAt.getTime())) || (endsAt && Number.isNaN(endsAt.getTime()))) {
+    throw new ExamAuthoringError("授权时间格式无效");
+  }
+  if (startsAt && endsAt && endsAt <= startsAt) throw new ExamAuthoringError("授权结束时间必须晚于开始时间");
+  return {
+    subjectType,
+    subjectId,
+    startsAt: startsAt?.toISOString() || null,
+    endsAt: endsAt?.toISOString() || null
+  };
+}
+
+function mapExamAssignment(row) {
+  return {
+    id: row.id,
+    examId: row.exam_id,
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
+    subjectName: row.subject_name || row.subject_id,
+    userDepartment: row.user_department || "",
+    startsAt: row.starts_at ? new Date(row.starts_at).toISOString() : null,
+    endsAt: row.ends_at ? new Date(row.ends_at).toISOString() : null
+  };
+}
+
+async function listExamAssignments(pool, examId) {
+  const result = await pool.query(`
+    SELECT ea.id, ea.exam_id, ea.subject_type, ea.subject_id, ea.starts_at, ea.ends_at,
+      CASE WHEN ea.subject_type = 'user' THEN u.name ELSE ea.subject_id END AS subject_name,
+      CASE WHEN ea.subject_type = 'user' THEN u.department ELSE '' END AS user_department
+    FROM exam_assignments ea
+    LEFT JOIN users u ON ea.subject_type = 'user' AND u.id = ea.subject_id
+    WHERE ea.exam_id = $1
+    ORDER BY ea.subject_type, subject_name, ea.subject_id, ea.id;`, [examId]);
+  return result.rows.map(mapExamAssignment);
+}
+
+async function addExamAssignment(pool, examId, input, actorUserId) {
+  const assignment = normalizeAssignmentInput(input);
+  return mutateExam(pool, examId, input, actorUserId, "add_exam_assignment", async (client) => {
+    if (assignment.subjectType === "user") {
+      const user = await client.query(
+        "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR SHARE;", [assignment.subjectId]
+      );
+      if (!user.rows.length) throw new ExamAuthoringError("未找到可授权的有效用户", 404);
+    }
+    await client.query(`
+      INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id, starts_at, ends_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (exam_id, subject_type, subject_id) DO UPDATE
+      SET starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at;`, [
+      `assignment-${crypto.randomUUID()}`, examId, assignment.subjectType, assignment.subjectId,
+      assignment.startsAt, assignment.endsAt
+    ]);
+  });
+}
+
+async function removeExamAssignment(pool, examId, assignmentId, input, actorUserId) {
+  const id = String(assignmentId || "").trim();
+  if (!id) throw new ExamAuthoringError("授权记录标识不能为空");
+  return mutateExam(pool, examId, input, actorUserId, "remove_exam_assignment", async (client) => {
+    const count = await client.query(
+      "SELECT COUNT(*)::integer AS count FROM exam_assignments WHERE exam_id = $1;", [examId]
+    );
+    if (Number(count.rows[0]?.count || 0) <= 1) {
+      throw new ExamAuthoringError("试卷至少需要保留一条考试授权", 409);
+    }
+    const removed = await client.query(
+      "DELETE FROM exam_assignments WHERE id = $1 AND exam_id = $2 RETURNING id;", [id, examId]
+    );
+    if (!removed.rows.length) throw new ExamAuthoringError("未找到授权记录", 404);
+  });
+}
+
 function mapExamSummary(row) {
   return {
     id: row.id,
@@ -722,17 +809,21 @@ async function updateAllExamQuestionScores(pool, examId, input, actorUserId) {
 module.exports = {
   ExamAuthoringError,
   archiveExam,
+  addExamAssignment,
   bindExamQuestionBank,
   copyExam,
   createExam,
   getExamAuthoring,
   listAuthoringExams,
+  listExamAssignments,
   mapAuthoringQuestion,
   mapExamSummary,
   normalizeQuestionIds,
   normalizeQuestionScores,
+  normalizeAssignmentInput,
   normalizeScore,
   publishExam,
+  removeExamAssignment,
   restoreExam,
   reopenExamRevision,
   reorderExamQuestions,
