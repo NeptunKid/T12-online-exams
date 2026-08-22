@@ -36,6 +36,8 @@ test("目录同步在同一事务写入部门、用户、身份、成员关系�
   assert.equal(calls[0].sql, "BEGIN");
   assert.equal(calls.some((call) => call.sql.includes("organization_departments")), true);
   assert.equal(calls.some((call) => call.sql.includes("user_departments")), true);
+  const userInsert = calls.find((call) => call.sql.includes("INSERT INTO users"));
+  assert.equal(userInsert.params[3], "运营部");
   assert.equal(calls.some((call) => call.sql.includes("sync_organization_directory")), true);
   assert.equal(calls.at(-1).sql, "COMMIT");
 });

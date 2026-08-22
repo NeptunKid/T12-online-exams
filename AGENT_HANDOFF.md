@@ -50,6 +50,8 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 最新修复兼容飞书 `open_department_id` 字段并统一部门/人员请求的 ID 类型，避免飞书同步成功但显示 0/0；若平台返回空目录则明确提示权限/可见范围问题。质量门为 `npm test` 351 项通过。本修复仍待提交、PR、部署和真实飞书通讯录验收。
 
+随后补丁修复组织目录仓储将部门名称 `Map` 误当数组读取的问题；同步人员按第一个部门外部 ID 写入 `users.department`，并保留多部门关系。质量门仍为 `npm test` 351 项通过，尚未提交、PR 或部署。用户反馈的“请求失败”不能仅凭截图定性，部署前需在阿里云 Workbench 检查服务日志和 `0012_organization_directory` 迁移状态。
+
 ## 三、生产架构与环境
 
 生产服务器为阿里云东京 Ubuntu 24.04 轻量实例（2C/1G/30G，公网 IPv4 已配置）。当前架构：
