@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260822-2/);
+  assert.match(html, /\/admin\.js\?v=20260822-3/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -81,6 +81,14 @@ test("组卷界面提供用户、部门和内置群组授权管理", () => {
   assert.ok(script.includes("/api/admin/exam-assignment-users"));
   assert.ok(script.includes("确认移除这条考试授权吗？"));
   assert.ok(script.includes("/api/admin/organization/sync"));
+});
+
+test("管理员组织同步区域使用独立的响应式布局", () => {
+  assert.match(html, /class="organization-sync-section"/);
+  assert.match(html, /class="organization-sync-head"/);
+  assert.match(html, /class="organization-sync-actions"/);
+  assert.match(css, /\.organization-sync-section \{/);
+  assert.match(css, /\.organization-sync-head \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
 });
 
 test("发布前会提示保存尚未保存的题目和分值修改", () => {

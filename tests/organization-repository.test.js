@@ -40,6 +40,30 @@ test("目录同步在同一事务写入部门、用户、身份、成员关系�
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("目录同步按钉钉 openId 复用登录身份并保留 unionId", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("FROM user_identities")) {
+        return { rows: [{ id: "identity-existing", user_id: "user-existing", provider: "dingtalk", provider_subject: "userid-1" }] };
+      }
+      if (sql.includes("FROM users WHERE employee_no")) return { rows: [] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await syncOrganizationDirectory({ connect: async () => client }, {
+    provider: "dingtalk",
+    departments: [{ externalId: "10", name: "运营部" }],
+    users: [{ provider: "dingtalk", providerSubject: "union-1", unionId: "union-1", openId: "userid-1", name: "张三", departmentExternalIds: ["10"] }]
+  }, "admin-1");
+  const identityLookup = calls.find((call) => call.sql.includes("FROM user_identities"));
+  assert.deepEqual(identityLookup.params, ["dingtalk", "userid-1", "union-1", "userid-1"]);
+  const identityInsert = calls.find((call) => call.sql.includes("INSERT INTO user_identities"));
+  assert.deepEqual(identityInsert.params, ["identity-existing", "user-existing", "dingtalk", "userid-1", "union-1", "userid-1"]);
+});
+
 test("考试授权部门目录按名称和来源稳定排序", async () => {
   const result = await listExamAssignmentDepartments({ query: async () => ({ rows: [
     { id: "d-1", provider: "feishu", external_id: "2", name: "门店", status: "active" }

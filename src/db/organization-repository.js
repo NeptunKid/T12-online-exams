@@ -50,16 +50,23 @@ async function listOrganizationDirectory(pool) {
 
 async function upsertDirectoryUser(client, directoryUser, departmentNames) {
   const provider = String(directoryUser.provider || "").trim();
-  const providerSubject = String(directoryUser.providerSubject || "").trim();
+  // DingTalk login identities use userid/open_id as provider_subject. The
+  // directory API also returns unionid, so match both before inserting.
+  const providerSubject = String(directoryUser.openId || directoryUser.providerSubject || directoryUser.unionId || "").trim();
   if (!provider || !providerSubject) return null;
   const identityId = stableId("identity", `${provider}:${providerSubject}`);
   const fallbackUserId = stableId("user", `${provider}:${directoryUser.unionId || providerSubject}`);
   const existing = await client.query(`
-    SELECT id, user_id
+    SELECT id, user_id, provider, provider_subject
     FROM user_identities
-    WHERE provider = $1 AND provider_subject = $2
-    LIMIT 1;`, [provider, providerSubject]);
+    WHERE (provider = $1 AND (provider_subject = $2 OR union_id = $3 OR open_id = $4))
+       OR (provider = 'legacy' AND union_id = $3)
+    ORDER BY (provider = $1) DESC, created_at
+    LIMIT 1;`, [provider, providerSubject, directoryUser.unionId || null, directoryUser.openId || null]);
   const userId = existing.rows[0]?.user_id || fallbackUserId;
+  const existingIdentity = existing.rows[0]?.provider === provider ? existing.rows[0] : null;
+  const resolvedIdentityId = existingIdentity?.id || identityId;
+  const resolvedProviderSubject = existingIdentity?.provider_subject || providerSubject;
   const department = departmentNames[0] || "";
   const employeeNo = String(directoryUser.employeeNo || "").trim();
   let usableEmployeeNo = employeeNo || null;
@@ -88,7 +95,7 @@ async function upsertDirectoryUser(client, directoryUser, departmentNames) {
         union_id = COALESCE(EXCLUDED.union_id, user_identities.union_id),
         open_id = COALESCE(EXCLUDED.open_id, user_identities.open_id),
         updated_at = CURRENT_TIMESTAMP;`, [
-    identityId, userId, provider, providerSubject,
+    resolvedIdentityId, userId, provider, resolvedProviderSubject,
     directoryUser.unionId || null, directoryUser.openId || null
   ]);
   await client.query(`
