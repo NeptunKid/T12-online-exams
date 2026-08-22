@@ -14,6 +14,9 @@ const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = req
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, listExamAssignmentUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
+const { createAdminOrganizationHandler } = require("./src/http/admin-organization-handler");
+const { syncDingtalkDirectory, syncFeishuDirectory } = require("./src/integrations/organization-directory");
+const { listOrganizationDirectory, syncOrganizationDirectory, listExamAssignmentDepartments } = require("./src/db/organization-repository");
 const { createAdminQuestionBankHandler } = require("./src/http/admin-question-bank-handler");
 const backupExportRepository = require("./src/backup/export-package");
 const backupImportRepository = require("./src/backup/import-package");
@@ -371,6 +374,20 @@ const handleAdminExamAuthoring = createAdminExamAuthoringHandler({
   repository: examAuthoringRepository,
   listManagedQuestionBanks: questionRepository.listManagedQuestionBanks,
   listExamAssignmentUsers,
+  listExamAssignmentDepartments,
+  getPool: getPostgresPool,
+  readBody,
+  json,
+  isSameOriginJsonRequest
+});
+
+const handleAdminOrganization = createAdminOrganizationHandler({
+  listOrganizationDirectory,
+  syncOrganizationDirectory,
+  syncProviders: {
+    dingtalk: () => syncDingtalkDirectory({ clientId: DINGTALK_CLIENT_ID, clientSecret: DINGTALK_CLIENT_SECRET }),
+    feishu: () => syncFeishuDirectory({ appId: FEISHU_APP_ID, appSecret: FEISHU_APP_SECRET })
+  },
   getPool: getPostgresPool,
   readBody,
   json,
@@ -872,6 +889,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (await handleAdminExamAuthoring(req, res, pathname, adminAccess)) return;
+  if (await handleAdminOrganization(req, res, pathname, adminAccess)) return;
   if (await handleAdminQuestionBank(req, res, pathname, adminAccess)) return;
   if (await handleAdminBackup(req, res, pathname, adminAccess)) return;
   if (await handleAdminNotification(req, res, pathname, adminAccess)) return;

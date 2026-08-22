@@ -29,7 +29,8 @@ test("考试 repository 映射 PostgreSQL 数值字段且不暴露答案", async
   assert.match(detailQuery, /all-active-users/);
   assert.match(detailQuery, /all-active-dingtalk-users/);
   assert.match(detailQuery, /subject_type = 'department'/);
-  assert.match(detailQuery, /assigned_user\.department = ea\.subject_id/);
+  assert.match(detailQuery, /user_departments assigned_department/);
+  assert.match(detailQuery, /assigned_department\.department_id = ea\.subject_id/);
 });
 
 test("飞书身份按 provider subject 访问跨平台全员考试", async () => {

@@ -46,6 +46,7 @@ function createDatabase(overrides = {}) {
       { id: "q-2", external_id: "2", type: "qa", stem: "第二题", status: "active" }
     ],
     bankStatus: overrides.bankStatus || "active",
+    departmentActive: overrides.departmentActive !== false,
     assignments: overrides.assignments || [
       { id: "assignment-1", exam_id: "exam-1", subject_type: "group", subject_id: "all-active-users" },
       { id: "assignment-2", exam_id: "exam-1", subject_type: "department", subject_id: "运营部" }
@@ -79,6 +80,9 @@ function createDatabase(overrides = {}) {
       }
       if (compact.startsWith("SELECT id FROM users WHERE id = $1")) {
         return { rows: state.assignmentUserActive ? [{ id: params[0] }] : [] };
+      }
+      if (compact.startsWith("SELECT id FROM organization_departments")) {
+        return { rows: state.departmentActive ? [{ id: params[0] }] : [] };
       }
       if (compact.startsWith("SELECT COUNT(*)::integer AS count FROM exam_assignments")) {
         return { rows: [{ count: state.assignments.length }] };
@@ -289,10 +293,10 @@ test("新增考试授权在同一事务中校验有效用户并支持重复授�
   await addExamAssignment(database.pool, "exam-1", {
     version: 4,
     subjectType: "department",
-    subjectId: "运营部",
+    subjectId: "department-1",
     endsAt: "2026-08-23T09:00:00+08:00"
   }, "admin-1");
-  assert.equal(database.state.assignments.filter((item) => item.subject_id === "运营部").length, 1);
+  assert.equal(database.state.assignments.filter((item) => item.subject_id === "department-1").length, 1);
   assert.equal(database.calls.filter((call) => call.sql === "BEGIN").length, 2);
 });
 
@@ -310,6 +314,15 @@ test("无效用户或过期版本新增授权会回滚且不写入", async () =>
   }, "admin-1"), /其他管理员/);
   assert.equal(stale.calls.at(-1).sql, "ROLLBACK");
   assert.equal(stale.calls.some((call) => call.sql.startsWith("INSERT INTO exam_assignments")), false);
+});
+
+test("部门授权只接受已同步且有效的部门", async () => {
+  const database = createDatabase({ departmentActive: false });
+  await assert.rejects(addExamAssignment(database.pool, "exam-1", {
+    version: 3, subjectType: "department", subjectId: "department-missing"
+  }, "admin-1"), /已同步的有效部门/);
+  assert.equal(database.calls.at(-1).sql, "ROLLBACK");
+  assert.equal(database.calls.some((call) => call.sql.startsWith("INSERT INTO exam_assignments")), false);
 });
 
 test("移除考试授权保留至少一条授权并校验记录归属", async () => {

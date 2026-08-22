@@ -118,6 +118,14 @@ test("0009 自动备份迁移不读写历史答卷", () => {
   assert.doesNotMatch(migration.sql, /\b(submissions|submission_questions)\b/i);
 });
 
+test("0012 建立组织部门和用户成员关系且提供回滚", () => {
+  const migration = listMigrations().find((item) => item.name === "0012_organization_directory");
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE organization_departments/);
+  assert.match(migration.sql, /CREATE TABLE user_departments/);
+  assert.match(require("node:fs").readFileSync(migration.downPath, "utf8"), /DROP TABLE IF EXISTS user_departments/);
+});
+
 test("0010 为题库生命周期增加可回滚的乐观锁版本", () => {
   const migration = listMigrations().find((item) => item.name === "0010_question_bank_versions");
   assert.ok(migration);

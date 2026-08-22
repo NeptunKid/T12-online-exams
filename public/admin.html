@@ -85,6 +85,19 @@
       </div>
       <input id="adminUserSearch" type="search" placeholder="搜索姓名、工号或部门">
       <div id="adminManagerMsg" class="notice hidden"></div>
+      <section class="organization-sync-section">
+        <div class="identity-merge-head">
+          <div>
+            <h3>组织通讯录同步</h3>
+            <p class="brand-sub">同步后，试卷授权可选择完整的钉钉/飞书人员和部门目录。</p>
+          </div>
+          <div class="btn-row">
+            <button class="btn secondary compact-btn organization-sync-btn" data-provider="dingtalk" type="button">同步钉钉通讯录</button>
+            <button class="btn secondary compact-btn organization-sync-btn" data-provider="feishu" type="button">同步飞书通讯录</button>
+          </div>
+        </div>
+        <div id="organizationDirectorySummary" class="brand-sub">正在读取已同步目录</div>
+      </section>
       <div id="adminUserList" class="admin-user-list"></div>
       <section class="identity-merge-section">
         <div class="identity-merge-head">
@@ -251,6 +264,6 @@
 
   <script src="/question-format.js?v=20260809-2"></script>
   <script src="/question-admin-model.js?v=20260813-2"></script>
-  <script src="/admin.js?v=20260822-1"></script>
+  <script src="/admin.js?v=20260822-2"></script>
 </body>
 </html>

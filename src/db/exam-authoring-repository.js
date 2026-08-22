@@ -124,10 +124,13 @@ function mapExamAssignment(row) {
 async function listExamAssignments(pool, examId) {
   const result = await pool.query(`
     SELECT ea.id, ea.exam_id, ea.subject_type, ea.subject_id, ea.starts_at, ea.ends_at,
-      CASE WHEN ea.subject_type = 'user' THEN u.name ELSE ea.subject_id END AS subject_name,
+      CASE WHEN ea.subject_type = 'user' THEN u.name
+           WHEN ea.subject_type = 'department' THEN od.name
+           ELSE ea.subject_id END AS subject_name,
       CASE WHEN ea.subject_type = 'user' THEN u.department ELSE '' END AS user_department
     FROM exam_assignments ea
     LEFT JOIN users u ON ea.subject_type = 'user' AND u.id = ea.subject_id
+    LEFT JOIN organization_departments od ON ea.subject_type = 'department' AND od.id = ea.subject_id
     WHERE ea.exam_id = $1
     ORDER BY ea.subject_type, subject_name, ea.subject_id, ea.id;`, [examId]);
   return result.rows.map(mapExamAssignment);
@@ -141,6 +144,15 @@ async function addExamAssignment(pool, examId, input, actorUserId) {
         "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR SHARE;", [assignment.subjectId]
       );
       if (!user.rows.length) throw new ExamAuthoringError("未找到可授权的有效用户", 404);
+    }
+    if (assignment.subjectType === "department") {
+      const department = await client.query(
+        `SELECT id
+         FROM organization_departments
+         WHERE id = $1 AND status = 'active'
+         FOR SHARE;`, [assignment.subjectId]
+      );
+      if (!department.rows.length) throw new ExamAuthoringError("未找到已同步的有效部门", 404);
     }
     await client.query(`
       INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id, starts_at, ends_at)

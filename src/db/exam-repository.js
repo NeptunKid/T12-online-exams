@@ -80,10 +80,14 @@ function activeAssignmentFilter() {
               AND ci.provider IN ('dingtalk', 'legacy'))
             OR (ea.subject_type = 'department'
               AND EXISTS (
-                SELECT 1 FROM users assigned_user
-                WHERE assigned_user.id = ci.user_id
-                  AND assigned_user.status = 'active'
-                  AND assigned_user.department = ea.subject_id
+                SELECT 1
+                FROM user_departments assigned_department
+                JOIN organization_departments assigned_org
+                  ON assigned_org.id = assigned_department.department_id
+                 AND assigned_org.status = 'active'
+                WHERE assigned_department.user_id = ci.user_id
+                  AND (assigned_department.department_id = ea.subject_id
+                    OR assigned_org.name = ea.subject_id)
               ))
           )
       )`;
@@ -225,10 +229,14 @@ async function createSubmission(pool, examId, identity, input = {}) {
                 AND ci.provider IN ('dingtalk', 'legacy'))
               OR (ea.subject_type = 'department'
                 AND EXISTS (
-                  SELECT 1 FROM users assigned_user
-                  WHERE assigned_user.id = ci.user_id
-                    AND assigned_user.status = 'active'
-                    AND assigned_user.department = ea.subject_id
+                  SELECT 1
+                  FROM user_departments assigned_department
+                  JOIN organization_departments assigned_org
+                    ON assigned_org.id = assigned_department.department_id
+                   AND assigned_org.status = 'active'
+                  WHERE assigned_department.user_id = ci.user_id
+                    AND (assigned_department.department_id = ea.subject_id
+                      OR assigned_org.name = ea.subject_id)
                 ))
             )
         )
@@ -402,10 +410,14 @@ async function getStudentDashboard(pool, identity) {
               AND ci.provider IN ('dingtalk', 'legacy'))
             OR (ea.subject_type = 'department'
               AND EXISTS (
-                SELECT 1 FROM users assigned_user
-                WHERE assigned_user.id = ci.user_id
-                  AND assigned_user.status = 'active'
-                  AND assigned_user.department = ea.subject_id
+                SELECT 1
+                FROM user_departments assigned_department
+                JOIN organization_departments assigned_org
+                  ON assigned_org.id = assigned_department.department_id
+                 AND assigned_org.status = 'active'
+                WHERE assigned_department.user_id = ci.user_id
+                  AND (assigned_department.department_id = ea.subject_id
+                    OR assigned_org.name = ea.subject_id)
               ))
           )
       )
