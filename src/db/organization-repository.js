@@ -67,7 +67,7 @@ async function upsertDirectoryUser(client, directoryUser, departmentNames) {
   const existingIdentity = existing.rows[0]?.provider === provider ? existing.rows[0] : null;
   const resolvedIdentityId = existingIdentity?.id || identityId;
   const resolvedProviderSubject = existingIdentity?.provider_subject || providerSubject;
-  const department = departmentNames[0] || "";
+  const department = departmentNames.get(String(directoryUser.departmentExternalIds?.[0] || "")) || "";
   const employeeNo = String(directoryUser.employeeNo || "").trim();
   let usableEmployeeNo = employeeNo || null;
   if (usableEmployeeNo) {
@@ -135,10 +135,7 @@ async function syncOrganizationDirectory(pool, directory, actorUserId) {
     }
     let userCount = 0;
     for (const item of directory.users || []) {
-      const names = (item.departmentExternalIds || [])
-        .map((externalId) => departmentNames.get(String(externalId)))
-        .filter(Boolean);
-      const userId = await upsertDirectoryUser(client, item, names);
+      const userId = await upsertDirectoryUser(client, item, departmentNames);
       if (!userId) continue;
       userCount += 1;
       for (const externalId of item.departmentExternalIds || []) {

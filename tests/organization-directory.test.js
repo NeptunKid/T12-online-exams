@@ -128,6 +128,30 @@ test("飞书部门和人员均为空时拒绝静默成功", async () => {
   );
 });
 
+test("飞书 open_department_id 被拒绝时自动回退到 department_id", async () => {
+  const idTypes = [];
+  const result = await syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async (url) => {
+    if (url === FEISHU_TOKEN_URL) return response({ code: 0, data: { tenant_access_token: "token" } });
+    const parsed = new URL(url);
+    const idType = parsed.searchParams.get("department_id_type");
+    if (idType) idTypes.push(idType);
+    if (idType === "open_department_id") return response({ code: 40005, msg: "invalid department id type" }, false);
+    if (parsed.origin + parsed.pathname === FEISHU_DEPARTMENT_URL) {
+      return response({ code: 0, data: {
+        items: parsed.searchParams.get("parent_department_id") === "0"
+          ? [{ department_id: "dep-9", name: "营运部" }]
+          : [],
+        has_more: false
+      } });
+    }
+    return response({ code: 0, data: { items: [{ open_id: "ou-9", name: "孙七" }], has_more: false } });
+  });
+  assert.equal(idTypes.includes("open_department_id"), true);
+  assert.equal(idTypes.includes("department_id"), true);
+  assert.equal(result.departments[0].externalId, "dep-9");
+  assert.equal(result.users[0].name, "孙七");
+});
+
 test("通讯录凭证缺失或平台拒绝访问时返回可操作错误", async () => {
   await assert.rejects(
     syncDingtalkDirectory({ clientId: "", clientSecret: "" }, async () => response({})),
@@ -135,6 +159,18 @@ test("通讯录凭证缺失或平台拒绝访问时返回可操作错误", async
   );
   await assert.rejects(
     syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async () => response({ code: 999, msg: "denied" }, false)),
-    (error) => error.statusCode === 502 && /开通通讯录读取权限/.test(error.message)
+    (error) => error.statusCode === 502 && /错误码 999/.test(error.message) && /denied/.test(error.message)
+  );
+});
+
+test("飞书网络异常返回具体但受限的诊断信息", async () => {
+  await assert.rejects(
+    syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async () => {
+      throw new Error("fetch failed: https://open.feishu.cn/?token=secret-value");
+    }),
+    (error) => error.statusCode === 502
+      && /飞书通讯录同步失败/.test(error.message)
+      && /fetch failed/.test(error.message)
+      && !/secret-value/.test(error.message)
   );
 });
