@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260822-1/);
+  assert.match(html, /\/admin\.js\?v=20260822-2/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -34,7 +34,7 @@ test("组卷支持新增、复制、参数修改和统一发布", () => {
   assert.match(script, /id="newExamForm"/);
   assert.match(script, /api\("\/api\/admin\/exams", \{\s*method: "POST"/);
   assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/copy`/);
-  assert.match(script, /\/\$\{encodeURIComponent\(exam\.id\)\}\/publish`/);
+  assert.match(script, /\/\$\{encodeURIComponent\(latestExam\.id\)\}\/publish`/);
   assert.match(script, /method: "PATCH"/);
   assert.match(script, />发布<\/button>/);
   assert.match(script, /const canPublish = exam\.status === "draft"/);
@@ -75,11 +75,18 @@ test("组卷界面提供用户、部门和内置群组授权管理", () => {
   assert.match(script, /考试授权/);
   assert.ok(script.includes("/assignments`"));
   assert.match(script, /examAssignmentType/);
-  assert.match(script, /examAssignmentDepartmentInput/);
+  assert.match(script, /examAssignmentDepartmentSelect/);
   assert.match(script, /examAssignmentGroupSelect/);
   assert.match(script, /removeExamAssignment/);
   assert.ok(script.includes("/api/admin/exam-assignment-users"));
   assert.ok(script.includes("确认移除这条考试授权吗？"));
+  assert.ok(script.includes("/api/admin/organization/sync"));
+});
+
+test("发布前会提示保存尚未保存的题目和分值修改", () => {
+  assert.match(script, /当前试卷的题目、排序或分值有尚未保存的修改/);
+  assert.match(script, /const saved = await saveExamAuthoring\(\)/);
+  assert.match(script, /if \(!saved \|\| examAuthoringDirty \|\| examSelectionDirty\) return/);
 });
 
 test("更换题库自动清空选题并在操作前说明影响", () => {

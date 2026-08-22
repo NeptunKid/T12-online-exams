@@ -1,6 +1,6 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-15
+更新时间：2026-08-22
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
@@ -21,7 +21,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`codex/dingtalk-notification-transport`；分支基线：`ea6bffe`；最新已部署生产的 `main` 提交：`a179c83`
+当前开发分支：`codex/dingtalk-notification-transport`；当前工作树基线：`c3449da`；最新已部署生产的 `main` 提交以用户提供的生产记录为准，本轮尚未部署。
 
 ```text
 飞书通知 Worker Phase A 已合并并部署为 `a179c83`：`0011_notification_delivery_receipts` 已执行，生产服务 active，`/readyz` 和公网 `/healthz` 通过；Worker 保持关闭。
@@ -43,6 +43,8 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 `.env` 和 `.secrets/` 已被忽略，绝不能在命令输出或文档中展开内容。
 
 最新提交的纯文本同步修复尚未由本 Agent 核实是否已创建/合并 PR、是否已部署生产。不要假设已上线。
+
+本轮新增组织目录同步与发布前保存修复，详见 `docs/development-summary/2026-08-22-organization-directory-and-publish-fix.md`。新增迁移 `0012_organization_directory` 尚未在生产执行；生产部署前必须先创建 PostgreSQL `pg_dump -Fc`。当前质量门为 `npm test` 343 项通过、语法检查、敏感信息扫描和 `git diff --check` 通过。用户合并 PR 后，先按生产 runbook 部署，再由用户验收通讯录同步、部门授权和发布前保存提示。
 
 ## 三、生产架构与环境
 

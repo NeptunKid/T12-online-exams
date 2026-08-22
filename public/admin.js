@@ -465,6 +465,43 @@ async function loadAdminUsers() {
   renderAdminUsers();
 }
 
+async function loadOrganizationDirectorySummary() {
+  const summary = document.getElementById("organizationDirectorySummary");
+  if (!summary) return;
+  try {
+    const data = await api("/api/admin/organization/directory");
+    const directory = data.directory || {};
+    summary.textContent = `已同步 ${directory.departments?.length || 0} 个部门、${directory.users?.length || 0} 名人员。`;
+  } catch (error) {
+    summary.textContent = error.message || "组织目录读取失败";
+  }
+}
+
+async function syncOrganizationDirectory(provider, button) {
+  const message = document.getElementById("adminManagerMsg");
+  if (!button || button.disabled) return;
+  document.querySelectorAll(".organization-sync-btn").forEach((item) => { item.disabled = true; });
+  message.textContent = `正在同步${provider === "dingtalk" ? "钉钉" : "飞书"}通讯录，请勿关闭页面`;
+  message.className = "notice";
+  try {
+    const data = await api("/api/admin/organization/sync", {
+      method: "POST",
+      body: JSON.stringify({ provider })
+    });
+    const result = data.result || {};
+    message.textContent = `通讯录同步完成：${result.departmentCount || 0} 个部门、${result.userCount || 0} 名人员。`;
+    message.className = "notice success";
+    await Promise.all([loadAdminUsers(), loadOrganizationDirectorySummary()]);
+    const detail = currentExamAuthoring?.exam?.id;
+    if (detail) await loadExamAuthoring(detail, { preserveMessage: true });
+  } catch (error) {
+    message.textContent = error.message || "通讯录同步失败";
+    message.className = "notice error";
+  } finally {
+    document.querySelectorAll(".organization-sync-btn").forEach((item) => { item.disabled = false; });
+  }
+}
+
 function providerLabel(provider) {
   return { dingtalk: "钉钉", feishu: "飞书", legacy: "历史钉钉" }[provider] || provider;
 }
@@ -583,7 +620,7 @@ async function openAdminManager() {
   message.classList.add("hidden");
   dialog.showModal();
   try {
-    await Promise.all([loadAdminUsers(), loadMergeCandidates()]);
+    await Promise.all([loadAdminUsers(), loadMergeCandidates(), loadOrganizationDirectorySummary()]);
   } catch (error) {
     message.textContent = error.message || "用户列表载入失败";
     message.className = "notice error";
@@ -661,7 +698,8 @@ function normalizeExamAuthoring(data) {
     exam: payload.exam || data.exam || {},
     banks: payload.banks || payload.questionBanks || data.banks || [],
     questions: Array.from(byId.values()),
-    assignments: payload.assignments || []
+    assignments: payload.assignments || [],
+    departments: payload.departments || data.departments || []
   };
 }
 
@@ -870,7 +908,10 @@ function renderExamAuthoringEditor() {
           <option value="">请选择用户</option>
           ${examAssignmentUsers.map((user) => `<option value="${esc(user.id)}">${esc(user.name)}${user.department ? ` · ${esc(user.department)}` : ""}${user.employeeNo ? ` · ${esc(user.employeeNo)}` : ""}</option>`).join("")}
         </select></label>
-        <label class="exam-assignment-subject-field hidden" data-assignment-kind="department">部门<input id="examAssignmentDepartmentInput" maxlength="200" placeholder="例如：运营部"></label>
+        <label class="exam-assignment-subject-field hidden" data-assignment-kind="department">部门<select id="examAssignmentDepartmentSelect">
+          <option value="">请选择已同步部门</option>
+          ${(currentExamAuthoring.departments || []).map((department) => `<option value="${esc(department.id)}">${esc(department.name)} · ${esc(department.provider === "dingtalk" ? "钉钉" : "飞书")}</option>`).join("")}
+        </select></label>
         <label class="exam-assignment-subject-field hidden" data-assignment-kind="group">内置群组<select id="examAssignmentGroupSelect"><option value="all-active-users">全部有效用户</option><option value="all-active-dingtalk-users">全部有效钉钉用户</option></select></label>
         <button class="btn secondary compact-btn" type="submit" ${examAuthoringBusy ? "disabled" : ""}>添加授权</button>
       </form>` : ""}
@@ -967,7 +1008,7 @@ function assignmentSubjectFromForm() {
   const subjectId = type === "user"
     ? document.getElementById("examAssignmentUserSelect")?.value
     : type === "department"
-    ? document.getElementById("examAssignmentDepartmentInput")?.value.trim()
+    ? document.getElementById("examAssignmentDepartmentSelect")?.value
     : document.getElementById("examAssignmentGroupSelect")?.value;
   return { subjectType: type, subjectId };
 }
@@ -1042,8 +1083,10 @@ async function runExamAuthoringMutation(message, request, successMessage = "已�
     examSelectionDirty = false;
     examSelectAllRequested = false;
     showExamAuthoringMessage(successMessage, "success");
+    return data;
   } catch (error) {
     showExamAuthoringMessage(error.message || "试卷保存失败", "error");
+    return null;
   } finally {
     examAuthoringBusy = false;
     renderExamAuthoringList();
@@ -1196,7 +1239,7 @@ function saveExamAuthoring(event) {
     questionIds,
     scores
   };
-  runExamAuthoringMutation("正在保存试卷全部修改", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/authoring`, {
+  return runExamAuthoringMutation("正在保存试卷全部修改", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/authoring`, {
     method: "PATCH",
     body: JSON.stringify(body)
   }), "试卷参数、选题、排序和分值已一次保存；总分和通过分已重新计算。");
@@ -1248,12 +1291,20 @@ async function copyExam() {
   }
 }
 
-function publishExam() {
+async function publishExam() {
   const exam = currentExamAuthoring?.exam;
-  if (!exam) return;
-  runExamAuthoringMutation("正在发布试卷", () => api(`/api/admin/exams/${encodeURIComponent(exam.id)}/publish`, {
+  if (!exam || examAuthoringBusy) return;
+  if (examAuthoringDirty || examSelectionDirty) {
+    const shouldSave = window.confirm("当前试卷的题目、排序或分值有尚未保存的修改。发布前是否先保存这些修改？\n\n选择“取消”将放弃本次发布，但不会清空当前设置。");
+    if (!shouldSave) return;
+    const saved = await saveExamAuthoring();
+    if (!saved || examAuthoringDirty || examSelectionDirty) return;
+  }
+  const latestExam = currentExamAuthoring?.exam;
+  if (!latestExam) return;
+  runExamAuthoringMutation("正在发布试卷", () => api(`/api/admin/exams/${encodeURIComponent(latestExam.id)}/publish`, {
     method: "POST",
-    body: JSON.stringify({ version: exam.version })
+    body: JSON.stringify({ version: latestExam.version })
   }), "试卷已发布，当前版本可供考生作答。");
 }
 
@@ -2547,6 +2598,9 @@ document.getElementById("examAuthoringDialog").addEventListener("cancel", (event
   newExamDraft = null;
 });
 document.getElementById("adminUserSearch").addEventListener("input", renderAdminUsers);
+document.querySelectorAll(".organization-sync-btn").forEach((button) => {
+  button.addEventListener("click", () => syncOrganizationDirectory(button.dataset.provider, button));
+});
 document.getElementById("refreshMergeCandidatesBtn").addEventListener("click", loadMergeCandidates);
 document.getElementById("questionSearch").addEventListener("input", renderQuestionList);
 document.getElementById("logoutBtn").addEventListener("click", async () => {

@@ -7,6 +7,7 @@ function createAdminExamAuthoringHandler({
   repository,
   listManagedQuestionBanks,
   listExamAssignmentUsers,
+  listExamAssignmentDepartments = async () => [],
   getPool,
   readBody,
   json,
@@ -61,15 +62,16 @@ function createAdminExamAuthoringHandler({
       }
 
       if (route.action === "detail") {
-        const [detail, banks] = await Promise.all([
+        const [detail, banks, departments] = await Promise.all([
           repository.getExamAuthoring(pool, examId),
-          listManagedQuestionBanks(pool)
+          listManagedQuestionBanks(pool),
+          listExamAssignmentDepartments(pool)
         ]);
         const assignments = detail && repository.listExamAssignments
           ? await repository.listExamAssignments(pool, examId)
           : [];
         if (!detail) json(res, 404, { error: "未找到试卷" });
-        else json(res, 200, { authoring: authoringPayload(detail, banks, assignments) });
+        else json(res, 200, { authoring: authoringPayload(detail, banks, assignments), ...(departments.length ? { departments } : {}) });
         return true;
       }
 
@@ -113,11 +115,14 @@ function createAdminExamAuthoringHandler({
       } else {
         detail = await repository.updateAllExamQuestionScores(pool, examId, body, adminAccess.userId);
       }
-      const banks = await listManagedQuestionBanks(pool);
+      const [banks, departments] = await Promise.all([
+        listManagedQuestionBanks(pool),
+        listExamAssignmentDepartments(pool)
+      ]);
       const assignments = repository.listExamAssignments
         ? await repository.listExamAssignments(pool, examId)
         : [];
-      json(res, 200, { authoring: authoringPayload(detail, banks, assignments) });
+      json(res, 200, { authoring: authoringPayload(detail, banks, assignments), ...(departments.length ? { departments } : {}) });
       return true;
     } catch (error) {
       if (Number.isInteger(error?.statusCode)) {
