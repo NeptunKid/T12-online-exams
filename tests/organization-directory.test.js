@@ -7,6 +7,7 @@ const {
   FEISHU_DEPARTMENT_URL,
   FEISHU_TOKEN_URL,
   FEISHU_USER_URL,
+  extractDingtalkDepartments,
   syncDingtalkDirectory,
   syncFeishuDirectory
 } = require("../src/integrations/organization-directory");
@@ -32,10 +33,21 @@ test("钉钉通讯录同步返回部门、人员和多部门关系", async () =>
     }
     throw new Error(`Unexpected URL: ${url}`);
   });
+  const tokenCall = calls.find((call) => call.url === DINGTALK_TOKEN_URL);
+  assert.deepEqual(JSON.parse(tokenCall.options.body), { appKey: "id", appSecret: "secret" });
   assert.deepEqual(result.departments, [{ provider: "dingtalk", externalId: "10", name: "运营部", parentExternalId: null }]);
-  assert.equal(result.users[0].providerSubject, "union-1");
+  assert.equal(result.users[0].providerSubject, "userid-1");
   assert.deepEqual(result.users[0].departmentExternalIds, ["10"]);
   assert.equal(calls.some((call) => call.url.startsWith(DINGTALK_USER_URL)), true);
+});
+
+test("钉钉部门接口返回 result 对象时也能解析部门列表", () => {
+  assert.deepEqual(extractDingtalkDepartments({ result: {
+    dept_id_list: [{ dept_id: 10, name: "运营部" }]
+  }}), [{ dept_id: 10, name: "运营部" }]);
+  assert.deepEqual(extractDingtalkDepartments({ result: {
+    department_list: [{ id: 11, name: "门店" }]
+  }}), [{ id: 11, name: "门店" }]);
 });
 
 test("飞书通讯录同步分页读取部门和人员", async () => {
