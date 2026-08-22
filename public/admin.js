@@ -72,9 +72,18 @@ async function api(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  const data = await res.json().catch(() => ({}));
+  const responseText = await res.text();
+  let data = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch (_) {
+    data = {};
+  }
   if (!res.ok) {
-    const error = new Error(data.error || "请求失败");
+    const fallback = responseText.trim() && !/^\s*</.test(responseText)
+      ? responseText.trim().slice(0, 180)
+      : `请求失败（HTTP ${res.status}）`;
+    const error = new Error(data.error || fallback);
     error.status = res.status;
     if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
     throw error;

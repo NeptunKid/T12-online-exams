@@ -56,6 +56,8 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 补丁同时让飞书部门同步在 `open_department_id` 被租户/API 版本拒绝时自动回退 `department_id`，并覆盖回归测试；最新质量门为 `npm test` 353 项通过。
 
+最新兜底诊断补丁修复前端吞掉非 JSON/空响应的问题，管理员现在会看到 `请求失败（HTTP 状态码）`；组织同步 handler 写入脱敏错误摘要，`admin.js` 缓存版本为 `20260822-4`。质量门为 `npm test` 354 项通过，尚未提交、PR 或部署。
+
 ## 三、生产架构与环境
 
 生产服务器为阿里云东京 Ubuntu 24.04 轻量实例（2C/1G/30G，公网 IPv4 已配置）。当前架构：
