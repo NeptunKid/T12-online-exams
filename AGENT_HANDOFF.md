@@ -46,7 +46,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 本轮新增组织目录同步与发布前保存修复，详见 `docs/development-summary/2026-08-22-organization-directory-and-publish-fix.md`。新增迁移 `0012_organization_directory` 尚未在生产执行；生产部署前必须先创建 PostgreSQL `pg_dump -Fc`。当前质量门为 `npm test` 347 项通过、语法检查、敏感信息扫描和 `git diff --check` 通过。用户合并 PR 后，先按生产 runbook 部署，再由用户验收通讯录同步、部门授权和发布前保存提示。
 
-本轮后续修复已解决钉钉目录同步将 `unionid` 错当登录身份主键造成的唯一约束冲突，并将平台拒绝访问映射为不暴露凭证的权限提示；管理员同步面板已调整为响应式布局，`admin.js` 缓存版本为 `20260822-3`。质量门为 `npm test` 347 项通过。生产仍需在对应开放平台开通通讯录读取权限，代码不会自动获得该权限。
+本轮后续修复已解决钉钉目录同步将 `unionid` 错当登录身份主键造成的唯一约束冲突，并将平台拒绝访问映射为不暴露凭证的权限提示；管理员同步面板已调整为响应式布局，`admin.js` 缓存版本为 `20260822-3`。进一步修复了钉钉 token 请求字段错误（改为 `appKey/appSecret`）及部门接口对象返回格式，质量门为 `npm test` 348 项通过。生产仍需在对应开放平台开通通讯录读取权限，并确认已执行迁移 `0012_organization_directory`。
 
 ## 三、生产架构与环境
 

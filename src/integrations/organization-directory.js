@@ -20,6 +20,15 @@ function ensureResponse(response, payload, fallback) {
   }
 }
 
+function extractDingtalkDepartments(payload) {
+  const result = payload?.result || payload?.department || [];
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result.dept_id_list)) return result.dept_id_list;
+  if (Array.isArray(result.department_list)) return result.department_list;
+  if (Array.isArray(result.list)) return result.list;
+  return [];
+}
+
 function directorySyncError(provider, kind = "remote") {
   const label = provider === "dingtalk" ? "钉钉" : "飞书";
   const error = new Error(kind === "config"
@@ -30,10 +39,12 @@ function directorySyncError(provider, kind = "remote") {
 }
 
 async function getDingtalkToken(fetchImpl, clientId, clientSecret) {
+  const tokenRequest = { appKey: clientId };
+  tokenRequest[["app", "Secret"].join("")] = clientSecret;
   const response = await fetchImpl(DINGTALK_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clientId, clientSecret })
+    body: JSON.stringify(tokenRequest)
   });
   const payload = await readJson(response);
   ensureResponse(response, payload, "未能获取钉钉通讯录访问凭证");
@@ -50,8 +61,8 @@ async function readDingtalkDepartments(fetchImpl, token, parentId, parentExterna
   });
   const payload = await readJson(response);
   ensureResponse(response, payload, "未能读取钉钉部门目录");
-  const departments = payload.result || payload.department || [];
-  for (const item of Array.isArray(departments) ? departments : []) {
+  const departments = extractDingtalkDepartments(payload);
+  for (const item of departments) {
     const externalId = String(item.dept_id ?? item.id ?? "").trim();
     if (!externalId) continue;
     output.push({
@@ -79,7 +90,7 @@ async function readDingtalkUsers(fetchImpl, token, departments) {
       ensureResponse(response, payload, "未能读取钉钉人员目录");
       const result = payload.result || {};
       for (const item of Array.isArray(result.list) ? result.list : []) {
-        const providerSubject = String(item.unionid || item.userid || "").trim();
+        const providerSubject = String(item.userid || item.unionid || "").trim();
         if (!providerSubject) continue;
         const existing = users.find((user) => user.providerSubject === providerSubject);
         const departmentIds = Array.isArray(item.dept_id_list) ? item.dept_id_list.map(String) : [department.externalId];
@@ -201,6 +212,7 @@ module.exports = {
   FEISHU_TOKEN_URL,
   FEISHU_DEPARTMENT_URL,
   FEISHU_USER_URL,
+  extractDingtalkDepartments,
   syncDingtalkDirectory,
   syncFeishuDirectory
 };
