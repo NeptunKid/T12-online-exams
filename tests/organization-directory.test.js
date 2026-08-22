@@ -75,6 +75,59 @@ test("飞书通讯录同步分页读取部门和人员", async () => {
   assert.equal(calls.length >= 3, true);
 });
 
+test("飞书通讯录兼容 open_department_id 返回字段", async () => {
+  const result = await syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async (url) => {
+    if (url === FEISHU_TOKEN_URL) return response({ code: 0, data: { tenant_access_token: "token" } });
+    const parsed = new URL(url);
+    if (parsed.origin + parsed.pathname === FEISHU_DEPARTMENT_URL) {
+      return response({ code: 0, data: {
+        items: parsed.searchParams.get("parent_department_id") === "0"
+          ? [{ open_department_id: "od-dep-1", name: "总部" }]
+          : [],
+        has_more: false
+      } });
+    }
+    if (parsed.origin + parsed.pathname === FEISHU_USER_URL) {
+      return response({ code: 0, data: { items: [{ open_id: "ou-2", name: "王五" }], has_more: false } });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+  assert.deepEqual(result.departments, [{
+    provider: "feishu", externalId: "od-dep-1", name: "总部", parentExternalId: "0"
+  }]);
+  assert.equal(result.users[0].providerSubject, "ou-2");
+  assert.deepEqual(result.users[0].departmentExternalIds, ["od-dep-1"]);
+});
+
+test("飞书没有部门结果时仍尝试读取全量人员", async () => {
+  let userUrl;
+  const result = await syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async (url) => {
+    if (url === FEISHU_TOKEN_URL) return response({ code: 0, data: { tenant_access_token: "token" } });
+    const parsed = new URL(url);
+    if (parsed.origin + parsed.pathname === FEISHU_DEPARTMENT_URL) {
+      return response({ code: 0, data: { items: [], has_more: false } });
+    }
+    if (parsed.origin + parsed.pathname === FEISHU_USER_URL) {
+      userUrl = parsed;
+      return response({ code: 0, data: { items: [{ open_id: "ou-3", name: "赵六" }], has_more: false } });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+  assert.equal(userUrl.searchParams.has("department_id"), false);
+  assert.equal(result.users[0].name, "赵六");
+  assert.deepEqual(result.users[0].departmentExternalIds, []);
+});
+
+test("飞书部门和人员均为空时拒绝静默成功", async () => {
+  await assert.rejects(
+    syncFeishuDirectory({ appId: "app", appSecret: "secret" }, async (url) => {
+      if (url === FEISHU_TOKEN_URL) return response({ code: 0, data: { tenant_access_token: "token" } });
+      return response({ code: 0, data: { items: [], has_more: false } });
+    }),
+    (error) => error.statusCode === 502 && /未读取到部门或人员/.test(error.message)
+  );
+});
+
 test("通讯录凭证缺失或平台拒绝访问时返回可操作错误", async () => {
   await assert.rejects(
     syncDingtalkDirectory({ clientId: "", clientSecret: "" }, async () => response({})),
