@@ -52,6 +52,10 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 随后补丁修复组织目录仓储将部门名称 `Map` 误当数组读取的问题；同步人员按第一个部门外部 ID 写入 `users.department`，并保留多部门关系。质量门仍为 `npm test` 351 项通过，尚未提交、PR 或部署。用户反馈的“请求失败”不能仅凭截图定性，部署前需在阿里云 Workbench 检查服务日志和 `0012_organization_directory` 迁移状态。
 
+最新诊断补丁将飞书/钉钉远程通讯录错误改为安全地保留平台错误码和短消息，前端可直接显示可操作原因；网络错误消息会脱敏并限制长度。新增 `docs/agent-development-handbook.md` 作为同类项目复用手册，并同步写入 `AGENTS.md`。质量门为 `npm test` 352 项通过；本补丁尚未提交、PR、部署。部署后请用户再次点击飞书同步，把新的错误码/消息反馈回来。
+
+补丁同时让飞书部门同步在 `open_department_id` 被租户/API 版本拒绝时自动回退 `department_id`，并覆盖回归测试；最新质量门为 `npm test` 353 项通过。
+
 ## 三、生产架构与环境
 
 生产服务器为阿里云东京 Ubuntu 24.04 轻量实例（2C/1G/30G，公网 IPv4 已配置）。当前架构：

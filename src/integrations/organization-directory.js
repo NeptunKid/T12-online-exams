@@ -16,7 +16,10 @@ function providerError(payload, fallback) {
 function ensureResponse(response, payload, fallback) {
   if (!response.ok || (payload.code !== undefined && Number(payload.code) !== 0)
       || (payload.errcode !== undefined && Number(payload.errcode) !== 0)) {
-    throw new Error(providerError(payload, fallback));
+    const error = new Error(providerError(payload, fallback));
+    if (payload.code !== undefined) error.providerCode = String(payload.code);
+    if (payload.errcode !== undefined) error.providerCode = String(payload.errcode);
+    throw error;
   }
 }
 
@@ -37,6 +40,18 @@ function directorySyncError(provider, kind = "remote") {
     ? `${label}通讯录未读取到部门或人员，请检查应用通讯录权限和可见范围`
     : `${label}通讯录接口拒绝访问，请在开放平台开通通讯录读取权限后重试`);
   error.statusCode = kind === "config" ? 503 : 502;
+  return error;
+}
+
+function directorySyncRemoteError(provider, cause) {
+  const label = provider === "dingtalk" ? "钉钉" : "飞书";
+  const detail = String(cause?.message || "远程接口未返回具体原因")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/(token|secret|app_secret|access_token)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .slice(0, 240);
+  const code = cause?.providerCode ? `（错误码 ${cause.providerCode}）` : "";
+  const error = new Error(`${label}通讯录同步失败${code}：${detail}`);
+  error.statusCode = 502;
   return error;
 }
 
@@ -125,7 +140,7 @@ async function syncDingtalkDirectory(config, fetchImpl = fetch) {
     const users = await readDingtalkUsers(fetchImpl, token, departments);
     return { provider: "dingtalk", departments, users };
   } catch (error) {
-    throw error?.statusCode ? error : directorySyncError("dingtalk");
+    throw error?.statusCode ? error : directorySyncRemoteError("dingtalk", error);
   }
 }
 
@@ -151,12 +166,12 @@ async function feishuGet(fetchImpl, token, baseUrl, params) {
   return payload.data || payload;
 }
 
-async function readFeishuDepartments(fetchImpl, token, parentExternalId = "0", output = []) {
+async function readFeishuDepartments(fetchImpl, token, parentExternalId = "0", output = [], departmentIdType = "open_department_id") {
   let pageToken = "";
   do {
     const data = await feishuGet(fetchImpl, token, FEISHU_DEPARTMENT_URL, {
       parent_department_id: parentExternalId,
-      department_id_type: "open_department_id",
+      department_id_type: departmentIdType,
       page_size: 50,
       ...(pageToken ? { page_token: pageToken } : {})
     });
@@ -164,14 +179,14 @@ async function readFeishuDepartments(fetchImpl, token, parentExternalId = "0", o
       const externalId = String(item.department_id || item.open_department_id || item.id || "").trim();
       if (!externalId) continue;
       output.push({ provider: "feishu", externalId, name: String(item.name || externalId).trim(), parentExternalId });
-      await readFeishuDepartments(fetchImpl, token, externalId, output);
+      await readFeishuDepartments(fetchImpl, token, externalId, output, departmentIdType);
     }
     pageToken = data.has_more ? String(data.page_token || "") : "";
   } while (pageToken);
   return output;
 }
 
-async function readFeishuUsers(fetchImpl, token, departments) {
+async function readFeishuUsers(fetchImpl, token, departments, departmentIdType = "open_department_id") {
   const users = [];
   const scopes = departments.length ? departments : [null];
   for (const department of scopes) {
@@ -180,7 +195,7 @@ async function readFeishuUsers(fetchImpl, token, departments) {
       const data = await feishuGet(fetchImpl, token, FEISHU_USER_URL, {
         ...(department ? {
           department_id: department.externalId,
-          department_id_type: "open_department_id"
+          department_id_type: departmentIdType
         } : {}),
         page_size: 50,
         user_id_type: "open_id",
@@ -209,12 +224,20 @@ async function syncFeishuDirectory(config, fetchImpl = fetch) {
   if (!appId || !appSecret) throw directorySyncError("feishu", "config");
   try {
     const token = await getFeishuToken(fetchImpl, appId, appSecret);
-    const departments = await readFeishuDepartments(fetchImpl, token);
-    const users = await readFeishuUsers(fetchImpl, token, departments);
-    if (!departments.length && !users.length) throw directorySyncError("feishu", "empty");
-    return { provider: "feishu", departments, users };
+    let lastError = null;
+    for (const departmentIdType of ["open_department_id", "department_id"]) {
+      try {
+        const departments = await readFeishuDepartments(fetchImpl, token, "0", [], departmentIdType);
+        const users = await readFeishuUsers(fetchImpl, token, departments, departmentIdType);
+        if (departments.length || users.length) return { provider: "feishu", departments, users };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) throw lastError;
+    throw directorySyncError("feishu", "empty");
   } catch (error) {
-    throw error?.statusCode ? error : directorySyncError("feishu");
+    throw error?.statusCode ? error : directorySyncRemoteError("feishu", error);
   }
 }
 
@@ -226,6 +249,7 @@ module.exports = {
   FEISHU_DEPARTMENT_URL,
   FEISHU_USER_URL,
   extractDingtalkDepartments,
+  directorySyncRemoteError,
   syncDingtalkDirectory,
   syncFeishuDirectory
 };
