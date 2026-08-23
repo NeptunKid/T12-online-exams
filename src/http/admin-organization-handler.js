@@ -5,7 +5,8 @@ function createAdminOrganizationHandler({
   getPool,
   readBody,
   json,
-  isSameOriginJsonRequest
+  isSameOriginJsonRequest,
+  logger = console
 }) {
   return async function handleAdminOrganization(req, res, pathname, adminAccess) {
     if (pathname !== "/api/admin/organization/directory"
@@ -45,6 +46,11 @@ function createAdminOrganizationHandler({
       json(res, 200, { result, directory: await listOrganizationDirectory(pool) });
       return true;
     } catch (error) {
+      const detail = String(error?.message || "unknown error")
+        .replace(/[\r\n]+/g, " ")
+        .replace(/(token|secret|app_secret|access_token)=([^&\s]+)/gi, "$1=[REDACTED]")
+        .slice(0, 240);
+      logger.error?.(`组织目录同步失败：${detail}`);
       json(res, Number.isInteger(error?.statusCode) ? error.statusCode : 503, {
         error: Number.isInteger(error?.statusCode) ? error.message : "组织目录同步服务暂不可用"
       });
