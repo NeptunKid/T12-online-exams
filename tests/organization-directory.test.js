@@ -113,7 +113,8 @@ test("飞书没有部门结果时仍尝试读取全量人员", async () => {
     }
     throw new Error(`Unexpected URL: ${url}`);
   });
-  assert.equal(userUrl.searchParams.has("department_id"), false);
+  assert.equal(userUrl.searchParams.get("department_id"), "0");
+  assert.equal(userUrl.searchParams.get("department_id_type"), "open_department_id");
   assert.equal(result.users[0].name, "赵六");
   assert.deepEqual(result.users[0].departmentExternalIds, []);
 });
