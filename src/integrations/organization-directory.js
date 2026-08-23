@@ -188,7 +188,10 @@ async function readFeishuDepartments(fetchImpl, token, parentExternalId = "0", o
 
 async function readFeishuUsers(fetchImpl, token, departments, departmentIdType = "open_department_id") {
   const users = [];
-  const scopes = departments.length ? departments : [null];
+  // Feishu's users endpoint expects an explicit root department scope when
+  // the department tree is empty; omitting department_id can silently return
+  // an empty page even when the app can read users.
+  const scopes = departments.length ? departments : [{ externalId: "0" }];
   for (const department of scopes) {
     let pageToken = "";
     do {
@@ -205,11 +208,15 @@ async function readFeishuUsers(fetchImpl, token, departments, departmentIdType =
         const providerSubject = String(item.open_id || item.user_id || "").trim();
         if (!providerSubject) continue;
         const existing = users.find((user) => user.providerSubject === providerSubject);
-        if (existing) existing.departmentExternalIds = [...new Set([...existing.departmentExternalIds, department.externalId])];
+        if (existing) existing.departmentExternalIds = [...new Set([
+          ...existing.departmentExternalIds,
+          ...(department?.externalId && department.externalId !== "0" ? [department.externalId] : [])
+        ])];
         else users.push({
           provider: "feishu", providerSubject, openId: providerSubject,
           unionId: String(item.union_id || "").trim(), name: String(item.name || providerSubject).trim(),
-          employeeNo: String(item.employee_no || "").trim(), departmentExternalIds: department ? [department.externalId] : []
+          employeeNo: String(item.employee_no || "").trim(),
+          departmentExternalIds: department?.externalId && department.externalId !== "0" ? [department.externalId] : []
         });
       }
       pageToken = data.has_more ? String(data.page_token || "") : "";
