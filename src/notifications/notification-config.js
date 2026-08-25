@@ -73,6 +73,9 @@ function loadNotificationConfig(env = process.env) {
   const maxAttempts = integerValue(env.T12_NOTIFICATION_MAX_ATTEMPTS, 5, "T12_NOTIFICATION_MAX_ATTEMPTS", 1, 10);
   const retryBaseSeconds = integerValue(env.T12_NOTIFICATION_RETRY_BASE_SECONDS, 60, "T12_NOTIFICATION_RETRY_BASE_SECONDS", 10, 3600);
   const staleAfterSeconds = integerValue(env.T12_NOTIFICATION_STALE_AFTER_SECONDS, 300, "T12_NOTIFICATION_STALE_AFTER_SECONDS", 60, 3600);
+  const pendingAlertThreshold = integerValue(env.T12_NOTIFICATION_PENDING_ALERT_THRESHOLD, 25, "T12_NOTIFICATION_PENDING_ALERT_THRESHOLD", 0, 100000);
+  const failedAlertThreshold = integerValue(env.T12_NOTIFICATION_FAILED_ALERT_THRESHOLD, 0, "T12_NOTIFICATION_FAILED_ALERT_THRESHOLD", 0, 100000);
+  const abandonedAlertThreshold = integerValue(env.T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD, 0, "T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD", 0, 100000);
   return {
     enabled,
     channels,
@@ -85,6 +88,9 @@ function loadNotificationConfig(env = process.env) {
     retryBaseSeconds,
     retryMaximumSeconds: Math.min(24 * 60 * 60, retryBaseSeconds * (2 ** Math.max(0, maxAttempts - 1))),
     staleAfterSeconds,
+    pendingAlertThreshold,
+    failedAlertThreshold,
+    abandonedAlertThreshold,
     publicBaseUrl: publicBaseUrl(env.T12_PUBLIC_BASE_URL, enabled),
     notBefore: notificationNotBefore(env.T12_NOTIFICATION_NOT_BEFORE, enabled)
   };
@@ -97,7 +103,11 @@ function publicNotificationConfig(config) {
     intervalSeconds: config.intervalSeconds,
     batchSize: config.batchSize,
     maxAttempts: config.maxAttempts,
-    notBefore: config.notBefore
+    notBefore: config.notBefore,
+    pendingAlertThreshold: config.pendingAlertThreshold,
+    failedAlertThreshold: config.failedAlertThreshold,
+    abandonedAlertThreshold: config.abandonedAlertThreshold,
+    processingStaleAfterSeconds: config.staleAfterSeconds
   };
 }
 

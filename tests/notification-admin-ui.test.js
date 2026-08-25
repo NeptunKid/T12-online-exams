@@ -12,8 +12,10 @@ test("系统管理员后台提供通知任务入口、筛选和脱敏列表", ()
   assert.match(html, /id="manageNotificationsBtn"/);
   assert.match(html, /id="notificationManagerDialog"/);
   assert.match(html, /id="notificationStatusFilter"/);
+  assert.match(html, /id="notificationMonitor"/);
   assert.match(script, /manageNotificationsBtn.*openNotificationManager/);
   assert.match(script, /recipientRef/);
+  assert.match(script, /通知队列需要关注/);
   assert.doesNotMatch(script, /item\.recipient\b/);
 });
 

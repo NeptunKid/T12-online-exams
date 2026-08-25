@@ -6,7 +6,7 @@
 
 生产状态以用户提供的现场结果为准：版本 `c80cb83`，`t12-exams` active，`/readyz` 返回数据库 ready，公网 `/healthz` 正常；飞书通讯录同步成功。此前已验收钉钉和飞书通知：待阅卷提醒发送给管理员，成绩通知包含考生姓名并同时发送给考生和有效管理员。
 
-本机当前分支为 `codex/dingtalk-notification-transport`。代码功能基线包含组织通讯录根部门修复提交 `70582d7`；其后的提交仅为服务器总账或项目进度文档，不是业务代码变更。当前文档提交 SHA 用 `git log -1 --oneline` 查询；本机 `origin/main` 未重新 fetch，不能用本地远程跟踪值替代用户提供的生产版本。
+本机当前分支为 `codex/dingtalk-notification-transport`。本轮通知监控代码尚未推送或部署；生产版本仍以用户现场提供的 SHA 为准。当前文档提交 SHA 用 `git log -1 --oneline` 查询；本机 `origin/main` 未重新 fetch，不能用本地远程跟踪值替代用户提供的生产版本。
 
 ## 2. 按原详细计划的完成度
 
@@ -61,10 +61,10 @@
 
 ## 5. 质量验证
 
-本机质量门：
+本机质量门（本轮完成后）：
 
 ```text
-npm test                 354 项通过
+npm test                 357 项通过
 npm run check:syntax     通过
 npm run check:secrets    通过
 git diff --check         通过
@@ -76,7 +76,7 @@ git diff --check         通过
 
 按风险和收益排序：
 
-1. 通知 Worker 运行监控：积压阈值、failed/abandoned 告警、服务健康指标和定期 pending 对账；当前 Worker 嵌入 Node 服务，不是独立 systemd 服务。
+1. 通知 Worker 运行监控：本轮已完成只读积压阈值、failed/abandoned 告警和陈旧 processing 提示；仍待 PR、生产部署、管理员页面验收及定期 pending 对账。当前 Worker 嵌入 Node 服务，不是独立 systemd 服务。
 2. 外部对象存储适配：为 `.t12backup` 和图片增加 OSS/兼容对象存储适配、容量监控、生命周期和跨存储恢复演练；当前 T12 使用 PostgreSQL/受控目录。
 3. 通讯录差异同步：部门改名、人员离职/禁用、多部门变更、历史授权保留和审计；不能因一次权限不足把全员停用。
 4. 生产回归清单：电脑、手机、蜂窝网络、公司外网络，覆盖 OAuth、考试、交卷、阅卷、双平台通知、备份下载和回导。

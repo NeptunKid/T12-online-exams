@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { createNotificationMonitor } = require("../notifications/notification-monitor");
 
 function notificationEventKey(eventType, resourceId, channel, recipient) {
   return `${eventType}:${resourceId}:${channel}:${recipient}`;
@@ -238,12 +239,21 @@ async function listNotifications(pool, options = {}) {
     ORDER BY created_at DESC, id DESC
     LIMIT $2;`, [status, limit]);
   const statsResult = await pool.query(`
-    SELECT status, COUNT(*)::integer AS count
+    SELECT status, COUNT(*)::integer AS count,
+      MIN(created_at) AS oldest_created_at,
+      MIN(updated_at) AS oldest_updated_at
     FROM notifications
     GROUP BY status;`);
   const stats = { pending: 0, processing: 0, delivered: 0, failed: 0, abandoned: 0 };
-  for (const row of statsResult.rows) if (Object.hasOwn(stats, row.status)) stats[row.status] = Number(row.count || 0);
-  return { notifications: result.rows.map(mapNotification).map(publicNotification), stats };
+  for (const row of statsResult.rows) {
+    if (!Object.hasOwn(stats, row.status)) continue;
+    stats[row.status] = Number(row.count || 0);
+    if (row.status === "pending") stats.oldestPendingAt = row.oldest_created_at || null;
+    if (row.status === "failed") stats.oldestFailedAt = row.oldest_created_at || null;
+    if (row.status === "processing") stats.oldestProcessingUpdatedAt = row.oldest_updated_at || null;
+  }
+  const monitor = createNotificationMonitor({ stats, thresholds: options.monitorThresholds, now: options.now });
+  return { notifications: result.rows.map(mapNotification).map(publicNotification), stats, monitor };
 }
 
 async function retryNotification(pool, notificationId, actorUserId, allowedChannels = ["feishu", "dingtalk"]) {

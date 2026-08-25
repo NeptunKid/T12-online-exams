@@ -32,7 +32,8 @@ function createAdminNotificationHandler({
         const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
         const result = await repository.listNotifications(pool, {
           status: url.searchParams.get("status") || "all",
-          limit: url.searchParams.get("limit") || 100
+          limit: url.searchParams.get("limit") || 100,
+          monitorThresholds: publicConfig
         });
         json(res, 200, {
           ...result,

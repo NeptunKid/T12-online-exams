@@ -2519,6 +2519,30 @@ select:focus {
   font-size: 17px;
 }
 
+.notification-monitor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.notification-monitor strong {
+  color: var(--text);
+}
+
+.notification-monitor.healthy {
+  background: var(--green-soft);
+}
+
+.notification-monitor.alert {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
 .notification-list {
   display: grid;
   border-top: 1px solid var(--line);
