@@ -1,5 +1,7 @@
 # 考试后台追踪系统（钉钉飞书接入版）Memory
 
+2026-08-25 [Codex] 更新当前总进度：Phase 0-4 核心闭环已完成并在生产验收，包含双平台登录/RBAC/同名人工合并、题库与试卷生命周期和整体组卷保存、备份导入导出、飞书/钉钉通知、考试授权及组织通讯录同步。用户确认生产 `c80cb83` 的飞书通讯录同步成功，钉钉和飞书通知均已实测成功；本机 `npm test` 354 项通过，语法、敏感信息和 diff 检查通过。下一优先级是通知 Worker 监控告警、外部对象存储和恢复演练、通讯录差异同步、定期跨设备回归及飞书总结自动化。最新完整摘要见 `docs/development-summary/2026-08-25-project-progress.md`；服务器软件、迁移和 SSH 状态见 Codex 根目录唯一总账 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
+
 2026-08-05 [Codex] 创建 `003_考试后台追踪系统_钉钉飞书接入版` 项目目录，用于在 `002` 钉钉登录版的基础上规划钉钉与飞书双平台接入、多考试、题库、通知、GitHub、飞书文档同步及公网跨设备访问；当前仅放入概要与详细计划，尚未复制源码或生产答卷。
 2026-08-08 [Codex] 已确定移除 Cloudflare Tunnel，采用阿里云东京服务器公网 80/443 + Caddy + Node.js 127.0.0.1:3001 + PostgreSQL 127.0.0.1:5432；新增 `deploy/Caddyfile`、`deploy/t12-exams.service`、公网部署文档与 `/healthz`、`/readyz` 检查，提交于 `chore/direct-public-deployment` 的 `1873bd0`。本机质量门 26 项测试、语法检查和敏感信息扫描均通过；因本机到 `ssh.github.com:443` 被限制，分支尚未推送/创建 PR。
 2026-08-08 [Codex] 针对服务器部署报错补充 `T12_ENV_FILE` 支持，迁移可读取 `/etc/t12-online-exams/t12-online-exams.env`；补充 `/opt` 目录和 Caddy 旧配置诊断说明，修复提交为 `3a968a6`、`d8cca72`，本机质量门仍为 26 项通过。

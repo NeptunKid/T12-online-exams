@@ -1,11 +1,20 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-22
+更新时间：2026-08-25
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
 
 本文是后续 Agent 的接手入口。它汇总当前架构、已经完成的开发、验证结果、生产操作约束和未确认事项。遇到本文与用户本轮明确指令冲突时，以用户指令和项目 `AGENTS.md` 为准。
+
+## 当前状态快照（2026-08-25）
+
+- 核心业务闭环已完成并在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目图片和答案规则、`.t12backup` 导入导出、自动备份、考试授权、阅卷和飞书/钉钉成绩通知。
+- 用户确认生产版本 `c80cb83` 的飞书通讯录同步成功；钉钉和飞书通知均已实际收到。生产迁移已确认执行 `0001` 至 `0012` 共 12 条，迁移校验和见 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
+- 本机质量门：`npm test` 354 项通过，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 通过。当前分支 `codex/dingtalk-notification-transport`；业务代码基线到 `70582d7`，其后的提交只更新服务器总账或项目进度文档。当前文档提交 SHA 请在本机用 `git log -1 --oneline` 查询。
+- 服务器已完成 SSH 最小权限加固：`PermitRootLogin no`，新 `admin + sudo` 会话验证成功。阿里云安全组收紧、nftables/UFW 仍未执行，必须先确认 Workbench 管理入口。
+- 下一轮优先做通知 Worker 监控与告警，不改变考试、题库、答卷和历史成绩模型；其次是外部对象存储/恢复演练、通讯录差异同步、定期跨设备回归和飞书总结自动化。
+- 完整进度快照：`docs/development-summary/2026-08-25-project-progress.md`。
 
 ## 一、不可违反的约束
 
@@ -21,7 +30,7 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 二、当前 Git 与工作树
 
-当前开发分支：`codex/dingtalk-notification-transport`；当前工作树基线：`c3449da`；最新已部署生产的 `main` 提交以用户提供的生产记录为准，本轮尚未部署。
+当前开发分支：`codex/dingtalk-notification-transport`；业务代码基线到 `70582d7`，其后的提交仅为服务器总账或项目进度文档提交。最新已部署生产的 `main` 提交以用户提供的现场记录为准：`c80cb83`。
 
 ```text
 飞书通知 Worker Phase A 已合并并部署为 `a179c83`：`0011_notification_delivery_receipts` 已执行，生产服务 active，`/readyz` 和公网 `/healthz` 通过；Worker 保持关闭。
