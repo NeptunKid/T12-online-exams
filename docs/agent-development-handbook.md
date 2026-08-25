@@ -47,6 +47,13 @@
 - PR 合并后在阿里云 Workbench 统一执行：确认版本 -> 创建 PostgreSQL 备份 -> 以 `codexdeploy` 拉取和安装 -> 迁移 -> 重启 -> 健康检查 -> 用户验收。
 - 回滚按风险选择：纯代码问题回退提交；已发生数据库写入则保留备份并先隔离验证，不能只回滚代码。
 
+服务器配置另有唯一总账：`/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。不要在各项目复制维护服务器软件、端口、服务、备份目录或防火墙的第二份清单；任何配置变更前后都更新这一个文件。
+
+- 动态办公网络的公网出口 IP 不是固定身份，不要把一次 `curl -4 https://api.ipify.org` 的结果当作永久 SSH 白名单。优先使用固定 VPN 出口或阿里云 Workbench。
+- SSH 加固前必须保留当前管理会话，并用新会话验证 `admin + sudo`；先 `sshd -t`，再 reload，不直接重启服务器。
+- 生产 SSH 的目标是 `PermitRootLogin no`、`PubkeyAuthentication yes`、`PasswordAuthentication no`；回滚必须记录 drop-in 路径和变更前备份。
+- 阿里云安全组和主机防火墙分层管理；未确认 Workbench/SSH 管理入口前，不启用 UFW/nftables，也不关闭现有管理规则。内部 Node/PostgreSQL/Caddy 管理端口不对公网开放。
+
 ## 7. 与项目负责人的协作约定
 
 - 用户希望先看到完整 Plan，再开始并发执行；复杂任务先说明 Agent 数量、角色和交付边界。

@@ -4,6 +4,8 @@
 
 除非某次开发说明明确写了不同的前置条件，否则按本流程执行即可。所有命令都在**阿里云 Workbench**执行，不是在本机 Mac 终端执行。
 
+服务器软件、端口、防火墙、SSH、备份目录和其他项目占用情况的唯一事实来源是 Codex 根目录的 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。常规应用部署不自动修改这些配置；涉及服务器配置时，先更新总账并单独记录回滚方式。
+
 ## 先记住三件事
 
 1. 代码仓库 `/opt/t12-online-exams` 属于 `codexdeploy` 用户。Git 和 npm 命令必须以 `codexdeploy` 身份运行，否则会出现 `.git/FETCH_HEAD: Permission denied`。
