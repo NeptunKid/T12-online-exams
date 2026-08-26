@@ -316,3 +316,9 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 5. 补做生产端真实移动设备、OAuth 回调、备份回导和跨平台通知的定期回归验收。
 
 每项仍按“复现/方案 -> 单步实现 -> 本机质量门 -> PR -> 用户部署 -> 端到端验收 -> 开发总结/飞书同步”推进。
+
+### 2026-08-26 通知 Worker 监控
+
+- 当前工作区新增只读通知队列监控：统计待发送、失败、已放弃和陈旧 `processing` 任务，并在管理员通知页显示具体阈值告警。
+- 新增 `T12_NOTIFICATION_PENDING_ALERT_THRESHOLD`（默认 25）、`T12_NOTIFICATION_FAILED_ALERT_THRESHOLD`（默认 0）和 `T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD`（默认 0）；processing 陈旧窗口沿用 `T12_NOTIFICATION_STALE_AFTER_SECONDS`。
+- 无数据库迁移、无生产写入、无新 Secret；监控不改变入队、发送、重试或 `/readyz`。本机质量门通过后，按用户本机终端创建 PR，合并后再由用户按固定流程备份、拉取、重启和验收。

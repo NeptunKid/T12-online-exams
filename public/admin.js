@@ -153,6 +153,12 @@ function renderNotificationManager() {
   const stats = notificationManager.stats || {};
   document.getElementById("notificationSummary").innerHTML = Object.entries(notificationStatusLabels)
     .map(([status, label]) => `<span><strong>${Number(stats[status] || 0)}</strong>${label}</span>`).join("");
+  const monitor = notificationManager.monitor || { healthy: true, alerts: [] };
+  const monitorElement = document.getElementById("notificationMonitor");
+  monitorElement.className = `notification-monitor ${monitor.healthy ? "healthy" : "alert"}`;
+  monitorElement.innerHTML = monitor.healthy
+    ? "<strong>通知队列正常</strong><span>当前没有超过阈值的积压或失败任务</span>"
+    : `<strong>通知队列需要关注</strong>${(monitor.alerts || []).map((alert) => `<span>${esc(alert.message)}</span>`).join("")}`;
   const list = document.getElementById("notificationList");
   list.innerHTML = notificationManager.notifications.length
     ? notificationManager.notifications.map((item) => `

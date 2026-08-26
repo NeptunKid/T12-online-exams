@@ -37,6 +37,7 @@ T12_NOTIFICATION_NOT_BEFORE=2026-08-17T18:00:00+08:00
 - `delivered`：平台返回成功并保存回执，不能人工重复发送。
 
 Worker 崩溃时，超过 `T12_NOTIFICATION_STALE_AFTER_SECONDS` 的 `processing` 任务会自动恢复为 `pending`。管理员列表只显示收件人哈希摘要，不返回真实平台身份或通知正文。
+通知页同时显示只读监控条：待发送数量超过 `T12_NOTIFICATION_PENDING_ALERT_THRESHOLD`、失败或已放弃数量超过对应阈值、以及发送中任务超过陈旧恢复窗口时，会显示具体告警数量和原因。监控不会自动重发或清理任务，失败/已放弃任务仍须按现有重试策略处理。
 人工重发会更新任务的下一次尝试时间，因此即使原任务早于启用阈值，也能在管理员明确确认后由 Worker 处理。
 
 ## 回滚
