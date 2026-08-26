@@ -16,6 +16,8 @@ test("系统管理员后台提供通知任务入口、筛选和脱敏列表", ()
   assert.match(script, /manageNotificationsBtn.*openNotificationManager/);
   assert.match(script, /recipientRef/);
   assert.match(script, /通知队列需要关注/);
+  assert.match(script, /loaded = true/);
+  assert.match(script, /通知状态读取中/);
   assert.doesNotMatch(script, /item\.recipient\b/);
 });
 
@@ -35,4 +37,12 @@ test("通知弹窗宽度跟随可视窗口且内容不产生横向滚动", () =>
   assert.match(styles, /\.notification-dialog\s*\{\s*width:\s*min\(960px,\s*calc\(100vw - 32px\)\)/);
   assert.match(styles, /\.notification-dialog \.admin-dialog-shell\s*\{[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0/);
   assert.doesNotMatch(styles, /\.notification-dialog \.admin-dialog-shell\s*\{[^}]*width:\s*min\(/);
+});
+
+test("管理员 API 请求超时后显示可操作错误且关闭后不会写回旧结果", () => {
+  assert.match(script, /AbortController/);
+  assert.match(script, /请求超时，请检查服务状态后重试/);
+  assert.match(script, /adminManagerLoadToken/);
+  assert.match(script, /用户列表读取失败/);
+  assert.match(script, /api\("\/api\/auth\/config"\)/);
 });

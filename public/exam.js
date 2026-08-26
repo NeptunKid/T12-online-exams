@@ -7,6 +7,33 @@ let remainingSeconds = 0;
 let currentUser = null;
 let activeExamId = "default";
 let usingPostgresApi = false;
+const CLIENT_REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(resource, options = {}, timeoutMs = CLIENT_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(resource, { ...options, signal: options.signal || controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function fetchResponse(resource, options = {}) {
+  try {
+    return await fetchWithTimeout(resource, options);
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("请求超时，请检查服务状态后重试");
+    throw new Error("网络请求失败，请检查网络连接后重试");
+  }
+}
+
+async function fetchJson(resource, options = {}) {
+  const response = await fetchResponse(resource, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `请求失败（HTTP ${response.status}）`);
+  return payload;
+}
 
 const typeLabels = {
   single: "单选题",
@@ -89,9 +116,7 @@ function normalizePostgresExam(source) {
 
 async function loadExam(examId = "default") {
   const endpoint = usingPostgresApi && examId !== "default" ? `/api/exams/${encodeURIComponent(examId)}` : "/api/exam";
-  const res = await fetch(endpoint);
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(payload.error || "题目载入失败");
+  const payload = await fetchJson(endpoint);
   exam = usingPostgresApi && payload.exam ? normalizePostgresExam(payload.exam) : payload;
   if (usingPostgresApi) {
     const assigned = dashboardData?.exams?.find((item) => item.id === examId);
@@ -100,14 +125,14 @@ async function loadExam(examId = "default") {
 }
 
 async function loadDashboard() {
-  const postgresRes = await fetch("/api/exams/dashboard");
+  const postgresRes = await fetchResponse("/api/exams/dashboard");
   const postgresPayload = await postgresRes.json().catch(() => ({}));
   if (postgresRes.ok && postgresPayload.source === "postgres") {
     usingPostgresApi = true;
     dashboardData = postgresPayload;
   } else {
     usingPostgresApi = false;
-    const legacyRes = await fetch("/api/student/dashboard");
+    const legacyRes = await fetchResponse("/api/student/dashboard");
     const legacyPayload = await legacyRes.json().catch(() => ({}));
     if (!legacyRes.ok) throw new Error(legacyPayload.error || postgresPayload.error || "个人记录载入失败");
     dashboardData = legacyPayload;
@@ -205,9 +230,7 @@ async function showStudentDetail(id) {
     const endpoint = usingPostgresApi
       ? `/api/exams/submissions/${encodeURIComponent(id)}`
       : `/api/student/submissions/${encodeURIComponent(id)}`;
-    const res = await fetch(endpoint);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "答卷详情载入失败");
+    const data = await fetchJson(endpoint);
     if (usingPostgresApi) renderPostgresStudentDetail(data);
     else renderStudentDetail(data);
   } catch (err) {
@@ -440,7 +463,7 @@ async function submitExam(force = false) {
     const endpoint = usingPostgresApi && activeExamId !== "default"
       ? `/api/exams/${encodeURIComponent(activeExamId)}/submissions`
       : "/api/submissions";
-    const res = await fetch(endpoint, {
+    const result = await fetchJson(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -450,8 +473,6 @@ async function submitExam(force = false) {
         answers
       })
     });
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "提交失败");
     showResult(result.submission || result);
   } catch (err) {
     submitted = false;
@@ -477,14 +498,15 @@ async function returnToDashboard() {
 }
 
 async function logout() {
-  await fetch("/api/auth/logout", { method: "POST" });
+  await fetchJson("/api/auth/logout", { method: "POST" });
   location.reload();
 }
 
 async function initialize() {
-  const [authRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
-  const auth = await authRes.json();
-  const me = await meRes.json();
+  const [auth, me] = await Promise.all([
+    fetchJson("/api/auth/config"),
+    fetchJson("/api/auth/me")
+  ]);
   const dingtalkEnabled = auth.providers?.dingtalk?.enabled ?? auth.enabled;
   const feishuEnabled = Boolean(auth.providers?.feishu?.enabled);
   document.getElementById("dingtalkLogin").classList.toggle("hidden", !dingtalkEnabled);
@@ -505,6 +527,7 @@ document.getElementById("dashboardRefreshBtn").addEventListener("click", loadDas
 document.getElementById("studentLogoutBtn").addEventListener("click", logout);
 
 initialize().catch((err) => {
+  showOnly("loginPage");
   document.getElementById("startMessage").textContent = err.message || "载入失败";
   document.getElementById("startMessage").classList.remove("hidden");
 });
