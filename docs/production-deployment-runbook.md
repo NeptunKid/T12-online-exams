@@ -57,11 +57,22 @@ sudo ls -lh "$BACKUP_FILE"
 
 # 生成文件指纹。把这一行保存到部署记录中，未来可用于确认备份没有损坏。
 sudo sha256sum "$BACKUP_FILE"
+
+# 只读取备份目录，确认备份格式可被 PostgreSQL 识别；不会恢复或修改任何数据。
+sudo -u postgres pg_restore -l "$BACKUP_FILE" >/dev/null
 ```
 
-预期结果：先看到“准备部署版本”和第 1 步相同；`ls` 能显示备份文件，`sha256sum` 输出一串很长的字符和文件路径。任何一条失败都应停止，不要继续部署，并保留错误信息。
+预期结果：先看到“准备部署版本”和第 1 步相同；`ls` 能显示备份文件，`sha256sum` 输出一串很长的字符和文件路径，`pg_restore -l` 没有错误。任何一条失败都应停止，不要继续部署，并保留错误信息。
 
 说明：备份目录由 `postgres` 管理，所以用普通 `admin` 用户直接 `ls` 或 `sha256sum` 可能显示权限不足。上面的 `sudo` 已处理此问题。
+
+## 备份保留规则
+
+生产服务器空间有限，`/var/backups/t12-online-exams/postgres/` **最多只保留一份当前有效的 PostgreSQL 完整备份**。每次新部署按第 2 步创建并验证新 dump 后，先确保公司在服务器之外保有恢复点，再删除旧 dump；不要累计保存历史 dump，也不要删除刚通过 `pg_restore -l` 校验的新文件。
+
+当前保留的完整备份为：`/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump`。它是在 2026-08-26 自动备份清理后留下的唯一服务器端完整恢复点。后续新 dump 成功后将替代它。
+
+`.t12backup` 是题库/试卷的逻辑导入包，不是完整灾难恢复备份。由于 2026-08-26 的磁盘 IOPS 限流事件，生产的自动 `.t12backup` 已暂停，`/var/backups/t12-online-exams/portable/` 应保持为空。部署时不要同时执行 `npm ci`、完整 `pg_dump` 和全量逻辑备份，也不要仅为了重启服务而手动触发全量逻辑备份。
 
 ## 第 3 步：拉取代码并安装依赖
 
