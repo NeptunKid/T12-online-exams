@@ -35,8 +35,19 @@ let newExamDraft = null;
 let backupCatalog = { exams: [], banks: [] };
 let backupBusy = false;
 let backupAutomation = { automation: null, runs: [] };
-let notificationManager = { worker: null, stats: {}, notifications: [] };
+let notificationManager = { worker: null, stats: {}, notifications: [], loaded: false };
 let notificationBusy = false;
+let adminManagerLoadToken = 0;
+
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 15_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(resource, { ...options, signal: options.signal || controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 function setAdminWorkspace(view) {
   const layout = document.querySelector(".admin-layout");
@@ -65,13 +76,19 @@ function fmtTime(iso) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {})
-    }
-  });
+  let res;
+  try {
+    res = await fetchWithTimeout(path, {
+      ...options,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {})
+      }
+    });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("请求超时，请检查服务状态后重试");
+    throw error;
+  }
   const responseText = await res.text();
   let data = {};
   try {
@@ -151,12 +168,16 @@ function renderNotificationManager() {
     ? `Worker 已启用 · 通道：${channels}${notBefore}${worker.running ? " · 正在运行" : ""}`
     : "Worker 未启用，任务将保留在待发送队列";
   const stats = notificationManager.stats || {};
-  document.getElementById("notificationSummary").innerHTML = Object.entries(notificationStatusLabels)
-    .map(([status, label]) => `<span><strong>${Number(stats[status] || 0)}</strong>${label}</span>`).join("");
+  document.getElementById("notificationSummary").innerHTML = notificationManager.loaded
+    ? Object.entries(notificationStatusLabels)
+      .map(([status, label]) => `<span><strong>${Number(stats[status] || 0)}</strong>${label}</span>`).join("")
+    : `<span><strong>--</strong>通知状态读取中</span>`;
   const monitor = notificationManager.monitor || { healthy: true, alerts: [] };
   const monitorElement = document.getElementById("notificationMonitor");
-  monitorElement.className = `notification-monitor ${monitor.healthy ? "healthy" : "alert"}`;
-  monitorElement.innerHTML = monitor.healthy
+  monitorElement.className = `notification-monitor ${notificationManager.loaded ? (monitor.healthy ? "healthy" : "alert") : "pending"}`;
+  monitorElement.innerHTML = !notificationManager.loaded
+    ? "<strong>正在读取通知状态</strong><span>请稍候</span>"
+    : monitor.healthy
     ? "<strong>通知队列正常</strong><span>当前没有超过阈值的积压或失败任务</span>"
     : `<strong>通知队列需要关注</strong>${(monitor.alerts || []).map((alert) => `<span>${esc(alert.message)}</span>`).join("")}`;
   const list = document.getElementById("notificationList");
@@ -183,6 +204,7 @@ function renderNotificationManager() {
 async function loadNotifications() {
   const status = document.getElementById("notificationStatusFilter").value || "all";
   notificationManager = await api(`/api/admin/notifications?status=${encodeURIComponent(status)}&limit=100`);
+  notificationManager.loaded = true;
   renderNotificationManager();
 }
 
@@ -190,7 +212,7 @@ async function openNotificationManager() {
   const dialog = document.getElementById("notificationManagerDialog");
   dialog.showModal();
   document.getElementById("notificationManagerMsg").classList.add("hidden");
-  notificationManager = { worker: null, stats: {}, notifications: [] };
+  notificationManager = { worker: null, stats: {}, notifications: [], loaded: false };
   renderNotificationManager();
   try {
     await loadNotifications();
@@ -472,12 +494,20 @@ function renderAdminUsers() {
   }
 }
 
-async function loadAdminUsers() {
+async function loadAdminUsers(loadToken = adminManagerLoadToken) {
   const list = document.getElementById("adminUserList");
   list.innerHTML = `<div class="empty-state admin-user-empty">正在载入用户</div>`;
-  const data = await api("/api/admin/users");
-  adminUsers = data.users;
-  renderAdminUsers();
+  try {
+    const data = await api("/api/admin/users");
+    if (loadToken !== adminManagerLoadToken) return;
+    adminUsers = data.users;
+    renderAdminUsers();
+  } catch (error) {
+    if (loadToken === adminManagerLoadToken) {
+      list.innerHTML = `<div class="empty-state admin-user-empty">${esc(error.message || "用户列表读取失败")}</div>`;
+    }
+    throw error;
+  }
 }
 
 async function loadOrganizationDirectorySummary() {
@@ -633,9 +663,10 @@ async function openAdminManager() {
   const dialog = document.getElementById("adminManagerDialog");
   const message = document.getElementById("adminManagerMsg");
   message.classList.add("hidden");
+  const loadToken = ++adminManagerLoadToken;
   dialog.showModal();
   try {
-    await Promise.all([loadAdminUsers(), loadMergeCandidates(), loadOrganizationDirectorySummary()]);
+    await Promise.all([loadAdminUsers(loadToken), loadMergeCandidates(), loadOrganizationDirectorySummary()]);
   } catch (error) {
     message.textContent = error.message || "用户列表载入失败";
     message.className = "notice error";
@@ -2501,9 +2532,7 @@ async function initializeAdmin() {
   const msg = document.getElementById("loginMsg");
   msg.classList.add("hidden");
   try {
-    const [configRes, meRes] = await Promise.all([fetch("/api/auth/config"), fetch("/api/auth/me")]);
-    const config = await configRes.json();
-    const me = await meRes.json();
+    const [config, me] = await Promise.all([api("/api/auth/config"), api("/api/auth/me")]);
     adminAuthProviders = {
       dingtalk: config.providers?.dingtalk?.enabled ?? config.enabled,
       feishu: Boolean(config.providers?.feishu?.enabled)
@@ -2543,7 +2572,14 @@ document.getElementById("newQuestionBankBtn").addEventListener("click", () => {
 });
 document.getElementById("newExamBtn").addEventListener("click", startNewExam);
 document.getElementById("closeAdminManagerBtn").addEventListener("click", () => {
+  adminManagerLoadToken += 1;
   document.getElementById("adminManagerDialog").close();
+});
+document.getElementById("adminManagerDialog").addEventListener("cancel", () => {
+  adminManagerLoadToken += 1;
+});
+document.getElementById("adminManagerDialog").addEventListener("close", () => {
+  adminManagerLoadToken += 1;
 });
 document.getElementById("closeBackupManagerBtn").addEventListener("click", () => {
   if (!backupBusy) document.getElementById("backupManagerDialog").close();

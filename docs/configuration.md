@@ -23,6 +23,7 @@ DB_NAME=t12_exams
 DB_USER=t12_app
 DB_PASSWORD=
 DB_SSL=false
+DB_STATEMENT_TIMEOUT_MS=15000
 T12_NOTIFICATION_WORKER_ENABLED=false
 T12_NOTIFICATION_CHANNELS=feishu
 T12_DINGTALK_MESSAGE_APP_KEY=
@@ -40,6 +41,8 @@ T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD=0
 T12_PUBLIC_BASE_URL=https://exam.t12group.com
 T12_NOTIFICATION_NOT_BEFORE=
 ```
+
+`DB_STATEMENT_TIMEOUT_MS` 是单条 PostgreSQL 查询的最长执行时间，默认 15 秒，范围为 1 到 120 秒。它用于避免异常查询让公网请求一直等待到代理超时；超时会由接口转换为受限的服务不可用提示，不会自动修改或删除数据库数据。
 
 飞书登录回调地址为 `https://exam.t12group.com/auth/feishu/callback`。飞书应用需要启用网页 OAuth 登录，并将该地址添加到应用的重定向 URL；服务器域名白名单按飞书开放平台页面要求填写 `exam.t12group.com`。登录接口必须返回员工真实姓名 `name`，系统不会用飞书昵称或英文昵称自动合并身份。
 

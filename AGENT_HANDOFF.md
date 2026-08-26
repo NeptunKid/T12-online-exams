@@ -1,17 +1,17 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-25
+更新时间：2026-08-26
 项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
 GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 生产域名：`https://exam.t12group.com/`
 
 本文是后续 Agent 的接手入口。它汇总当前架构、已经完成的开发、验证结果、生产操作约束和未确认事项。遇到本文与用户本轮明确指令冲突时，以用户指令和项目 `AGENTS.md` 为准。
 
-## 当前状态快照（2026-08-25）
+## 当前状态快照（2026-08-26）
 
 - 核心业务闭环已完成并在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目图片和答案规则、`.t12backup` 导入导出、自动备份、考试授权、阅卷和飞书/钉钉成绩通知。
 - 用户确认生产版本 `c80cb83` 的飞书通讯录同步成功；钉钉和飞书通知均已实际收到。生产迁移已确认执行 `0001` 至 `0012` 共 12 条，迁移校验和见 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
-- 本机质量门：`npm test` 354 项通过，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 通过。当前分支 `codex/dingtalk-notification-transport`；业务代码基线到 `70582d7`，其后的提交只更新服务器总账或项目进度文档。当前文档提交 SHA 请在本机用 `git log -1 --oneline` 查询。
+- 本机质量门：本轮 `npm test` 360 项通过，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 通过。当前分支 `codex/dingtalk-notification-transport`，本轮加载超时修复尚未提交。当前提交 SHA 请在本机用 `git log -1 --oneline` 查询。
 - 服务器已完成 SSH 最小权限加固：`PermitRootLogin no`，新 `admin + sudo` 会话验证成功。阿里云安全组收紧、nftables/UFW 仍未执行，必须先确认 Workbench 管理入口。
 - 下一轮优先做通知 Worker 监控与告警，不改变考试、题库、答卷和历史成绩模型；其次是外部对象存储/恢复演练、通讯录差异同步、定期跨设备回归和飞书总结自动化。
 - 完整进度快照：`docs/development-summary/2026-08-25-project-progress.md`。
@@ -27,6 +27,22 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 - GitHub 网络操作容易卡顿。用户已明确：`git push`、`gh pr create`、PR 检查和合并优先由用户在本机终端执行；连接异常时停止重试并请用户协助。
 - 每条服务器命令必须标明执行位置（本机终端、阿里云 Workbench、GitHub 页面或飞书）。
 - 每次 PR 合并后的生产部署统一按 `docs/production-deployment-runbook.md` 执行；其中固定包含版本确认、`pg_dump -Fc`、以 `codexdeploy` 拉取/安装、迁移、重启、健康检查和人工验收。
+
+## 2026-08-26 加载超时故障接手说明
+
+- 管理员用户列表如果在关闭对话框后仍显示“正在载入用户”，优先确认浏览器实际加载了 `admin.js?v=20260826-2`，再检查 `/api/admin/users` 的日志和数据库活动；新代码会在 15 秒后显示错误，不会无限等待。
+- 考生首页持续加载时，优先确认 `exam.js?v=20260826-2`，再检查 `/api/exams/dashboard`、`/api/student/dashboard`、`/api/auth/config` 和 `/api/auth/me` 的响应及服务日志。新代码会显示超时或 HTTP 状态，不会静默卡住。
+- 通知页的 `-- / 通知状态读取中` 表示接口尚未成功返回；只有接口成功后显示的数字才可用于验收。生产排查只读命令：
+
+```bash
+sudo systemctl is-active t12-exams
+curl --max-time 10 -i http://127.0.0.1:3001/healthz
+sudo journalctl -u t12-exams --since "问题开始时间" --until "当前时间" -o cat --no-pager
+sudo -u postgres psql -d t12_exams -P pager=off -c "SELECT status, COUNT(*) AS task_count FROM notifications GROUP BY status ORDER BY status;"
+sudo -u postgres psql -d t12_exams -P pager=off -c "SELECT pid, state, wait_event_type, wait_event, now() - query_start AS query_age, left(query, 160) AS query FROM pg_stat_activity WHERE datname = 't12_exams' ORDER BY query_start;"
+```
+
+不要输出 `.env`、凭证、原始收件人标识或答卷内容；不要为了验证通知数量删除或重置通知任务。
 
 ## 二、当前 Git 与工作树
 

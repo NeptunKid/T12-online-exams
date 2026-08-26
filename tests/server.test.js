@@ -77,6 +77,13 @@ test("健康检查不暴露配置或凭证", () => {
   assert.deepEqual(healthStatus(), { status: "ok", service: "t12-online-exams" });
 });
 
+test("PostgreSQL 查询设置有限超时，避免请求无限等待", () => {
+  const { poolConfigFromEnv } = require("../src/db/postgres-client");
+  const base = { DB_HOST: "127.0.0.1", DB_PORT: "5432", DB_NAME: "t12_exams", DB_USER: "t12_app", DB_PASSWORD: "secret" };
+  assert.equal(poolConfigFromEnv(base).statement_timeout, 15000);
+  assert.throws(() => poolConfigFromEnv({ ...base, DB_STATEMENT_TIMEOUT_MS: "100" }), /DB_STATEMENT_TIMEOUT_MS/);
+});
+
 test("静态题目图片响应使用文件真实 MIME 而不是错误扩展名", () => {
   const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "../server.js"), "utf8");
   assert.match(source, /resolved\.startsWith\(path\.join\(PUBLIC_DIR, "question-resources"\)/);

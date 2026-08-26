@@ -14,7 +14,7 @@ test("管理员后台提供独立试卷组卷入口和弹窗", () => {
   assert.match(html, /id="examAuthoringList"/);
   assert.match(html, /id="examAuthoringEditor"/);
   assert.match(script, /document\.getElementById\("manageExamsBtn"\)\.addEventListener\("click", openExamAuthoring\)/);
-  assert.match(html, /\/admin\.js\?v=20260822-4/);
+  assert.match(html, /\/admin\.js\?v=20260826-2/);
 });
 
 test("组卷界面读取试卷列表并开放已发布版本编辑", () => {
@@ -95,7 +95,7 @@ test("管理员 API 错误保留 JSON 详情并显示非 JSON HTTP 状态", () =
   assert.match(script, /const responseText = await res\.text\(\)/);
   assert.match(script, /JSON\.parse\(responseText\)/);
   assert.match(script, /请求失败（HTTP \$\{res\.status\}）/);
-  assert.match(html, /admin\.js\?v=20260822-4/);
+  assert.match(html, /admin\.js\?v=20260826-2/);
 });
 
 test("发布前会提示保存尚未保存的题目和分值修改", () => {
