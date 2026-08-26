@@ -346,3 +346,9 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 已在生产设置 `T12_AUTO_BACKUP_ENABLED=false`，删除 `portable/` 中全部自动工件、所有 scheduled `backup_runs` 和 `backup_artifacts`；没有删除题库、试卷、答卷、用户、通知或审计数据。
 - 服务器仅保留 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump` 这一份完整 PostgreSQL dump，已用 `test -s` 和 `pg_restore -l` 验证。用户尚未配置本机 SSH 下载密钥，因此不要为下载而降低 SSH 安全策略。
 - 下一步：在独立小迭代中重构自动备份启动行为并补充测试；在该迭代完成前，不要重新启用自动备份或手动运行全量自动备份。
+
+### 2026-08-26 自动备份重启安全改造（待合并）
+
+- 当前工作区在既有 `backup_runs` 表上新增定时系统周期记录：服务重启后会先查询最近一次成功周期，若尚未到配置间隔则跳过，不再无条件全量打包。
+- 新增 `T12_AUTO_BACKUP_STALE_AFTER_MINUTES`（默认 120）收敛重启遗留的定时 `running` 记录，新增 `T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS`（默认 30）在定时对象间节流；手动“立即运行”不等待，导入/导出不变。
+- 无迁移、无生产写入、无自动备份重新启用。本机自动备份聚焦测试 24 项及语法检查通过；完整质量门、提交、PR 和用户部署验收待执行。生产配置仍须保持 `T12_AUTO_BACKUP_ENABLED=false`。

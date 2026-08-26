@@ -48,6 +48,8 @@ test("自动备份显示公开状态、支持立即运行和下载历史工件",
   assert.match(script, /api\("\/api\/admin\/backups\/automation\/run", \{ method: "POST", body: "\{\}" \}\)/);
   assert.match(script, /\/api\/admin\/backups\/artifacts\/\$\{encodeURIComponent\(artifactId\)\}/);
   assert.match(script, /stored-backup-download-btn/);
+  assert.match(script, /定时备份周期/);
+  assert.match(script, /系统周期/);
   assert.doesNotMatch(script, /storageKey/);
 });
 

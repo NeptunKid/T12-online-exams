@@ -24,14 +24,19 @@ T12_AUTO_BACKUP_STORAGE=database
 T12_AUTO_BACKUP_INTERVAL_HOURS=24
 T12_AUTO_BACKUP_RETENTION=7
 T12_AUTO_BACKUP_START_DELAY_SECONDS=60
+T12_AUTO_BACKUP_STALE_AFTER_MINUTES=120
+T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS=30
 T12_AUTO_BACKUP_DIR=/var/backups/t12-online-exams/portable
 ```
 
 - `T12_AUTO_BACKUP_STORAGE`：`database` 或 `filesystem`。
 - `T12_AUTO_BACKUP_INTERVAL_HOURS`：1 到 720。
 - `T12_AUTO_BACKUP_RETENTION`：每个题库或试卷保留最近 1 到 30 份成功工件。
+- `T12_AUTO_BACKUP_STALE_AFTER_MINUTES`：定时运行超过该分钟数仍未结束时，下一次获得调度锁的服务会将其标记为失败；范围为 5 到 720，默认 120。
+- `T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS`：仅定时运行时，两个题库/试卷对象之间的等待秒数；范围为 0 到 3600，默认 30。手动“立即运行”不等待。
 - 单个可移植包延续 v1 的 200MB 上传限制，图片正文合计最多 100MB。
-- 进程启动后会等待配置的启动延迟，再执行首次定时备份；PostgreSQL advisory lock 会阻止多个应用实例重复运行。
+- 进程启动后会等待配置的启动延迟，再读取最近一次成功的定时系统周期：未到周期时不生成工件，并只在剩余间隔后再检查；PostgreSQL advisory lock 会阻止多个应用实例重复运行。
+- 每个实际定时循环都有无工件的系统周期记录。只有所有对象成功时才完成该周期，因此重启不会把一次部分失败误认为完整备份成功。
 
 管理员可在“备份与迁移”窗口查看运行状态、立即触发一次自动备份以及下载成功的历史工件。立即运行不会覆盖现有数据；恢复时仍通过普通“一键导入”生成新的草稿副本。
 

@@ -4,9 +4,12 @@ const test = require("node:test");
 const { listMigrations } = require("../scripts/migrate");
 const {
   applyBackupRetention,
+  completeScheduledBackupCycle,
   completeBackupRun,
   createBackupRun,
   failBackupRun,
+  failStaleScheduledBackupRuns,
+  getLatestSuccessfulScheduledCycle,
   getBackupArtifact,
   listRecentBackupRuns,
   normalizeArtifact,
@@ -174,6 +177,39 @@ test("成功运行必须存在工件，失败运行保存受限错误文本", as
   const failed = await failBackupRun(harness.pool, "run-1", new Error("disk full"));
   assert.equal(failed.status, "failed");
   assert.equal(failed.errorMessage, "disk full");
+});
+
+test("定时系统周期可在没有工件时完成，其他运行仍保持工件保护", async () => {
+  const harness = transactionalClient((sql, params) => {
+    if (sql.includes("SELECT status, scope_type, trigger_type")) {
+      return { rows: [{ status: "running", scope_type: "system", trigger_type: "scheduled" }] };
+    }
+    if (sql.includes("UPDATE backup_runs")) return { rows: [{
+      id: "cycle-1", scope_type: "system", scope_id: "", trigger_type: "scheduled",
+      status: "succeeded", requested_by: null, started_at: new Date(), completed_at: new Date(), error_message: null
+    }] };
+    return { rows: [] };
+  });
+  assert.equal((await completeScheduledBackupCycle(harness.pool, "cycle-1")).status, "succeeded");
+  assert.match(harness.calls.find((call) => call.sql.includes("UPDATE backup_runs")).sql, /status = 'succeeded'/);
+});
+
+test("最近成功周期和过期定时运行查询均只操作定时任务", async () => {
+  const calls = [];
+  const pool = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes("SELECT id, completed_at")) return { rows: [{ id: "cycle-1", completed_at: new Date("2026-08-11T00:00:00Z") }] };
+    return { rows: [{ id: "stale-1" }] };
+  } };
+  const latest = await getLatestSuccessfulScheduledCycle(pool);
+  assert.equal(latest.id, "cycle-1");
+  const stale = await failStaleScheduledBackupRuns(pool, { staleBefore: "2026-08-11T01:00:00Z" });
+  assert.deepEqual(stale, ["stale-1"]);
+  assert.match(calls[0].sql, /scope_type = 'system'/);
+  assert.match(calls[0].sql, /trigger_type = 'scheduled'/);
+  assert.match(calls[1].sql, /status = 'running'/);
+  assert.match(calls[1].sql, /trigger_type = 'scheduled'/);
+  assert.equal(calls[1].params[0].toISOString(), "2026-08-11T01:00:00.000Z");
 });
 
 test("最近运行查询使用参数化范围和上限并映射工件元数据", async () => {
