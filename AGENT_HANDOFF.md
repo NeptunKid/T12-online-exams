@@ -9,11 +9,12 @@ GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
 
 ## 当前状态快照（2026-08-26）
 
-- 核心业务闭环已完成并在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目图片和答案规则、`.t12backup` 导入导出、自动备份、考试授权、阅卷和飞书/钉钉成绩通知。
+- 核心业务闭环已完成并在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目图片和答案规则、`.t12backup` 导入导出、考试授权、阅卷和飞书/钉钉成绩通知。自动逻辑备份功能保留在代码中，但生产目前暂停。
 - 用户确认生产版本 `c80cb83` 的飞书通讯录同步成功；钉钉和飞书通知均已实际收到。生产迁移已确认执行 `0001` 至 `0012` 共 12 条，迁移校验和见 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
 - 本机质量门：本轮 `npm test` 360 项通过，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 通过。当前分支 `codex/dingtalk-notification-transport`，本轮加载超时修复尚未提交。当前提交 SHA 请在本机用 `git log -1 --oneline` 查询。
 - 服务器已完成 SSH 最小权限加固：`PermitRootLogin no`，新 `admin + sudo` 会话验证成功。阿里云安全组收紧、nftables/UFW 仍未执行，必须先确认 Workbench 管理入口。
-- 下一轮优先做通知 Worker 监控与告警，不改变考试、题库、答卷和历史成绩模型；其次是外部对象存储/恢复演练、通讯录差异同步、定期跨设备回归和飞书总结自动化。
+- 2026-08-26 已清理自动逻辑备份导致的 IOPS 事故：`T12_AUTO_BACKUP_ENABLED=false`，`portable/` 和 scheduled 运行记录已清空。服务器当前唯一完整恢复点为 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump`，已完成非空和 `pg_restore -l` 校验。不得删除此文件，直到下一份完整 dump 已生成并校验。
+- 下一轮优先做通知 Worker 监控与告警，不改变考试、题库、答卷和历史成绩模型；自动备份必须先完成“重启不重复全量运行、过期运行收敛、节流和异地存储/低峰调度”的独立改造，才可重新启用。之后是通讯录差异同步、定期跨设备回归和飞书总结自动化。
 - 完整进度快照：`docs/development-summary/2026-08-25-project-progress.md`。
 
 ## 一、不可违反的约束
@@ -338,3 +339,10 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 当前工作区新增只读通知队列监控：统计待发送、失败、已放弃和陈旧 `processing` 任务，并在管理员通知页显示具体阈值告警。
 - 新增 `T12_NOTIFICATION_PENDING_ALERT_THRESHOLD`（默认 25）、`T12_NOTIFICATION_FAILED_ALERT_THRESHOLD`（默认 0）和 `T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD`（默认 0）；processing 陈旧窗口沿用 `T12_NOTIFICATION_STALE_AFTER_SECONDS`。
 - 无数据库迁移、无生产写入、无新 Secret；监控不改变入队、发送、重试或 `/readyz`。本机质量门通过后，按用户本机终端创建 PR，合并后再由用户按固定流程备份、拉取、重启和验收。
+
+### 2026-08-26 生产自动备份暂停与空间清理
+
+- 阿里云云盘 IOPS 超上限的直接原因是自动逻辑备份：服务每次重启后的启动延迟都会触发全量题库/试卷打包，8 月 26 日多次重启后产生约 879MB portable 工件，并伴随高读写。通知 Worker 的 pending 历史任务没有重试，不是本次根因。
+- 已在生产设置 `T12_AUTO_BACKUP_ENABLED=false`，删除 `portable/` 中全部自动工件、所有 scheduled `backup_runs` 和 `backup_artifacts`；没有删除题库、试卷、答卷、用户、通知或审计数据。
+- 服务器仅保留 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump` 这一份完整 PostgreSQL dump，已用 `test -s` 和 `pg_restore -l` 验证。用户尚未配置本机 SSH 下载密钥，因此不要为下载而降低 SSH 安全策略。
+- 下一步：在独立小迭代中重构自动备份启动行为并补充测试；在该迭代完成前，不要重新启用自动备份或手动运行全量自动备份。
