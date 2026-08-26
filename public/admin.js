@@ -258,6 +258,7 @@ function renderBackupCatalog() {
 }
 
 function backupScopeLabel(run) {
+  if (run.scopeType === "system") return "定时备份周期";
   if (run.scopeType === "exam") {
     return backupCatalog.exams.find((item) => item.id === run.scopeId)?.title || run.scopeId;
   }
@@ -293,7 +294,7 @@ function renderBackupAutomation() {
     <div class="backup-run-row">
       <div class="backup-run-main">
         <strong>${esc(backupScopeLabel(run))}</strong>
-        <span class="brand-sub">${run.scopeType === "exam" ? "试卷" : "题库"} · ${fmtTime(run.startedAt)}</span>
+        <span class="brand-sub">${run.scopeType === "system" ? "系统周期" : run.scopeType === "exam" ? "试卷" : "题库"} · ${fmtTime(run.startedAt)}</span>
         ${run.errorMessage ? `<span class="backup-run-error">${esc(run.errorMessage)}</span>` : ""}
       </div>
       <span class="badge ${run.status === "succeeded" ? "graded" : run.status === "failed" ? "danger" : "pending"}">${run.status === "succeeded" ? "成功" : run.status === "failed" ? "失败" : "运行中"}</span>

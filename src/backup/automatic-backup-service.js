@@ -50,7 +50,8 @@ function createAutomaticBackupService({
   filesystemStorage,
   logger = console,
   now = () => new Date(),
-  timers = { setTimeout, clearTimeout }
+  timers = { setTimeout, clearTimeout },
+  sleep = (milliseconds) => new Promise((resolve) => timers.setTimeout(resolve, milliseconds))
 }) {
   const filesystemReader = filesystemStorage || createFilesystemBackupStorage(config.directory);
   const storage = config.storageType === "filesystem" ? filesystemReader : null;
@@ -59,6 +60,12 @@ function createAutomaticBackupService({
   let nextRunAt = null;
   let lastSummary = null;
   let currentPromise = null;
+
+  function nextScheduledDelay(lastCycle) {
+    const completedAt = lastCycle?.completedAt ? new Date(lastCycle.completedAt) : null;
+    if (!completedAt || Number.isNaN(completedAt.getTime())) return 0;
+    return Math.max(0, completedAt.getTime() + config.intervalMs - now().getTime());
+  }
 
   async function saveScope(pool, scope, triggerType, requestedBy) {
     const run = await repository.createBackupRun(pool, {
@@ -101,14 +108,45 @@ function createAutomaticBackupService({
     if (!pool) throw new AutomaticBackupError("自动备份数据库尚未配置");
     const lockClient = await pool.connect();
     let locked = false;
+    let cycle = null;
     const startedAt = now();
     try {
       const lock = await lockClient.query("SELECT pg_try_advisory_lock($1::bigint) AS acquired;", [BACKUP_ADVISORY_LOCK]);
       locked = lock.rows[0]?.acquired === true;
       if (!locked) throw new AutomaticBackupError("已有自动备份正在其他实例运行", 409);
+      if (triggerType === "scheduled") {
+        const staleBefore = new Date(now().getTime() - config.staleAfterMs);
+        const staleRunIds = await repository.failStaleScheduledBackupRuns(pool, { staleBefore });
+        if (staleRunIds.length) logger.warn?.(`已收敛 ${staleRunIds.length} 个超时的定时备份运行`);
+        const latestCycle = await repository.getLatestSuccessfulScheduledCycle(pool);
+        const delay = nextScheduledDelay(latestCycle);
+        if (delay > 0) {
+          lastSummary = {
+            triggerType,
+            skipped: true,
+            reason: "scheduled-backup-not-due",
+            startedAt: now().toISOString(),
+            completedAt: now().toISOString(),
+            nextRunDelayMs: delay,
+            total: 0,
+            succeeded: 0,
+            failed: 0
+          };
+          return lastSummary;
+        }
+      }
+
+      cycle = triggerType === "scheduled"
+        ? await repository.createBackupRun(pool, { scopeType: "system", scopeId: "", triggerType, requestedBy: null })
+        : null;
       const scopes = await listScopes(pool);
       const results = [];
-      for (const scope of scopes) results.push(await saveScope(pool, scope, triggerType, requestedBy));
+      for (const [index, scope] of scopes.entries()) {
+        results.push(await saveScope(pool, scope, triggerType, requestedBy));
+        if (triggerType === "scheduled" && config.scopeDelayMs > 0 && index < scopes.length - 1) {
+          await sleep(config.scopeDelayMs);
+        }
+      }
       const retention = await repository.applyBackupRetention(pool, { keepLatest: config.retentionCount });
       let cleanupFailed = 0;
       if (config.storageType === "filesystem") {
@@ -123,6 +161,13 @@ function createAutomaticBackupService({
       }
       const succeeded = results.filter((item) => item.status === "succeeded").length;
       const failed = results.length - succeeded;
+      if (cycle) {
+        if (failed) {
+          await repository.failBackupRun(pool, cycle.id, `${failed} 个对象备份失败`);
+        } else {
+          await repository.completeScheduledBackupCycle(pool, cycle.id);
+        }
+      }
       lastSummary = {
         triggerType,
         startedAt: startedAt.toISOString(),
@@ -130,9 +175,13 @@ function createAutomaticBackupService({
         total: results.length,
         succeeded,
         failed,
-        cleanupFailed
+        cleanupFailed,
+        ...(triggerType === "scheduled" ? { nextRunDelayMs: config.intervalMs } : {})
       };
       return lastSummary;
+    } catch (error) {
+      if (cycle) await repository.failBackupRun(pool, cycle.id, compactError(error)).catch(() => {});
+      throw error;
     } finally {
       if (locked) await lockClient.query("SELECT pg_advisory_unlock($1::bigint);", [BACKUP_ADVISORY_LOCK]).catch(() => {});
       lockClient.release();
@@ -172,7 +221,9 @@ function createAutomaticBackupService({
       timer = null;
       nextRunAt = null;
       try { begin("scheduled", null); } catch (error) { logger.error?.(`自动备份未启动：${compactError(error)}`); }
-      Promise.resolve(currentPromise).catch(() => {}).finally(() => schedule(config.intervalMs));
+      Promise.resolve(currentPromise).catch(() => {}).then((summary) => {
+        schedule(summary?.nextRunDelayMs ?? config.intervalMs);
+      });
     }, delay);
     timer?.unref?.();
   }

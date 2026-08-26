@@ -4,6 +4,8 @@
 
 2026-08-26 [Codex] 生产自动逻辑备份已暂停并完成空间清理。根因是服务每次重启后会在启动延迟后触发一次全量题库/试卷 `.t12backup` 循环，多次重启叠加产生约 879MB 工件和高磁盘读写，触发阿里云云盘 IOPS 限流；通知 Worker 不是根因。已设置 `T12_AUTO_BACKUP_ENABLED=false`，清空 portable 工件及 scheduled 运行记录，未删除任何业务数据。服务器仅保留并已验证 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump`；后续完整 dump 成功校验前不得删除。自动备份需先重构为重启不重复运行、过期任务收敛、节流及异地/低峰策略后才可重新启用。
 
+2026-08-26 [Codex] 完成自动备份重启安全改造（待质量门/PR）：定时任务在 advisory lock 内查询最近成功的系统周期，未到间隔时跳过并按剩余时间重查；每次实际定时循环写入无工件的系统周期记录，只有全部对象成功才完成。新增可配置 `T12_AUTO_BACKUP_STALE_AFTER_MINUTES`（默认 120）收敛遗留运行，以及 `T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS`（默认 30）降低对象间 IOPS 峰值；手动立即运行、导出和导入逻辑保持不变。无迁移、无生产写入，生产仍保持自动备份关闭。
+
 2026-08-25 [Codex] 更新当前总进度：Phase 0-4 核心闭环已完成并在生产验收，包含双平台登录/RBAC/同名人工合并、题库与试卷生命周期和整体组卷保存、备份导入导出、飞书/钉钉通知、考试授权及组织通讯录同步。用户确认生产 `c80cb83` 的飞书通讯录同步成功，钉钉和飞书通知均已实测成功；本机 `npm test` 354 项通过，语法、敏感信息和 diff 检查通过。下一优先级是通知 Worker 监控告警、外部对象存储和恢复演练、通讯录差异同步、定期跨设备回归及飞书总结自动化。最新完整摘要见 `docs/development-summary/2026-08-25-project-progress.md`；服务器软件、迁移和 SSH 状态见 Codex 根目录唯一总账 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
 
 2026-08-26 [Codex] 开始通知 Worker 监控步骤：新增只读监控纯函数与阈值配置，通知列表统计带出状态最早时间，管理员页显示积压、失败、已放弃和陈旧 processing 告警；不改变通知发送/重试、数据库结构或 `/readyz`。待本机质量门和用户 PR/生产验收。

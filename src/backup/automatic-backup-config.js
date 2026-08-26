@@ -26,6 +26,8 @@ function loadAutomaticBackupConfig(env = process.env, root = path.join(__dirname
   const intervalHours = integerValue(env.T12_AUTO_BACKUP_INTERVAL_HOURS, 24, "T12_AUTO_BACKUP_INTERVAL_HOURS", 1, 720);
   const retentionCount = integerValue(env.T12_AUTO_BACKUP_RETENTION, 7, "T12_AUTO_BACKUP_RETENTION", 1, 30);
   const startDelaySeconds = integerValue(env.T12_AUTO_BACKUP_START_DELAY_SECONDS, 60, "T12_AUTO_BACKUP_START_DELAY_SECONDS", 5, 3600);
+  const staleAfterMinutes = integerValue(env.T12_AUTO_BACKUP_STALE_AFTER_MINUTES, 120, "T12_AUTO_BACKUP_STALE_AFTER_MINUTES", 5, 720);
+  const scopeDelaySeconds = integerValue(env.T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS, 30, "T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS", 0, 3600);
   const configuredDirectory = String(env.T12_AUTO_BACKUP_DIR || "").trim();
   const directory = configuredDirectory || path.join(root, "data", "automatic-backups");
   if (storageType === "filesystem" && !path.isAbsolute(directory)) {
@@ -39,6 +41,10 @@ function loadAutomaticBackupConfig(env = process.env, root = path.join(__dirname
     retentionCount,
     startDelaySeconds,
     startDelayMs: startDelaySeconds * 1000,
+    staleAfterMinutes,
+    staleAfterMs: staleAfterMinutes * 60 * 1000,
+    scopeDelaySeconds,
+    scopeDelayMs: scopeDelaySeconds * 1000,
     directory: path.resolve(directory)
   };
 }
@@ -48,7 +54,9 @@ function publicAutomaticBackupConfig(config) {
     enabled: Boolean(config.enabled),
     storageType: config.storageType,
     intervalHours: config.intervalHours,
-    retentionCount: config.retentionCount
+    retentionCount: config.retentionCount,
+    staleAfterMinutes: config.staleAfterMinutes,
+    scopeDelaySeconds: config.scopeDelaySeconds
   };
 }
 

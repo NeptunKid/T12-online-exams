@@ -217,6 +217,63 @@ async function failBackupRun(pool, runId, error) {
   return finishRun(pool, runId, "failed", message);
 }
 
+async function completeScheduledBackupCycle(pool, runId) {
+  const normalizedRunId = nonEmpty(runId, "备份运行标识");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const run = await client.query(
+      "SELECT status, scope_type, trigger_type FROM backup_runs WHERE id = $1 FOR UPDATE;",
+      [normalizedRunId]
+    );
+    if (!run.rows.length) throw new BackupRepositoryError("未找到备份运行", 404);
+    const current = run.rows[0];
+    if (current.status !== "running") throw new BackupRepositoryError("备份运行已经结束", 409);
+    if (current.scope_type !== "system" || current.trigger_type !== "scheduled") {
+      throw new BackupRepositoryError("只有定时系统备份周期可以无工件完成", 409);
+    }
+    const result = await client.query(`
+      UPDATE backup_runs
+      SET status = 'succeeded', completed_at = CURRENT_TIMESTAMP, error_message = NULL
+      WHERE id = $1
+      RETURNING id, scope_type, scope_id, trigger_type, status, requested_by,
+        started_at, completed_at, error_message;`, [normalizedRunId]);
+    await client.query("COMMIT");
+    return mapRun(result.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function getLatestSuccessfulScheduledCycle(pool) {
+  const result = await pool.query(`
+    SELECT id, completed_at
+    FROM backup_runs
+    WHERE scope_type = 'system'
+      AND trigger_type = 'scheduled'
+      AND status = 'succeeded'
+    ORDER BY completed_at DESC, id DESC
+    LIMIT 1;`);
+  if (!result.rows.length) return null;
+  return { id: result.rows[0].id, completedAt: result.rows[0].completed_at };
+}
+
+async function failStaleScheduledBackupRuns(pool, input = {}) {
+  const staleBefore = normalizeDate(input.staleBefore, "定时备份过期时间");
+  const errorMessage = nonEmpty(input.errorMessage || "定时备份运行超时，已自动标记失败", "备份失败原因").slice(0, 2000);
+  const result = await pool.query(`
+    UPDATE backup_runs
+    SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error_message = $2
+    WHERE trigger_type = 'scheduled'
+      AND status = 'running'
+      AND started_at < $1
+    RETURNING id;`, [staleBefore, errorMessage]);
+  return result.rows.map((row) => row.id);
+}
+
 async function listRecentBackupRuns(pool, input = {}) {
   const limit = normalizePositiveInteger(input.limit ?? 50, "查询数量", 200);
   const params = [];
@@ -314,9 +371,12 @@ module.exports = {
   BACKUP_TRIGGER_TYPES,
   BackupRepositoryError,
   applyBackupRetention,
+  completeScheduledBackupCycle,
   completeBackupRun,
   createBackupRun,
   failBackupRun,
+  failStaleScheduledBackupRuns,
+  getLatestSuccessfulScheduledCycle,
   getBackupArtifact,
   listRecentBackupRuns,
   mapArtifact,
