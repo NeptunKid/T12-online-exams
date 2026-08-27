@@ -358,3 +358,9 @@ sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
 - 新增提供商无关的对象存储契约和内存模拟器，覆盖 `putObject`、`getObject`、`deleteObject`、受控键、禁止覆盖、大小/SHA-256 校验和删除幂等。
 - 本轮没有连接 OSS/S3/R2、没有安装 SDK、没有创建 Bucket、没有产生费用、没有迁移或生产写入；生产自动备份仍保持关闭。
 - 只有在用户确认供应商、区域、私有权限、生命周期和预算后，才实现真实云适配器及隔离恢复演练。
+
+### 2026-08-27 接入指南整理
+
+- 新增 `docs/dingtalk-feishu-integration-guide.md`，整理钉钉/飞书应用创建、OAuth 回调、通讯录权限、消息能力、Secret 保存、发布和真实验收流程。
+- 明确同一个钉钉应用可以同时承担 OAuth 登录和工作通知，但代码配置仍分开记录登录凭证与消息 AppKey/AppSecret/AgentId；飞书通讯录和消息权限必须开通并发布应用新版本。
+- 本轮只更新文档，无服务器配置变化、无数据库迁移、无生产写入、无第三方 API 调用。
