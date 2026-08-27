@@ -1,366 +1,97 @@
 # T12 在线考试后台追踪系统交接说明
 
-更新时间：2026-08-26
-项目目录：`$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
-GitHub：`git@github.com:NeptunKid/T12-online-exams.git`
+更新时间：2026-08-27
+项目目录：`/Users/neptun/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版`
+GitHub：`NeptunKid/T12-online-exams`
 生产域名：`https://exam.t12group.com/`
 
-本文是后续 Agent 的接手入口。它汇总当前架构、已经完成的开发、验证结果、生产操作约束和未确认事项。遇到本文与用户本轮明确指令冲突时，以用户指令和项目 `AGENTS.md` 为准。
+本文是后续 Agent 的快速接手入口。详细历史放在 `docs/development-summary/`；生产步骤以 `docs/production-deployment-runbook.md` 为准；共享服务器以 Codex 根目录的 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md` 为唯一总账。发生冲突时，以用户当前指令和项目 `AGENTS.md` 为准。
 
-## 当前状态快照（2026-08-26）
+## 1. 当前状态
 
-- 核心业务闭环已完成并在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目图片和答案规则、`.t12backup` 导入导出、考试授权、阅卷和飞书/钉钉成绩通知。自动逻辑备份功能保留在代码中，但生产目前暂停。
-- 用户确认生产版本 `c80cb83` 的飞书通讯录同步成功；钉钉和飞书通知均已实际收到。生产迁移已确认执行 `0001` 至 `0012` 共 12 条，迁移校验和见 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
-- 本机质量门：本轮 `npm test` 360 项通过，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 通过。当前分支 `codex/dingtalk-notification-transport`，本轮加载超时修复尚未提交。当前提交 SHA 请在本机用 `git log -1 --oneline` 查询。
-- 服务器已完成 SSH 最小权限加固：`PermitRootLogin no`，新 `admin + sudo` 会话验证成功。阿里云安全组收紧、nftables/UFW 仍未执行，必须先确认 Workbench 管理入口。
-- 2026-08-26 已清理自动逻辑备份导致的 IOPS 事故：`T12_AUTO_BACKUP_ENABLED=false`，`portable/` 和 scheduled 运行记录已清空。服务器当前唯一完整恢复点为 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump`，已完成非空和 `pg_restore -l` 校验。不得删除此文件，直到下一份完整 dump 已生成并校验。
-- 下一轮优先做通知 Worker 监控与告警，不改变考试、题库、答卷和历史成绩模型；自动备份必须先完成“重启不重复全量运行、过期运行收敛、节流和异地存储/低峰调度”的独立改造，才可重新启用。之后是通讯录差异同步、定期跨设备回归和飞书总结自动化。
-- 完整进度快照：`docs/development-summary/2026-08-25-project-progress.md`。
+- 核心业务已在生产验收：钉钉/飞书登录、RBAC、同名账号人工合并、题库/试卷生命周期、整体组卷保存、题目及选项图片、答案规则、`.t12backup` 导入导出、考试授权、阅卷和钉钉/飞书通知。
+- 用户已确认生产版本 `c80cb83` 的飞书通讯录同步成功，钉钉/飞书通知均实测成功。生产数据库已执行迁移 `0001` 至 `0012`。
+- 生产架构和备份现状见服务器总账：Caddy + Node.js + PostgreSQL；自动逻辑备份当前关闭；服务器最多保留一份完整 PostgreSQL dump。
+- PR #72、PR #73 已合并。当前本地分支可能包含后续文档/备份开发提交；部署版本必须以用户确认的 `main` 合并 SHA 为准，不要按分支名猜测。
+- 最近本机质量门：`npm test` 368 项通过，语法检查、敏感信息扫描和 `git diff --check` 通过。
 
-## 一、不可违反的约束
+## 2. 不可违反的约束
 
-- 不修改 `$HOME/Documents/Codex/001_考试后台追踪系统` 和 `$HOME/Documents/Codex/002_考试后台追踪系统_钉钉登录版`。
-- 不删除、覆盖或重置 `data/submissions.json`；003 使用 PostgreSQL 和独立数据目录。
-- 不读取、输出或提交 `.env`、`/etc/t12-online-exams/t12-online-exams.env`、OAuth Secret、数据库密码、员工身份标识或答卷答案。
-- 生产 PostgreSQL 发生写入前先执行 `pg_dump -Fc`，并记录备份文件路径；身份合并仅能由系统管理员在后台执行，命令行脚本只允许 dry-run，禁止 `--apply`。
-- 历史答卷必须继续使用提交时保存的题目快照和评分依据。题库修改不得静默改变历史成绩。
-- 每次只推进一个可独立验证、可回滚的步骤，并记录修改文件、测试、风险、回滚和飞书同步状态。
-- GitHub 网络操作容易卡顿。用户已明确：`git push`、`gh pr create`、PR 检查和合并优先由用户在本机终端执行；连接异常时停止重试并请用户协助。
-- 每条服务器命令必须标明执行位置（本机终端、阿里云 Workbench、GitHub 页面或飞书）。
-- 每次 PR 合并后的生产部署统一按 `docs/production-deployment-runbook.md` 执行；其中固定包含版本确认、`pg_dump -Fc`、以 `codexdeploy` 拉取/安装、迁移、重启、健康检查和人工验收。
+- 不修改 `001_考试后台追踪系统` 和 `002_考试后台追踪系统_钉钉登录版`；003 不与它们共用数据库、答卷、资源或环境文件。
+- 不读取、输出或提交 `.env`、`/etc/t12-online-exams/t12-online-exams.env`、OAuth/消息 Secret、数据库密码、员工身份标识、答卷答案或通知正文。
+- 历史答卷使用提交时快照和评分依据；题库、试卷或答案修改不得静默改变历史成绩。
+- 生产数据库写入、迁移、身份合并或回导前，先执行 `pg_dump -Fc`，记录绝对路径、大小和 SHA-256，并保留回滚方案。
+- 删除优先软删除/归档；永久删除必须确认有效引用、备份和恢复路径。命令行身份整理脚本只允许 dry-run。
+- 每次只推进一个可验证、可回滚的步骤，并记录修改文件、测试、风险、回滚和文档同步状态。
+- 每条服务器命令必须标注执行位置。GitHub 网络卡顿时停止重复重试，交给用户本机终端处理；用户负责生产部署和真实桌面/手机验收。
 
-## 2026-08-26 加载超时故障接手说明
-
-- 管理员用户列表如果在关闭对话框后仍显示“正在载入用户”，优先确认浏览器实际加载了 `admin.js?v=20260826-2`，再检查 `/api/admin/users` 的日志和数据库活动；新代码会在 15 秒后显示错误，不会无限等待。
-- 考生首页持续加载时，优先确认 `exam.js?v=20260826-2`，再检查 `/api/exams/dashboard`、`/api/student/dashboard`、`/api/auth/config` 和 `/api/auth/me` 的响应及服务日志。新代码会显示超时或 HTTP 状态，不会静默卡住。
-- 通知页的 `-- / 通知状态读取中` 表示接口尚未成功返回；只有接口成功后显示的数字才可用于验收。生产排查只读命令：
-
-```bash
-sudo systemctl is-active t12-exams
-curl --max-time 10 -i http://127.0.0.1:3001/healthz
-sudo journalctl -u t12-exams --since "问题开始时间" --until "当前时间" -o cat --no-pager
-sudo -u postgres psql -d t12_exams -P pager=off -c "SELECT status, COUNT(*) AS task_count FROM notifications GROUP BY status ORDER BY status;"
-sudo -u postgres psql -d t12_exams -P pager=off -c "SELECT pid, state, wait_event_type, wait_event, now() - query_start AS query_age, left(query, 160) AS query FROM pg_stat_activity WHERE datname = 't12_exams' ORDER BY query_start;"
-```
-
-不要输出 `.env`、凭证、原始收件人标识或答卷内容；不要为了验证通知数量删除或重置通知任务。
-
-## 二、当前 Git 与工作树
-
-当前开发分支：`codex/dingtalk-notification-transport`；业务代码基线到 `70582d7`，其后的提交仅为服务器总账或项目进度文档提交。最新已部署生产的 `main` 提交以用户提供的现场记录为准：`c80cb83`。
-
-```text
-飞书通知 Worker Phase A 已合并并部署为 `a179c83`：`0011_notification_delivery_receipts` 已执行，生产服务 active，`/readyz` 和公网 `/healthz` 通过；Worker 保持关闭。
-部署前备份：`/var/backups/t12-online-exams/postgres/t12_exams-before-a179c83-20260818223352.dump`，3.3M，SHA-256 `def2fdf9c37419dab19f4a3d03d6d07d90abd89cc76bb1f8c1987d81eb610744`。
-生产验收确认原有 10 条 `submission.created` 与 2 条 `submission.graded` 仍为 pending，飞书未收到新消息。当前已完成通知弹窗响应式修复和成绩通知双向收件人调整；本分支新增钉钉工作通知 transport，无新迁移、无历史通知回填。钉钉生产启用前必须核对旧 pending 任务并在配置中提供独立消息应用凭证。
-新版题库备份已只读校验：`002 历史题库：清洁卫生入职培训考试-20260812.t12backup`，文件 SHA-256 `a79a3cf361e92bdc4c72c1c889a13816f0fba1c7bbd8be0ca05f3ded26bf7084`，1 题库/37 题/47 资源通过严格回导校验。
-```
-
-当前工作树的未跟踪文件是用户素材，不要删除、改名或提交：
-
-- `咖啡基础知识-题库.xlsx`
-- `餐饮相关法律法规-题库.xlsx`
-- `清洁卫生-题库-a20ba7c8-9386-4864-9ae8-c21671931165.xlsx`
-- `清洁卫生基础.xlsx`
-- `基础知识题库图片/`
-- `清洁卫生考试图片/`
-- `package_副本.json`
-
-`.env` 和 `.secrets/` 已被忽略，绝不能在命令输出或文档中展开内容。
-
-最新提交的纯文本同步修复尚未由本 Agent 核实是否已创建/合并 PR、是否已部署生产。不要假设已上线。
-
-本轮新增组织目录同步与发布前保存修复，详见 `docs/development-summary/2026-08-22-organization-directory-and-publish-fix.md`。新增迁移 `0012_organization_directory` 尚未在生产执行；生产部署前必须先创建 PostgreSQL `pg_dump -Fc`。当前质量门为 `npm test` 347 项通过、语法检查、敏感信息扫描和 `git diff --check` 通过。用户合并 PR 后，先按生产 runbook 部署，再由用户验收通讯录同步、部门授权和发布前保存提示。
-
-本轮后续修复已解决钉钉目录同步将 `unionid` 错当登录身份主键造成的唯一约束冲突，并将平台拒绝访问映射为不暴露凭证的权限提示；管理员同步面板已调整为响应式布局，`admin.js` 缓存版本为 `20260822-3`。进一步修复了钉钉 token 请求字段错误（改为 `appKey/appSecret`）及部门接口对象返回格式，质量门为 `npm test` 348 项通过。生产仍需在对应开放平台开通通讯录读取权限，并确认已执行迁移 `0012_organization_directory`。
-
-最新修复兼容飞书 `open_department_id` 字段并统一部门/人员请求的 ID 类型，避免飞书同步成功但显示 0/0；若平台返回空目录则明确提示权限/可见范围问题。质量门为 `npm test` 351 项通过。本修复仍待提交、PR、部署和真实飞书通讯录验收。
-
-随后补丁修复组织目录仓储将部门名称 `Map` 误当数组读取的问题；同步人员按第一个部门外部 ID 写入 `users.department`，并保留多部门关系。质量门仍为 `npm test` 351 项通过，尚未提交、PR 或部署。用户反馈的“请求失败”不能仅凭截图定性，部署前需在阿里云 Workbench 检查服务日志和 `0012_organization_directory` 迁移状态。
-
-最新诊断补丁将飞书/钉钉远程通讯录错误改为安全地保留平台错误码和短消息，前端可直接显示可操作原因；网络错误消息会脱敏并限制长度。新增 `docs/agent-development-handbook.md` 作为同类项目复用手册，并同步写入 `AGENTS.md`。质量门为 `npm test` 352 项通过；本补丁尚未提交、PR、部署。部署后请用户再次点击飞书同步，把新的错误码/消息反馈回来。
-
-补丁同时让飞书部门同步在 `open_department_id` 被租户/API 版本拒绝时自动回退 `department_id`，并覆盖回归测试；最新质量门为 `npm test` 353 项通过。
-
-最新兜底诊断补丁修复前端吞掉非 JSON/空响应的问题，管理员现在会看到 `请求失败（HTTP 状态码）`；组织同步 handler 写入脱敏错误摘要，`admin.js` 缓存版本为 `20260822-4`。质量门为 `npm test` 354 项通过，尚未提交、PR 或部署。
-
-2026-08-23 生产日志确认飞书同步返回“未读取到部门或人员”，不是前端或迁移错误。最新补丁在部门树为空时向飞书人员接口显式传根部门 `department_id=0`，避免省略部门参数造成静默空结果；新增回归测试，尚未提交、PR 或部署。
-
-用户随后确认生产版本 `c80cb83` 的飞书通讯录同步成功。总进度摘要见 `docs/development-summary/2026-08-23-project-progress.md`；核心业务闭环已完成，下一优先级是通知 Worker 监控告警、外部备份存储/恢复演练、通讯录差异同步和定期跨设备回归。下一轮仍需遵循单步可回滚和生产部署 runbook。
-
-## 三、生产架构与环境
-
-生产服务器为阿里云东京 Ubuntu 24.04 轻量实例（2C/1G/30G，公网 IPv4 已配置）。当前架构：
+## 3. 生产架构与权限
 
 ```text
 Cloudflare DNS/代理
-  -> Caddy（公网 80/443，自动 HTTPS）
-  -> Node.js systemd 服务（127.0.0.1:3001）
+  -> Caddy（公网 80/443，HTTPS）
+  -> t12-exams.service（Node.js，127.0.0.1:3001）
   -> PostgreSQL 16（127.0.0.1:5432）
 ```
 
-- systemd 服务：`t12-exams.service`
-- 服务文件仓库位置：`deploy/t12-exams.service`
-- Caddy 配置仓库位置：`deploy/Caddyfile`
-- 生产代码目录：`/opt/t12-online-exams`
-- 生产配置文件：`/etc/t12-online-exams/t12-online-exams.env`（仅服务器读取）
-- 数据库：`t12_exams`，应用用户：`t12_app`，监听 `127.0.0.1:5432`
-- 健康检查：`https://exam.t12group.com/healthz`
-- 数据库就绪：`https://exam.t12group.com/readyz`
-
-成功标准是 `/readyz` 返回 `{"status":"ready","database":"ok"}`，且公网首页返回 HTTP 200。重启后首次本机 `curl 127.0.0.1:3001` 失败可能只是 Node 启动窗口，应继续轮询，不要立即判定故障。
-
-### 服务器权限规则
-
-仓库归 `codexdeploy` 所有，Workbench 当前常用登录用户可能是 `admin`。`safe.directory` 只能解决 Git 的 dubious ownership 检查，不能解决文件权限。生产更新应遵循：
-
-1. 以 `codexdeploy` 执行 Git 和 npm（包括 `npm ci`）。
-2. `admin` 只用 `sudo` 执行数据库迁移、systemd、Caddy 等系统操作。
-3. 若权限已被错误改变，先检查并恢复 `/opt/t12-online-exams` 的所有权，再运行 npm；不要用 `admin` 直接改写 `node_modules`。
-
-推荐的 Workbench 更新骨架（执行前先确认本次提交/PR 已合并）：
-
-```bash
-cd /opt/t12-online-exams
-sudo git config --global --add safe.directory /opt/t12-online-exams
-sudo -u codexdeploy -H git switch main
-sudo -u codexdeploy -H git pull --ff-only origin main
-sudo -u codexdeploy -H npm ci --omit=dev
-sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env /usr/bin/npm run migrate
-sudo systemctl restart t12-exams
-```
-
-最后用轮询检查 `/readyz`，再检查 `systemctl status --no-pager -l t12-exams caddy`。命令必须在阿里云 Workbench 执行，不是在本机 macOS 终端执行。
-
-## 四、已经完成的开发
-
-### Phase 0 / Sprint 1：工程和安全基线
-
-- 已创建 GitHub 仓库、`main`/`develop` 分支和 GitHub Actions 质量门。
-- 已建立 `.env.example`、敏感信息扫描、语法检查、单元测试和部署文档。
-- 已从 Tunnel 架构切换为阿里云公网服务器 + Caddy；生产域名端到端 HTTPS 已验收。
-- 已记录数据库备份/恢复流程、systemd/Caddy 配置和部署故障诊断。
-
-### Phase 1 / Sprint 2：PostgreSQL 多考试与历史迁移
-
-- PostgreSQL schema/migrations、考试/题目/用户/身份/答卷/快照/阅卷和审计边界已建立。
-- 旧版 JSON 答卷已备份并迁移；历史快照、成绩和状态保持兼容。
-- 考生工作台、考试读取、提交、个人记录和管理员阅卷已切换 PostgreSQL API。
-- 已补充填空题类型、自动判分和人工改分。
-
-### Phase 2 / Sprint 3：题库、图片和考试发布
-
-- 支持 CSV/XLSX 题库预览、校验、事务导入、幂等导入和受控题目/选项图片资源。
-- 题库按试卷/题库分类展示；管理员可手动录入单选、多选、判断、填空、问答题，并编辑题干、选项、参考答案和解析。
-- 空白的 `【】`、`「」`、`[]` 会在展示层转换为带下划线的空白；括号内有文字时不转换。
-- 题库修改会递增题目/考试版本、写入审计日志；历史答卷读取原快照。重新阅卷时会提示题目已修改或删除，并允许选择是否采用新版本。
-- 分值业务所有权已收敛到 `exam_questions.score`：题库 API、手动录题和题库 UI 不再读写分值；`questions.score` 仅作为旧数据兼容列保留并默认 0。
-- `0007_exam_authoring_score_ownership` 为单题库试卷回填可空 `exams.question_bank_id`，跨题库或空试卷保持 NULL；同时保存 `pass_rate`，后续组卷改分应据此重算试卷总分和通过分。该迁移不更新历史答卷或快照。
-- 草稿试卷已支持绑定单题库、部分/全选 active 题、完整排序、单题分值和全部已选题统一分值。每次写入均校验 `version`，重算总分/通过分并记录审计；非草稿试卷只读，历史答卷和快照不变。
-- 手动录题和题目编辑已支持最多 5 张题干图片。`0008_question_resources` 将允许的图片作为 `bytea` 与 SHA-256 保存在 PostgreSQL，这些图片会进入数据库备份，不依赖生产代码目录或手工复制静态文件。
-- 管理员已支持试卷/题库可移植备份：`.t12backup` ZIP 内嵌题库、题目、答案解析、试卷组卷关系与分值、作答规则、考试分配、补考权限和所有图片正文；导入固定生成新 ID 和草稿试卷，完整校验后在一个事务内写入，失败整体回滚。格式见 `docs/backup-format-v1.md`。
-- 定期自动备份已支持 PostgreSQL `bytea` 或受控服务器目录，默认关闭。`0009` 保存逐试卷/题库运行与工件，调度使用 advisory lock，单对象失败不阻断其他对象，保留策略按对象保留最近 N 份。管理员可查看公开配置、立即运行并下载历史工件；服务器路径不返回前端。生产启用和边界见 `docs/automatic-backups.md`。
-- 文件系统自动备份已在生产修正目录权限后成功生成，管理员也完成了一份题库工件下载。下载文件暴露两项历史静态 WebP 资源被错误声明为 JPEG；新代码按图片真实字节校验/响应 MIME，部署后必须重新生成工件，旧包不能原地篡改。
-- 试卷管理已支持新建和复制草稿；已发布、排期、暂停、结束试卷可显式进入新草稿修订，修改参数、题库、选题、顺序和分值后重新发布。每次事务写入均递增版本并写审计，历史答卷及快照不变；修订期间考生暂时无法进入该试卷。
-- 题库维护分类已严格收敛为题库列表，不再提供按试卷筛题的入口；试卷与题目只通过组卷关系发生关联。
-- 题库生命周期管理已完成本机开发：支持新建、编辑元数据、复制全部题目、软归档和恢复；操作使用事务、`version` 乐观锁和变更前后审计。归档题库不可新增/修改题目或参与任何新组卷写操作，但历史试卷、答卷、快照和备份仍可读。
-- 已发布考试包括：萃取原理、消防基础、IT 基础、清洁卫生入职培训、咖啡基础知识、餐饮相关法律法规。生产题数和最终状态以 PostgreSQL 查询为准，不要依赖旧 CSV 统计。
-- 《餐饮相关法律法规》已按用户确认配置：40 分钟、总分 100、通过分 85；题型方案为 19 单选、19 多选、15 判断。
-- 《咖啡基础知识》已生成 100 题导入稿，60 分钟、总分 100、通过分 85；生产导入状态曾因未拉取含 `0005` 的版本而未确认，接手时必须查询数据库核实。
-- 清洁卫生题库已用两份原始 Excel 修复，补充受控图片资源；修复脚本默认 dry-run，生产执行前要求备份。
-
-### Phase 3 / Sprint 4：钉钉、飞书、权限和移动端
-
-- 已完成钉钉/飞书 OAuth Provider 抽象、登录回调、身份登记和双入口。
-- 两个平台均以真实姓名登记，但绝不只凭姓名自动绑定；首次登录始终创建或复用对应 Provider 身份。
-- 系统管理员后台可查看同名候选并进行人工确认。只有“纯钉钉/历史钉钉账号 + 纯飞书账号”的唯一候选可合并；任何多重候选或已绑定双平台账号均阻断。
-- 合并以事务迁移身份、角色、考试授权、补考权限和答卷归属；题目快照、作答和分数保持不变。副本保留为 `disabled`，历史审计不改写，新审计记录保存迁移统计。
-- `scripts/reconcile-cross-platform-users.js` 只生成 dry-run 预览；`--apply` 已明确停用。生产合并前仍必须在阿里云 Workbench 执行 `pg_dump -Fc`，再由系统管理员在后台逐项确认。
-- 管理员角色管理已完成：首位管理员由 `DINGTALK_GRADER_UNION_IDS` 引导，后台可授予/撤销 `grader`、`system_admin`，禁止自我撤权和移除最后系统管理员。
-- 管理员会话在打开、恢复前台和运行期间检查，失效时提前锁定并要求登录。
-- 考生端和管理员端已做手机自适应；管理员阅卷默认筛选待批阅项，非待批阅内容可折叠。
-- 页面品牌已统一为“T12学习考核中心”，考生副标题为“我的学习与考核”，管理员副标题为“管理员阅卷后台”。
-
-### Phase 4 / Sprint 5：阅卷工作流和总结同步
-
-- 已完成客观题自动评分、问答题阅卷、补考授权和额外补考事务流程。
-- 已保留交卷快照并记录 `scores_json.reviewReferences`，确保复核时可追溯评分依据。
-- `scripts/sync-feishu-document.js` 已支持 `T12_ENV_FILE`。
-- 最新 `7cb7b7e` 将 Markdown 总结转换为纯文本后同步，移除标题、列表、表格分隔、粗体、斜体、代码围栏和链接语法，使用 `plain-text-v1` 标识保持幂等。旧飞书文档中的 Markdown 不会自动删除。
-
-## 五、质量验证记录
-
-截至当前通知弹窗修复步骤，本机质量门结果：
-
-```text
-npm run check:syntax   通过
-npm test               321 项通过
-npm run check:secrets  通过
-```
-
-新增/主要覆盖的测试包括：题库生命周期 repository/API/UI、乐观锁、审计前后快照、归档隔离的全部组卷写路径、通知 Outbox 幂等入队、Worker 领取/重试/回执、脱敏列表与弹窗自适应，以及原有迁移、备份、图片、身份、阅卷和 OAuth 回归。Phase A 已在生产 PostgreSQL 通过人工验收，未使用浏览器控制技能。
-
-## 六、未确认事项与风险
-
-以下状态不能假设为已完成：
-
-1. `fix/feishu-plain-text-sync` 的 PR 是否已创建、合并、部署。
-2. 纯文本同步代码是否已拉取到生产服务器；旧 Markdown 段落是否已在飞书文档中人工删除。
-3. 是否已在生产以系统管理员身份核对同名候选；不得使用脚本或仅凭同名完成合并。执行前必须在阿里云 Workbench 创建 `pg_dump -Fc`。
-4. 《咖啡基础知识》是否已执行含 `0005_question_stem_images` 迁移的生产导入；导入前必须确认图片资源和题数。
-5. 手动录题、手机管理员阅卷、飞书成员考试授权是否已由真实账号验收。
-6. 生产服务器公网仍经 Cloudflare 代理；域名解析、缓存和 Caddy 证书状态变更时需重新做 `/healthz`、`/readyz`、首页、登录回调和提交链路验收。
-7. `0007`、`0008`、`0009` 已在生产应用；后续任何迁移、身份合并、备份回导或其他生产写入前仍必须新建 `pg_dump -Fc`。
-8. 试卷版本化编辑、题库分类、图片去重与飞书管理员入口已部署并由用户手动验收。用户本轮仅验收界面和入口，未对生产试卷执行实际复制、修订或重新发布。
-9. 新 `20260812` 题库包已完成浏览器下载和双重只读严格校验；尚未真实导入生产，避免为测试产生额外题库。旧 `20260811` 包不可导入。
-10. 飞书通知 Worker Phase A 已部署且保持关闭；当前需先部署并验收通知弹窗自适应修复，再确认飞书应用消息权限和固定启用时间，才可进入 Phase B。钉钉发送尚未实现。
-
-## 七、接手后的最小行动顺序
-
-### 1. 本机终端：提交并创建 PR
-
-由于 GitHub 网络连接可能受限，优先让用户在本机终端执行：
-
-```bash
-cd "$HOME/Documents/Codex/003_考试后台追踪系统_钉钉飞书接入版"
-git push -u origin fix/feishu-plain-text-sync
-gh pr create --base main --head fix/feishu-plain-text-sync \
-  --title "fix: 飞书开发总结改为纯文本同步" \
-  --body-file docs/development-summary/2026-08-10-feishu-plain-text-sync.md
-```
-
-让用户提供 PR 链接或确认已合并；不要反复重试网络命令，也不要擅自改动远程分支。
-
-### 2. 阿里云 Workbench：部署已合并提交
-
-以 `codexdeploy` 执行 Git/npm，以 `admin` 执行 systemd/迁移。先做数据库备份，再执行迁移或导入：
-
-```bash
-sudo install -d -m 711 -o root -g root /var/backups/t12-online-exams
-sudo install -d -m 700 -o postgres -g postgres /var/backups/t12-online-exams/postgres
-sudo -u postgres pg_dump -Fc -f "/var/backups/t12-online-exams/postgres/t12_exams-before-<purpose>-$(date +%Y%m%d%H%M%S).dump" t12_exams
-```
-
-部署后轮询：
-
-```bash
-for i in {1..20}; do curl -fsS http://127.0.0.1:3001/readyz && echo && break; sleep 1; done
-curl -I https://exam.t12group.com/
-```
-
-### 3. 阿里云 Workbench：复核身份与考试
-
-先运行：
-
-```bash
-cd /opt/t12-online-exams
-sudo -u codexdeploy -H node scripts/reconcile-cross-platform-users.js --dry-run
-```
-
-命令行整理脚本永久只读，禁止 `--apply`。只有用户核对唯一候选后，才可在系统管理员后台执行逐项合并。再用 PostgreSQL 查询考试 ID、标题、状态、时长、题数、总分和通过线，核实六份考试；不要输出答卷正文或身份敏感字段。
-
-### 4. 飞书：同步总结
-
-在服务器已配置生产环境文件、并确认飞书文档 ID 后，在 Workbench 执行：
-
-```bash
-cd /opt/t12-online-exams
-sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
-  /usr/bin/node scripts/sync-feishu-document.js docs/development-summary/2026-08-10-project-progress.md
-sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
-  /usr/bin/node scripts/sync-feishu-document.js docs/development-summary/2026-08-10-manual-question-entry.md
-sudo env T12_ENV_FILE=/etc/t12-online-exams/t12-online-exams.env \
-  /usr/bin/node scripts/sync-feishu-document.js docs/development-summary/2026-08-10-feishu-plain-text-sync.md
-```
-
-脚本只追加新的纯文本版本，不删除旧内容；旧 Markdown 段落需在飞书文档中人工删除。
-
-## 八、回滚方法
-
-- 代码回滚：在 GitHub 回滚已合并 PR，或在服务器以 `codexdeploy` checkout 上一个已验证提交后重启服务。
-- 应用恢复：恢复对应 `/var/backups/t12-online-exams/postgres/*.dump` 前，先停止写入并确认目标数据库；早期备份可能仍位于父目录，不能移动或删除；严禁直接覆盖 `data/submissions.json`。
-- 题库修复/导入：优先使用脚本的 dry-run 和事务；失败时事务自动回滚，使用导入前 PostgreSQL dump 恢复。
-- 图片资源：尚无历史答卷引用上传图片时，`0008` down 会从当前题目移除上传 URL 后删除资源表。一旦历史答卷快照已引用上传图片，down 会主动拒绝；应保留 `0008` 或在停止写入后恢复迁移前完整备份，禁止直接删表。
-- 可移植备份：导入失败会自动回滚；导入成功后只会新增题库、题目、草稿试卷及相关资源。确认误导入时应先核对 `import_backup` 审计记录和引用关系，再由后续专用归档/清理流程处理，禁止直接级联删除。
-- 身份合并：后台事务失败会自动回滚；若已提交但确认误合并，先停止相关账号操作，优先从合并前 `pg_dump -Fc` 恢复到隔离库核对后再执行修复，禁止直接删除用户或手改答卷快照。
-- Caddy/服务：恢复上一版 `Caddyfile` 或 systemd unit，执行 `systemctl daemon-reload`、重启并重新检查证书和 `/readyz`。
-
-## 九、后续计划建议
-
-### 2026-08-13 接手状态
-
-- 当前工作区基于 `feature/question-bank-lifecycle`，本轮修复尚未提交。
-- 题库下拉、选项图片、勾选式答案、多空填空、试卷本地修订态和批量分值保持已在本机完成；详见 `docs/development-summary/2026-08-13-authoring-usability-fixes.md`。
-- 质量门：`npm test` 276/276，`npm run check:syntax`、`npm run check:secrets`、`git diff --check` 均通过。
-- 本轮无数据库迁移，无生产数据库写入，无 GitHub 网络操作，无浏览器验收。生产部署前仍需新建 `pg_dump -Fc`；界面和真实多空填空验收由用户执行。
-- 生产部署 `fc166bd` 后，按用户截图继续完成题目编辑精简：单选/多选答案并入选项行，判断题隐藏选项栏，左侧移除重复分类和题库名称；本轮改动尚未提交，详见 `docs/development-summary/2026-08-13-question-editor-simplification.md`。完整质量门 279 项通过，无新迁移。
-- 用户验收发现新增题目上传图片会清空未保存题干/选项，且上传控件持续禁用；已在本地修复并新增 `tests/question-image-upload-ui.test.js` 回归覆盖。上传前同步草稿，成功/失败均在清除 busy 状态后重绘；本轮尚未提交、推送或部署。
-- 继续完成换绑定题库自动清空、题库/试卷可恢复软删除，以及学员“待考核科目/已通过”分类；无新迁移，不物理删除题目、组卷关系、答卷或快照。详见 `docs/development-summary/2026-08-14-exam-bank-deletion-dashboard.md`；此前完整质量门 289 项、语法和敏感信息检查通过，尚未提交、推送或部署。
-- 本轮继续修复：已归档且未被试卷引用的题库可永久删除（题库及其题目一并删除，审计保留；被引用时拒绝）；新试卷、编辑后试卷和草稿发布按钮统一为“发布”；考生重新开始考试或提交失败时恢复“提交试卷”按钮。新增 repository/API/UI/考生端回归测试，尚未提交、推送或部署。
-- 最新验收修复尚未提交：已删除试卷从管理员列表隐藏，移除应用内恢复路由和按钮，恢复只能依赖备份/数据库回滚；`setExamQuestions` 支持 `scores` 映射，在同一事务内同时保存选题和每题分值，前端未保存选题时的分值修改留在本地草稿。无新迁移，生产部署前仍需 PostgreSQL `pg_dump -Fc`。
-
-### 2026-08-20 组卷统一保存
-
-- 当前工作区新增 `PATCH /api/admin/exams/:examId/authoring`，在一个事务内保存试卷参数、题库、选题、排序和逐题分值；题型分组支持单选、多选、填空、判断、问答分别批量套用分值，再手动调整。
-- 管理员组卷页现在只有一个“保存全部修改”按钮；选择、排序、分值和参数先留在本地草稿，保存后统一更新总分、通过分、版本和审计。题库切换也在整体保存时提交并自动清空旧选题。
-- 本轮无数据库迁移、无生产写入、无部署；`npm test` 323 项、语法检查和 `git diff --check` 均通过。详见 `docs/development-summary/2026-08-20-exam-authoring-single-save.md`。
-
-### 2026-08-20 归档题库永久删除误判修复
-
-- 修复题库永久删除时把已归档试卷也算作有效引用的问题；题库管理列表/详情的 `exam_count` 同步只统计未归档试卷。
-- 仅被已删除试卷引用的归档题库现在可以永久删除；仍被 active、draft、published、paused、closed 等试卷引用时继续阻止删除。无数据库迁移，事务和审计行为不变。
-- 题库生命周期回归测试、完整测试和语法检查需在提交前通过；生产发布前按固定流程创建 PostgreSQL 备份，异常时回滚本次代码提交即可。
-
-### 2026-08-21 归档题库永久删除外键修复
-
-- 修复仅被已归档试卷引用的题库删除时返回“题库维护服务暂不可用”的问题。原因是已归档试卷仍保留 `exam_questions` 和 `exams.question_bank_id` 外键关系。
-- 永久删除事务现在先删除已归档试卷对应的组卷关系，并将其题库外键置空，再删除题目和题库；试卷记录、答卷、答卷快照和审计记录保留，历史成绩不变。
-- 无数据库迁移；已通过题库生命周期聚焦测试和语法检查，完整质量门、提交、PR、备份和生产部署待后续执行。
-
-### 2026-08-22 考试授权管理
-
-- 当前工作区在 `codex/dingtalk-notification-transport` 分支完成考试授权管理，支持用户、部门、`all-active-users` 和 `all-active-dingtalk-users` 四类授权；组卷页可以读取、添加和移除授权。
-- 授权新增、重复更新和移除都复用试卷事务、版本乐观锁和审计；无效用户、版本冲突和最后一条授权均会回滚。部门授权已加入学员试卷列表、详情、交卷和工作台查询。
-- 本轮无数据库迁移、无生产写入；后台资源缓存更新为 `admin.js?v=20260822-1`。完整 `npm test` 331 项通过，语法检查、敏感信息检查和 `git diff --check` 待提交前再次执行。
-- 开发摘要：`docs/development-summary/2026-08-22-exam-assignment-management.md`。提交后使用 `gh pr create` 自动创建 PR，不让用户手动填写网页表单；合并前不部署生产。
-
-按详细实施计划继续：
-
-1. 合并并部署当前考试授权管理，在阿里云 Workbench 先备份，再由用户使用真实用户、部门和群组完成端到端验收。
-2. 完成钉钉/飞书组织目录同步，补齐部门名称变更、离职账号停用和授权对象审计。
-3. 为通知 Worker 增加 systemd 运行监控、失败告警和积压阈值，保持发送凭证只存在部署环境。
-4. 在已完成可移植及定期自动备份基础上，增加外部对象存储适配、容量监控和恢复演练。
-5. 补做生产端真实移动设备、OAuth 回调、备份回导和跨平台通知的定期回归验收。
-
-每项仍按“复现/方案 -> 单步实现 -> 本机质量门 -> PR -> 用户部署 -> 端到端验收 -> 开发总结/飞书同步”推进。
-
-### 2026-08-26 通知 Worker 监控
-
-- 当前工作区新增只读通知队列监控：统计待发送、失败、已放弃和陈旧 `processing` 任务，并在管理员通知页显示具体阈值告警。
-- 新增 `T12_NOTIFICATION_PENDING_ALERT_THRESHOLD`（默认 25）、`T12_NOTIFICATION_FAILED_ALERT_THRESHOLD`（默认 0）和 `T12_NOTIFICATION_ABANDONED_ALERT_THRESHOLD`（默认 0）；processing 陈旧窗口沿用 `T12_NOTIFICATION_STALE_AFTER_SECONDS`。
-- 无数据库迁移、无生产写入、无新 Secret；监控不改变入队、发送、重试或 `/readyz`。本机质量门通过后，按用户本机终端创建 PR，合并后再由用户按固定流程备份、拉取、重启和验收。
-
-### 2026-08-26 生产自动备份暂停与空间清理
-
-- 阿里云云盘 IOPS 超上限的直接原因是自动逻辑备份：服务每次重启后的启动延迟都会触发全量题库/试卷打包，8 月 26 日多次重启后产生约 879MB portable 工件，并伴随高读写。通知 Worker 的 pending 历史任务没有重试，不是本次根因。
-- 已在生产设置 `T12_AUTO_BACKUP_ENABLED=false`，删除 `portable/` 中全部自动工件、所有 scheduled `backup_runs` 和 `backup_artifacts`；没有删除题库、试卷、答卷、用户、通知或审计数据。
-- 服务器仅保留 `/var/backups/t12-online-exams/postgres/t12_exams-before-a238ca5-20260826142933.dump` 这一份完整 PostgreSQL dump，已用 `test -s` 和 `pg_restore -l` 验证。用户尚未配置本机 SSH 下载密钥，因此不要为下载而降低 SSH 安全策略。
-- 下一步：在独立小迭代中重构自动备份启动行为并补充测试；在该迭代完成前，不要重新启用自动备份或手动运行全量自动备份。
-
-### 2026-08-26 自动备份重启安全改造（待合并）
-
-- 当前工作区在既有 `backup_runs` 表上新增定时系统周期记录：服务重启后会先查询最近一次成功周期，若尚未到配置间隔则跳过，不再无条件全量打包。
-- 新增 `T12_AUTO_BACKUP_STALE_AFTER_MINUTES`（默认 120）收敛重启遗留的定时 `running` 记录，新增 `T12_AUTO_BACKUP_SCOPE_DELAY_SECONDS`（默认 30）在定时对象间节流；手动“立即运行”不等待，导入/导出不变。
-- 无迁移、无生产写入、无自动备份重新启用。本机自动备份聚焦测试 24 项及语法检查通过；完整质量门、提交、PR 和用户部署验收待执行。生产配置仍须保持 `T12_AUTO_BACKUP_ENABLED=false`。
-
-### 2026-08-27 外部备份存储契约（本机开发）
-
-- 新增提供商无关的对象存储契约和内存模拟器，覆盖 `putObject`、`getObject`、`deleteObject`、受控键、禁止覆盖、大小/SHA-256 校验和删除幂等。
-- 本轮没有连接 OSS/S3/R2、没有安装 SDK、没有创建 Bucket、没有产生费用、没有迁移或生产写入；生产自动备份仍保持关闭。
-- 只有在用户确认供应商、区域、私有权限、生命周期和预算后，才实现真实云适配器及隔离恢复演练。
-
-### 2026-08-27 接入指南整理
-
-- 新增 `docs/dingtalk-feishu-integration-guide.md`，整理钉钉/飞书应用创建、OAuth 回调、通讯录权限、消息能力、Secret 保存、发布和真实验收流程。
-- 明确同一个钉钉应用可以同时承担 OAuth 登录和工作通知，但代码配置仍分开记录登录凭证与消息 AppKey/AppSecret/AgentId；飞书通讯录和消息权限必须开通并发布应用新版本。
-- 本轮只更新文档，无服务器配置变化、无数据库迁移、无生产写入、无第三方 API 调用。
+- 代码目录：`/opt/t12-online-exams`，所有者 `codexdeploy`。
+- 环境文件：`/etc/t12-online-exams/t12-online-exams.env`，仅服务器读取。
+- 数据库：`t12_exams` / `t12_app`，仅监听本机；Caddy 配置和 systemd 单元分别对应仓库 `deploy/Caddyfile`、`deploy/t12-exams.service`。
+- 管理员 Workbench 登录用户通常是 `admin`；Git/npm 使用 `sudo -u codexdeploy -H`，迁移、systemd、Caddy 使用 `admin + sudo`。
+- SSH 已加固为 `PermitRootLogin no`、`PubkeyAuthentication yes`、`PasswordAuthentication no`；安全组和 nftables/UFW 仍需按服务器总账核对。
+
+## 4. 已完成能力
+
+### 业务与数据
+
+- 题目只属于题库；试卷从绑定题库选择题目，分值属于试卷组卷关系。
+- 支持单选、多选、判断、填空、简答；题干和选项均可有图片；答案、解析、填空顺序规则均受校验。
+- 题库支持新建、编辑、复制、归档、恢复、软删除和满足引用条件后的永久删除；试卷支持新建、复制、版本化修订、发布、删除和整体保存。
+- 组卷一次保存题库、选题、顺序、分值和参数；按题型批量设分后仍可手动调整。
+- 历史答卷快照、评分、审计和通知 outbox 保持独立，不被后续内容修改破坏。
+
+### 平台、权限与通知
+
+- 钉钉/飞书 OAuth 双入口、统一内部用户、RBAC、系统管理员和人工同名合并已完成；不凭姓名自动合并。
+- 授权支持用户、已同步部门、全部有效用户和全部有效钉钉用户；组织同步支持部门树、分页、去重、多部门关系和空目录诊断。
+- `submission.created` 只通知有效管理员；`submission.graded` 通知考生和有效管理员，并包含考生姓名。
+- Worker 使用 outbox 幂等键、数据库锁、超时恢复、指数退避、最大尝试、送达回执和人工重发；钉钉、飞书发送均已用户实测。
+
+### 导入、导出与备份
+
+- `.t12backup` 是自包含、带版本和 SHA-256 校验的 ZIP，包含题库/试卷关系、分值、答案解析、授权和图片正文；导入总是生成新对象并整体回滚。
+- 自动逻辑备份代码仍保留但生产关闭。服务器灾难恢复点使用单独的 PostgreSQL `pg_dump -Fc`；当前完整恢复点和校验值见服务器总账。
+- 外部对象存储目前只有提供商无关契约和内存模拟器，尚未连接 OSS/S3/R2、未创建 Bucket、未产生费用。
+
+## 5. 当前未完成与优先级
+
+1. 通知 Worker 监控告警的生产部署、管理员验收和定期积压对账。
+2. 外部对象存储真实适配、私有权限、生命周期、容量监控和隔离恢复演练；供应商、区域、预算确认前不得创建云资源。
+3. 通讯录差异同步：离职/禁用、改名、多部门变化、历史授权保留和审计。
+4. 电脑、手机、蜂窝网络和公司外网络的定期回归清单。
+5. 飞书总结同步纳入受控发布步骤；不要把 Secret 放入 GitHub 或文档。
+
+## 6. 故障入口
+
+- 管理员或考生页面无限加载：确认实际 `admin.js`/`exam.js` 缓存版本，再检查对应 API、服务日志和 PostgreSQL 活动；代码应在约 15 秒后显示错误而不是一直等待。
+- 通知页面显示 `--`：表示统计请求尚未成功，不等于 0。只读检查 `systemctl is-active`、本机 `/healthz`、指定时间段 `journalctl`、通知状态聚合和 `pg_stat_activity`；不要删除或重置通知。
+- 第三方同步或消息失败：保留安全的平台错误码和短消息，检查应用权限、可见范围、发布状态、ID 类型、分页和网络；不要只看“请求失败”，也不要输出 Token/Secret/完整 URL/原始身份 ID。
+- Workbench 无输出或提示 `Failed to restore initial working directory`：新建会话，切换到可访问目录，逐条执行并检查退出码；不要因无输出重复重启或清理数据。
+
+## 7. 标准交付流程
+
+1. **本机终端**：阅读 `MEMORY.md`、计划、`docs/agent-development-handbook.md` 和相关开发摘要；建立 `codex/`、`feature/` 或 `fix/` 分支，先复现再做最小改动。
+2. **本机终端**：运行 `npm test`、`npm run check:syntax`、`npm run check:secrets`、`git diff --check`；提交后 `git push`，优先用 `gh pr create` 自动创建 PR。
+3. **GitHub**：合并后记录完整 merge SHA；不要把未合并分支或本地 SHA 当生产版本。
+4. **阿里云 Workbench**：按 `docs/production-deployment-runbook.md` 执行版本确认、`pg_dump -Fc`、以 `codexdeploy` 拉取和安装、迁移、重启、`/readyz`/公网 `/healthz` 检查。
+5. **用户电脑/手机**：由用户完成真实验收；通过后在本文件、`MEMORY.md` 和对应开发摘要记录结果。服务器配置变化必须同步更新 `/Users/neptun/Documents/Codex/aliyun-server-inventory.md`。
+
+## 8. 文档索引
+
+- 生产部署：`docs/production-deployment-runbook.md`
+- 服务器唯一总账：`/Users/neptun/Documents/Codex/aliyun-server-inventory.md`
+- 钉钉/飞书接入：`docs/dingtalk-feishu-integration-guide.md`
+- 通用开发手册：`docs/agent-development-handbook.md`
+- 备份格式：`docs/backup-format-v1.md`
+- 自动备份说明：`docs/automatic-backups.md`
+- 阶段开发摘要：`docs/development-summary/`
