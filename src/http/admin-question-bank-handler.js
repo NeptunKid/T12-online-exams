@@ -1,3 +1,17 @@
+const { previewQuestionCsv } = require("../import/question-csv");
+const { loadQuestionResourceManifest } = require("../resources/question-resources");
+
+function extractCsvMultipart(body, contentType) {
+  const boundary = String(contentType || "").match(/boundary=(?:"([^"]+)"|([^;\s]+))/i)?.[1] || String(contentType || "").match(/boundary=(?:"([^"]+)"|([^;\s]+))/i)?.[2];
+  if (!boundary || /[\r\n]/.test(boundary)) throw Object.assign(new Error("题库文件上传格式无效"), { statusCode: 400 });
+  const marker = `--${boundary}`;
+  const text = body.toString("utf8");
+  const start = text.indexOf("\r\n\r\n");
+  const end = text.lastIndexOf(`\r\n${marker}`);
+  if (start < 0 || end < start) throw Object.assign(new Error("题库文件上传内容无效"), { statusCode: 400 });
+  return text.slice(start + 4, end);
+}
+
 function createAdminQuestionBankHandler({
   repository,
   getPool,
@@ -12,7 +26,9 @@ function createAdminQuestionBankHandler({
     { method: "DELETE", pattern: /^\/api\/admin\/question-banks\/([^/]+)$/, action: "delete" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/copy$/, action: "copy" },
     { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/archive$/, action: "archive" },
-    { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/restore$/, action: "restore" }
+    { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/restore$/, action: "restore" },
+    { method: "GET", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/export\.csv$/, action: "export" },
+    { method: "POST", pattern: /^\/api\/admin\/question-banks\/([^/]+)\/import\.csv$/, action: "import" }
   ];
 
   return async function handleAdminQuestionBank(req, res, pathname, adminAccess) {
@@ -34,6 +50,34 @@ function createAdminQuestionBankHandler({
     try {
       if (route.action === "list") {
         json(res, 200, { banks: await repository.listManagedQuestionBanks(pool) });
+        return true;
+      }
+      if (route.action === "export") {
+        const csv = await repository.exportQuestionBankCsv(pool, bankId);
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename*=UTF-8''question-bank-${encodeURIComponent(bankId)}.csv`, "Cache-Control": "no-store" });
+        res.end(`\uFEFF${csv}`);
+        return true;
+      }
+      if (route.action === "import") {
+        const contentType = String(req.headers["content-type"] || "").toLowerCase();
+        const origin = String(req.headers.origin || "").trim();
+        if (origin) { try { if (new URL(origin).host.toLowerCase() !== String(req.headers.host || "").toLowerCase()) throw new Error(); } catch (_) { json(res, 403, { error: "题库上传请求来源无效" }); return true; } }
+        if (!contentType.startsWith("multipart/form-data;")) { json(res, 400, { error: "请上传 CSV 文件" }); return true; }
+        const csv = extractCsvMultipart(await new Promise((resolve, reject) => {
+          const chunks = []; let size = 0;
+          req.on("data", (chunk) => { size += chunk.length; if (size > 12 * 1024 * 1024) { reject(Object.assign(new Error("题库文件不能超过 12MB"), { statusCode: 413 })); req.destroy?.(); return; } chunks.push(Buffer.from(chunk)); });
+          req.on("end", () => resolve(Buffer.concat(chunks))); req.on("error", reject);
+        }), contentType);
+        let preview;
+        try {
+          preview = previewQuestionCsv(csv, { allowedResourceIds: Object.keys(loadQuestionResourceManifest()) });
+        } catch (error) {
+          json(res, 400, { error: error.message || "CSV 格式无效" });
+          return true;
+        }
+        if (!preview.canCommit) { json(res, 400, { error: "CSV 校验未通过", preview }); return true; }
+        const result = await repository.importQuestionBankCsv(pool, bankId, preview.questions, adminAccess.userId);
+        json(res, 200, { ...result, preview: { totalRows: preview.totalRows, validRows: preview.validRows, skippedRows: preview.skippedRows } });
         return true;
       }
       if (!isSameOriginJsonRequest(req)) {

@@ -86,7 +86,8 @@ def build_question(row_number, values, exam_key, score_override=None):
         if len(re.findall(r"\[[^\]]+\]", clean(raw_answer))) > 1:
             tags.append("needs-review:multi-blank")
     elif type_name == "qa":
-        answer = ""
+        # 部分来源表把问答参考答案放在“答案解析”列；兼容两种布局。
+        answer = clean(raw_answer) or clean(explanation)
         tags.append("manual-grading")
 
     if callable(score_override):

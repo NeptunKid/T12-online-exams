@@ -647,6 +647,75 @@ async function createQuestion(pool, input, actorUserId) {
   }
 }
 
+function csvCell(value) {
+  const text = value == null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+async function exportQuestionBankCsv(pool, bankId) {
+  const result = await pool.query(`${QUESTION_SELECT}
+    WHERE q.bank_id = $1 AND q.status = 'active'
+    ORDER BY COALESCE(q.external_id, q.id), q.id;`, [bankId]);
+  const headers = require("../import/question-csv").CSV_HEADERS;
+  const rows = result.rows.map((row) => {
+    const question = mapQuestion(row);
+    const values = Object.fromEntries(headers.map((header) => [header, ""]));
+    values.external_id = question.externalId;
+    values.type = question.type;
+    values.stem = question.stem;
+    for (const option of question.options || []) {
+      values[`option_${String(option.label).toLowerCase()}`] = option.text || "";
+      values[`option_image_${String(option.label).toLowerCase()}`] = option.image?.startsWith("/api/question-resources/") ? option.image : "";
+    }
+    values.answer = Array.isArray(question.answer) ? question.answer.join("|") : (question.answer || "");
+    values.score = "0";
+    values.explanation = question.explanation || "";
+    values.image_urls = (question.images || []).join("|");
+    return headers.map((header) => csvCell(values[header])).join(",");
+  });
+  return `${headers.join(",")}\n${rows.join("\n")}\n`;
+}
+
+async function importQuestionBankCsv(pool, bankId, questions, actorUserId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const bank = await client.query("SELECT id, status FROM question_banks WHERE id = $1 FOR UPDATE", [bankId]);
+    if (!bank.rows.length) throw new QuestionBankError("未找到题库", 404);
+    if (bank.rows[0].status !== "active") throw new QuestionBankError("已归档题库不可导入题目", 409);
+    const inserted = [];
+    for (const question of questions) {
+      const options = (question.options || []).map((option) => ({
+        label: option.label,
+        text: option.text,
+        ...(question.optionImages?.[option.label] ? { image: question.optionImages[option.label] } : {})
+      }));
+      await assertUploadedImagesExist(client, questionImageReferences(question.imageUrls || [], options));
+      const id = `question_import_${crypto.randomUUID()}`;
+      await client.query(`
+        INSERT INTO questions (id, bank_id, external_id, type, stem, images_json, options_json, answer_json, explanation, score, version, status)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, 1, 'active');`, [
+        id, bankId, question.externalId || null, question.type, question.stem,
+        JSON.stringify(question.imageUrls || []), JSON.stringify(options), JSON.stringify(question.answer), question.explanation || "", Number(question.score || 0)
+      ]);
+      inserted.push(id);
+      await client.query(`INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+        VALUES ($1, $2, 'import_question', 'question', $3, '{}'::jsonb, $4::jsonb);`, [
+        crypto.randomUUID(), actorUserId, id, JSON.stringify({ bankId, externalId: question.externalId, type: question.type, version: 1 })
+      ]);
+    }
+    await client.query("UPDATE question_banks SET version = version + 1 WHERE id = $1", [bankId]);
+    await client.query("COMMIT");
+    return { importedCount: inserted.length };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23505") throw new QuestionBankError("题库中存在重复题目编号", 409);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   QuestionBankError,
   archiveQuestionBank,
@@ -670,5 +739,7 @@ module.exports = {
   normalizeStoredOptions,
   restoreQuestionBank,
   updateQuestionBank,
-  updateQuestion
+  updateQuestion,
+  exportQuestionBankCsv,
+  importQuestionBankCsv
 };
