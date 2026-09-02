@@ -16,6 +16,24 @@
 
 在 GitHub 页面确认 PR 已经合并到 `main` 后开始。不要部署尚未合并的分支，也不要直接在服务器修改代码。
 
+## 一行部署入口
+
+仓库中的 [scripts/deploy-production.sh](../scripts/deploy-production.sh) 是生产部署唯一的一键入口。它会依次校验生产目录和仓库所有者、读取 `origin/main`、创建并校验 PostgreSQL 完整备份、快进更新代码、安装生产依赖、执行迁移、重启服务，并验证本机 `/readyz` 与公网 `/healthz`。脚本不会自动删除旧备份，也不会修改环境文件、Caddy 配置或数据库业务数据。
+
+首次安装入口（执行位置：**阿里云 Workbench**；仅在服务器尚未有该脚本时使用）：
+
+```bash
+sudo -u codexdeploy -H git -C /opt/t12-online-exams pull --ff-only origin main && sudo /opt/t12-online-exams/scripts/deploy-production.sh
+```
+
+以后每次确认 PR 已合并到 `main` 后，执行位置仍为**阿里云 Workbench**，只需：
+
+```bash
+sudo /opt/t12-online-exams/scripts/deploy-production.sh
+```
+
+预期结果：脚本打印目标版本、备份绝对路径/大小/SHA-256、迁移结果、`active`、`readyz`、公网 `healthz` 和最终运行版本。任何一步失败都会停止，不会继续重启或验收。旧 PostgreSQL dump 的清理仍需在确认外部恢复点后按本手册人工执行。
+
 ## 第 1 步：进入生产目录并确认本次版本
 
 执行位置：**阿里云 Workbench**。
