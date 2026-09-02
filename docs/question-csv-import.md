@@ -15,8 +15,8 @@ external_id,type,stem,option_a,option_b,option_c,option_d,option_e,option_f,opti
 - 填空题不填写选项，`answer` 填写一个或多个可接受答案，用 `|` 分隔；自动判分会忽略首尾空格并按不区分大小写匹配，阅卷人仍可人工改分。
 - `external_id` 在同一题库内必须唯一；`score` 必须为非负数字。题库导出时分值为 `0`，实际组卷分值在试卷中设置。
 - 选项从 A 开始连续填写，不能跳过；答案必须存在于选项中。
-- `image_urls` 用 `|` 分隔。只允许已经登记的 HTTPS 图片域名，或 `resource:<资源ID>`。
-- `option_image_a` 至 `option_image_j` 为选项级图片，只允许资源清单中的 `resource:<资源ID>`；图片会在服务端映射为固定的 `/question-resources/...` URL。
+- `image_urls` 用 `|` 分隔。只允许已经登记的 HTTPS 图片域名、`resource:<资源ID>`，或系统导出的受控 `/question-resources/...`、`/api/question-resources/...` 地址。
+- `option_image_a` 至 `option_image_j` 为选项级图片，使用受控资源地址；导出 CSV 会保留这些图片引用，重新导入时不会丢失。
 
 ## 本机预览
 

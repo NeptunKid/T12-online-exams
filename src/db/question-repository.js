@@ -665,7 +665,8 @@ async function exportQuestionBankCsv(pool, bankId) {
     values.stem = question.stem;
     for (const option of question.options || []) {
       values[`option_${String(option.label).toLowerCase()}`] = option.text || "";
-      values[`option_image_${String(option.label).toLowerCase()}`] = option.image?.startsWith("/api/question-resources/") ? option.image : "";
+      // Preserve both static controlled assets and database-uploaded resources.
+      values[`option_image_${String(option.label).toLowerCase()}`] = option.image || "";
     }
     values.answer = Array.isArray(question.answer) ? question.answer.join("|") : (question.answer || "");
     values.score = "0";

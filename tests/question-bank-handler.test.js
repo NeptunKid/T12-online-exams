@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createAdminQuestionBankHandler } = require("../src/http/admin-question-bank-handler");
+const { createAdminQuestionBankHandler, extractCsvMultipart } = require("../src/http/admin-question-bank-handler");
 
 const MANAGER = { userId: "admin-1", canManageQuestions: true };
 
@@ -102,4 +102,10 @@ test("题库版本冲突保留 repository 的 409 状态", async () => {
 test("未命中题库路由时不写响应", async () => {
   const current = harness();
   assert.equal(await current.handler(request("GET"), {}, "/api/admin/questions", MANAGER), false);
+});
+
+test("CSV multipart 边界保留大小写并正确提取浏览器上传内容", () => {
+  const boundary = "----WebKitFormBoundaryAbC123";
+  const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="questions.csv"\r\nContent-Type: text/csv\r\n\r\nexternal_id,type\nq-1,qa\r\n--${boundary}--\r\n`);
+  assert.equal(extractCsvMultipart(body, `multipart/form-data; boundary=${boundary}`), "external_id,type\nq-1,qa");
 });

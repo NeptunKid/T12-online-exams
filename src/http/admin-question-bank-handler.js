@@ -59,10 +59,11 @@ function createAdminQuestionBankHandler({
         return true;
       }
       if (route.action === "import") {
-        const contentType = String(req.headers["content-type"] || "").toLowerCase();
+        // Boundary 参数大小写敏感，不能把整个 Content-Type 转小写。
+        const contentType = String(req.headers["content-type"] || "");
         const origin = String(req.headers.origin || "").trim();
         if (origin) { try { if (new URL(origin).host.toLowerCase() !== String(req.headers.host || "").toLowerCase()) throw new Error(); } catch (_) { json(res, 403, { error: "题库上传请求来源无效" }); return true; } }
-        if (!contentType.startsWith("multipart/form-data;")) { json(res, 400, { error: "请上传 CSV 文件" }); return true; }
+        if (!contentType.toLowerCase().startsWith("multipart/form-data;")) { json(res, 400, { error: "请上传 CSV 文件" }); return true; }
         const csv = extractCsvMultipart(await new Promise((resolve, reject) => {
           const chunks = []; let size = 0;
           req.on("data", (chunk) => { size += chunk.length; if (size > 12 * 1024 * 1024) { reject(Object.assign(new Error("题库文件不能超过 12MB"), { statusCode: 413 })); req.destroy?.(); return; } chunks.push(Buffer.from(chunk)); });
@@ -115,5 +116,6 @@ function createAdminQuestionBankHandler({
 }
 
 module.exports = {
-  createAdminQuestionBankHandler
+  createAdminQuestionBankHandler,
+  extractCsvMultipart
 };

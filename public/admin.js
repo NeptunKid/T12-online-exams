@@ -1564,7 +1564,7 @@ async function importQuestionBank(event) {
   const bank = currentQuestionBank();
   const file = event.target.files?.[0]; event.target.value = "";
   if (!bank || !file) return;
-  if (!window.confirm(`确认将 ${file.name} 导入题库“${bank.name}”吗？重复编号会导致整批失败。`)) return;
+  if (!window.confirm(`确认将 ${file.name} 追加导入题库“${bank.name}”吗？现有题目不会被清空或覆盖；重复编号会导致整批失败。`)) return;
   questionBankBusy = true; questionBankNotice = { text: "正在校验并导入", type: "" }; renderQuestionBankManager();
   try {
     const form = new FormData(); form.append("file", file, file.name);
