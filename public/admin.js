@@ -1094,7 +1094,14 @@ function markExamAuthoringDirty(selection = false) {
 }
 
 function applyExamMutationResponse(data) {
+  const previous = currentExamAuthoring;
   const returned = data.authoring ? normalizeExamAuthoring(data) : null;
+  if (returned?.questions?.length === 0
+      && previous?.questions?.length
+      && examAuthoringBankDraft
+      && !(returned.exam?.questionBankId || returned.exam?.question_bank_id)) {
+    returned.questions = previous.questions;
+  }
   if (returned?.exam?.id) currentExamAuthoring = returned;
   const exam = data.exam || data.authoring?.exam || null;
   const version = Number(exam?.version ?? data.version);
@@ -1538,6 +1545,35 @@ function renderQuestionBankManager() {
   document.getElementById("deleteQuestionBankBtn")?.addEventListener("click", deleteQuestionBank);
   document.getElementById(archived ? "restoreQuestionBankBtn" : "archiveQuestionBankBtn")
     .addEventListener("click", archived ? restoreQuestionBank : archiveQuestionBank);
+  document.getElementById("exportQuestionBankBtn")?.addEventListener("click", exportQuestionBank);
+  document.getElementById("importQuestionBankInput")?.addEventListener("change", importQuestionBank);
+}
+
+async function exportQuestionBank() {
+  const bank = currentQuestionBank();
+  if (!bank) return;
+  try {
+    const response = await fetch(`/api/admin/question-banks/${encodeURIComponent(bank.id)}/export.csv`, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`导出失败（HTTP ${response.status}）`);
+    const blob = await response.blob();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${bank.name || "题库"}.csv`; link.click(); URL.revokeObjectURL(link.href);
+  } catch (error) { questionBankNotice = { text: error.message || "导出失败", type: "error" }; renderQuestionBankManager(); }
+}
+
+async function importQuestionBank(event) {
+  const bank = currentQuestionBank();
+  const file = event.target.files?.[0]; event.target.value = "";
+  if (!bank || !file) return;
+  if (!window.confirm(`确认将 ${file.name} 导入题库“${bank.name}”吗？重复编号会导致整批失败。`)) return;
+  questionBankBusy = true; questionBankNotice = { text: "正在校验并导入", type: "" }; renderQuestionBankManager();
+  try {
+    const form = new FormData(); form.append("file", file, file.name);
+    const response = await fetch(`/api/admin/question-banks/${encodeURIComponent(bank.id)}/import.csv`, { method: "POST", body: form, credentials: "same-origin" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `导入失败（HTTP ${response.status}）`);
+    questionBankNotice = { text: `已导入 ${payload.importedCount || 0} 道题目。`, type: "success" }; await loadQuestions();
+  } catch (error) { questionBankNotice = { text: error.message || "导入失败", type: "error" }; }
+  finally { questionBankBusy = false; renderQuestionBankManager(); }
 }
 
 function selectQuestionBank(bankId) {

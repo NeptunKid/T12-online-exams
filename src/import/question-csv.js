@@ -72,6 +72,7 @@ function allowedImageUrl(value, allowedImageHosts, allowedResourceIds = null) {
   if (value.startsWith("resource:")) {
     return /^resource:[A-Za-z0-9_-]+$/.test(value) && (!allowedResourceIds || allowedResourceIds.has(value));
   }
+  if (/^\/(?:api\/question-resources\/question_resource_[A-Za-z0-9-]+|question-resources\/[A-Za-z0-9_./-]+)$/.test(value)) return true;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && allowedImageHosts.has(url.hostname.toLowerCase());
@@ -115,7 +116,7 @@ function previewQuestionCsv(text, options = {}) {
     if (!values.stem) rowErrors.push(issue(rowNumber, "stem", "题干不能为空", "补充完整题干"));
 
     const score = Number(values.score);
-    if (!values.score || !Number.isFinite(score) || score < 0) rowErrors.push(issue(rowNumber, "score", "分数必须是非负数字", "填写 0、2、2.5 等数值"));
+    if (values.score === "" || !Number.isFinite(score) || score < 0) rowErrors.push(issue(rowNumber, "score", "分数必须是非负数字", "填写 0、2、2.5 等数值"));
 
     const optionValues = OPTION_HEADERS.map((header) => values[header]);
     const optionImageValues = OPTION_IMAGE_HEADERS.map((header) => values[header]);
@@ -136,7 +137,7 @@ function previewQuestionCsv(text, options = {}) {
       if (!answerParts.length) rowErrors.push(issue(rowNumber, "answer", "多选题必须有答案", "用 | 分隔选项字母，例如 A|C"));
     }
     if (["fill", "qa"].includes(values.type) && options.length) rowErrors.push(issue(rowNumber, "option_a", `${values.type === "fill" ? "填空题" : "问答题"}不应包含选项`, "清空 option_a 至 option_f"));
-    if (values.type === "qa" && values.answer) rowErrors.push(issue(rowNumber, "answer", "问答题标准答案不进入考生评分规则", "将参考答案写入 explanation，answer 留空"));
+    // 问答题的 answer 是供阅卷人使用的参考答案，不参与自动判分。
     if (values.type === "fill" && answerParts.length === 0) rowErrors.push(issue(rowNumber, "answer", "填空题至少需要一个标准答案", "多个可接受答案用 | 分隔，例如 浓缩咖啡|espresso"));
     if (["single", "multi", "judge"].includes(values.type)) {
       for (const answer of answerParts) {
@@ -154,7 +155,8 @@ function previewQuestionCsv(text, options = {}) {
     OPTION_IMAGE_HEADERS.forEach((header, index) => {
       const value = values[header];
       if (!value) return;
-      if (!allowedImageUrl(value, allowedImageHosts, allowedResourceIds) || !value.startsWith("resource:")) {
+      if (!allowedImageUrl(value, allowedImageHosts, allowedResourceIds)
+          || (!value.startsWith("resource:") && !/^\/(?:api\/question-resources\/question_resource_[A-Za-z0-9-]+|question-resources\/[A-Za-z0-9_./-]+)$/.test(value))) {
         rowErrors.push(issue(rowNumber, header, "选项图片必须使用已登记的 resource:<资源ID>", "填写资源清单中的受控资源 ID"));
         return;
       }
@@ -172,7 +174,7 @@ function previewQuestionCsv(text, options = {}) {
       type: values.type,
       stem: values.stem,
       options,
-      answer: ["multi", "fill"].includes(values.type) ? answerParts : values.type === "qa" ? null : answerParts[0],
+      answer: ["multi", "fill"].includes(values.type) ? answerParts : values.type === "qa" ? (values.answer || null) : answerParts[0],
       score,
       explanation: values.explanation,
       tags: values.tags.split("|").map((value) => value.trim()).filter(Boolean),
