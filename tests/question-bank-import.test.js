@@ -28,6 +28,56 @@ test("coffee basics draft contains 100 one-point questions", () => {
   assert.deepEqual(preview.questions.find((question) => question.externalId === "coffee-084").imageUrls, ["resource:coffee-siphon"]);
 });
 
+test("cupping basics draft contains 47 one-point questions", () => {
+  const file = path.join(__dirname, "../docs/question-bank-drafts/cupping-questions.csv");
+  const preview = previewQuestionCsv(fs.readFileSync(file, "utf8"));
+  const counts = preview.questions.reduce((result, question) => {
+    result[question.type] = (result[question.type] || 0) + 1;
+    return result;
+  }, {});
+
+  assert.equal(preview.canCommit, true);
+  assert.equal(preview.validRows, 47);
+  assert.equal(preview.questions.reduce((sum, question) => sum + question.score, 0), 47);
+  assert.deepEqual(counts, { qa: 14, fill: 4, judge: 19, multi: 1, single: 9 });
+  assert.deepEqual(preview.questions.find((question) => question.externalId === "cupping-003").answer, ["强度、杯数", "严重程度、杯数"]);
+});
+
+test("cupping basics exam is published for 30 minutes with an 85 percent pass score", async () => {
+  const bank = BANKS.find((item) => item.key === "cupping");
+  const inserts = [];
+  const client = {
+    async query(sql, params) {
+      if (sql.startsWith("SELECT id, title")) return { rows: [] };
+      if (sql.startsWith("INSERT INTO exams")) {
+        inserts.push(params);
+        return { rows: [] };
+      }
+      if (sql.startsWith("SELECT score")) return { rows: [] };
+      if (sql.startsWith("INSERT INTO exam_questions")) return { rows: [] };
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+  const questions = Array.from({ length: 47 }, (_, index) => ({
+    id: `question-cupping-${String(index + 2).padStart(3, "0")}`,
+    position: index + 1,
+    examScore: 1
+  }));
+
+  const result = await ensureExam(client, bank, questions, true);
+
+  assert.deepEqual(bank, {
+    key: "cupping",
+    file: "cupping-questions.csv",
+    bankId: "bank-cupping-basics",
+    examId: "exam-cupping-basics",
+    title: "杯测基础知识",
+    duration: 30
+  });
+  assert.deepEqual(result, { total: 47, pass: 39.95, status: "published" });
+  assert.deepEqual(inserts[0], ["exam-cupping-basics", "杯测基础知识", "published", 1800, 39.95, 47, "bank-cupping-basics"]);
+});
+
 test("legal regulations draft contains 53 questions totaling 100 points", () => {
   const file = path.join(__dirname, "../docs/question-bank-drafts/legal-questions.csv");
   const preview = previewQuestionCsv(fs.readFileSync(file, "utf8"));
@@ -145,6 +195,25 @@ test("parseArgs supports assigning all active DingTalk users", () => {
   assert.equal(args.publish, true);
   assert.equal(args.unionId, "");
   assert.equal(args.only, "coffee");
+});
+
+test("parseArgs supports importing a question bank without creating an exam or assignments", () => {
+  const args = parseArgs(["--question-bank-only", "--only", "cupping"]);
+  assert.equal(args.questionBankOnly, true);
+  assert.equal(args.only, "cupping");
+  assert.equal(args.publish, false);
+  assert.equal(args.allActiveUsers, false);
+});
+
+test("question-bank-only mode rejects publish and assignment options", () => {
+  assert.throws(
+    () => parseArgs(["--question-bank-only", "--publish"]),
+    /不能与 --publish 同时使用/
+  );
+  assert.throws(
+    () => parseArgs(["--question-bank-only", "--all-active-users"]),
+    /不能与考试授权参数同时使用/
+  );
 });
 
 test("parseArgs requires exactly one assignment mode", () => {

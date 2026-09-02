@@ -12,6 +12,7 @@ const BANKS = [
   { key: "extraction", file: "extraction-questions.csv", bankId: "bank-extraction-principle", examId: "exam-extraction-principle", title: "萃取原理考试", duration: 50 },
   { key: "fire", file: "fire-questions.csv", bankId: "bank-fire-basics", examId: "exam-fire-basics", title: "消防基础考试", duration: 30 },
   { key: "it", file: "it-questions.csv", bankId: "bank-it-basics", examId: "exam-it-basics", title: "IT基础考试", duration: 30 },
+  { key: "cupping", file: "cupping-questions.csv", bankId: "bank-cupping-basics", examId: "exam-cupping-basics", title: "杯测基础知识", duration: 30 },
   { key: "coffee", file: "coffee-questions.csv", bankId: "bank-coffee-basics", examId: "exam-coffee-basics", title: "咖啡基础知识", duration: 60 },
   { key: "legal", file: "legal-questions.csv", bankId: "bank-legal-regulations", examId: "exam-legal-regulations", title: "餐饮相关法律法规", duration: 40 }
 ];
@@ -24,6 +25,7 @@ function parseArgs(argv) {
     publish: false,
     allActiveDingtalkUsers: false,
     allActiveUsers: false,
+    questionBankOnly: false,
     only: ""
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -34,6 +36,7 @@ function parseArgs(argv) {
     else if (value === "--publish") args.publish = true;
     else if (value === "--all-active-dingtalk-users") args.allActiveDingtalkUsers = true;
     else if (value === "--all-active-users") args.allActiveUsers = true;
+    else if (value === "--question-bank-only") args.questionBankOnly = true;
     else if (value === "--only") {
       const only = argv[++index];
       if (!only || only.startsWith("--")) throw new Error("--only 必须提供题库 key");
@@ -43,10 +46,16 @@ function parseArgs(argv) {
     else throw new Error(`不支持的参数：${value}`);
   }
   const assignmentModes = [Boolean(args.unionId), args.allActiveDingtalkUsers, args.allActiveUsers].filter(Boolean).length;
+  if (args.questionBankOnly && assignmentModes > 0) {
+    throw new Error("--question-bank-only 不能与考试授权参数同时使用");
+  }
+  if (args.questionBankOnly && args.publish) {
+    throw new Error("--question-bank-only 不能与 --publish 同时使用");
+  }
   if (assignmentModes > 1) {
     throw new Error("--union-id、--all-active-dingtalk-users 与 --all-active-users 不能同时使用");
   }
-  if (assignmentModes === 0) {
+  if (assignmentModes === 0 && !args.questionBankOnly) {
     throw new Error("必须提供 --union-id、--all-active-dingtalk-users 或 --all-active-users");
   }
   if (args.only && !BANKS.some((bank) => bank.key === args.only)) {
@@ -205,7 +214,7 @@ async function ensureAssignmentsForActiveUsers(client, exams) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) {
-    console.log("用法：node scripts/import-question-banks.js (--union-id <钉钉unionId> | --all-active-dingtalk-users | --all-active-users) [--user-name 姓名] [--input-dir 目录] [--only 题库key] [--publish]");
+    console.log("用法：node scripts/import-question-banks.js (--question-bank-only | --union-id <钉钉unionId> | --all-active-dingtalk-users | --all-active-users) [--user-name 姓名] [--input-dir 目录] [--only 题库key] [--publish]");
     return;
   }
   loadEnvFile();
@@ -222,23 +231,33 @@ async function main() {
       const preview = previewQuestionCsv(fs.readFileSync(file, "utf8"), { allowedResourceIds: Object.keys(loadQuestionResourceManifest()) });
       if (!preview.canCommit) throw new Error(`${bank.file} 校验失败：${JSON.stringify(preview.errors)}`);
       const questionRows = await ensureBank(client, bank, preview.questions);
-      const exam = await ensureExam(client, bank, questionRows, args.publish);
-      imported.push({ ...bank, ...exam, questions: questionRows.length });
+      if (args.questionBankOnly) {
+        imported.push({ key: bank.key, bankId: bank.bankId, title: bank.title, questions: questionRows.length });
+      } else {
+        const exam = await ensureExam(client, bank, questionRows, args.publish);
+        imported.push({ ...bank, ...exam, questions: questionRows.length });
+      }
     }
-    const userIds = args.allActiveUsers
+    const userIds = args.questionBankOnly
+      ? []
+      : args.allActiveUsers
       ? await ensureAssignmentsForActiveUsers(client, imported)
       : args.allActiveDingtalkUsers
         ? await ensureAssignmentsForActiveDingtalkUsers(client, imported)
         : [await ensureAssignment(client, args.unionId, args.userName, imported)];
     await client.query("COMMIT");
-    console.log(JSON.stringify({
-      assignmentMode: args.allActiveUsers
+    const result = {
+      assignmentMode: args.questionBankOnly
+        ? "question_bank_only"
+        : args.allActiveUsers
         ? "all_active_users"
         : args.allActiveDingtalkUsers ? "all_active_dingtalk_users" : "single_dingtalk_user",
       assignmentCount: userIds.length,
       publish: args.publish,
-      exams: imported
-    }, null, 2));
+      exams: args.questionBankOnly ? [] : imported
+    };
+    if (args.questionBankOnly) result.banks = imported;
+    console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;

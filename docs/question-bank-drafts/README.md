@@ -7,6 +7,7 @@
 | 萃取原理考试 | `extraction-questions.csv` | 43 | 101 | 50 分钟 | 85.85 | 待补图片选项 |
 | 消防基础考试 | `fire-questions.csv` | 32 | 100 | 30 分钟 | 85 | 通过 |
 | IT 基础考试 | `it-questions.csv` | 34 | 86 | 30 分钟 | 73.10 | 通过 |
+| 杯测基础知识 | `cupping-questions.csv` | 47 | 47 | 30 分钟 | 39.95 | 通过 |
 | 咖啡基础知识 | `coffee-questions.csv` | 100 | 100 | 60 分钟 | 85 | 通过 |
 | 餐饮相关法律法规 | `legal-questions.csv` | 53 | 100 | 40 分钟 | 85 | 通过 |
 
@@ -20,6 +21,7 @@
 - 咖啡基础知识源表没有分值列；按 100 题结构统一设为每题 1 分，总分 100。题型为 33 道单选、12 道多选、31 道判断、4 道填空和 20 道问答。
 - 咖啡源表第 39 行的选项从 C 跳至 F；审阅稿将“苦味”压缩为选项 E，并将答案由 `A|B|C|F` 同步为 `A|B|C|E`，文字和答案含义未改变。
 - 咖啡题库第 78、84 题已补充受控题干图片，资源 ID 为 `resource:coffee-cherry-structure` 和 `resource:coffee-siphon`，图片清单位于 `public/question-resources/manifest.json`。
+- 杯测基础知识来源为用户提供的 `杯测入门题库-题库-8828eb2c-46d5-4a78-8ea2-6eae64b23abe.xlsx`，共 47 题；源表没有分值列，按每题 1 分生成，总分 47，考试时长按 30 分钟配置，题库 key 为 `cupping`。
 - 餐饮相关法律法规按 19 道单选、19 道多选、15 道判断生成；单选和判断每题 1 分，多选按题库顺序的 9 道高复杂度题每题 4 分、其余 10 道每题 3 分，总分 100。
 - 问答题作为人工阅卷题；填空题进入自动判分流程。IT 的两道多空填空题已标记 `needs-review:multi-blank`，当前以完整答案别名暂存，正式发布前需确认输入规则。
 - 萃取原理第 18、19 题是图表选项题，选项图片来自 `萃取原理考试图片`，当前 CSV 尚未写入图片资源 ID，因此只读预览会拒绝这两行。
@@ -33,6 +35,7 @@ npm run import:questions:preview -- docs/question-bank-drafts/fire-questions.csv
 npm run import:questions:preview -- docs/question-bank-drafts/it-questions.csv
 npm run import:questions:preview -- docs/question-bank-drafts/extraction-questions.csv
 npm run import:questions:preview -- docs/question-bank-drafts/coffee-questions.csv
+npm run import:questions:preview -- docs/question-bank-drafts/cupping-questions.csv
 ```
 
-结果：四份 CSV 均已通过预览；咖啡基础知识为 100/100 行有效、0 行跳过。
+结果：以上六份 CSV 均已通过预览；杯测基础知识为 47/47 行有效、0 行跳过，咖啡基础知识为 100/100 行有效、0 行跳过。

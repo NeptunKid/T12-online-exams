@@ -122,6 +122,7 @@ def generate(source_dir, output_dir, only=None):
         ("萃取原理-题库-8d83633f-9faf-440d-83d4-475ae59dbc21.xlsx", "extraction", {"single": 2, "multi": 3, "judge": 2, "fill": 2, "qa": 2.5}, None, None),
         ("消防基础知识考试.xlsx", "fire", None, None, None),
         ("IT基础考试.xlsx", "it", None, "operation", None),
+        ("杯测入门题库-题库-8828eb2c-46d5-4a78-8ea2-6eae64b23abe.xlsx", "cupping", {"single": 1, "multi": 1, "judge": 1, "fill": 1, "qa": 1}, None, 1),
         ("餐饮相关法律法规-题库.xlsx", "legal", legal_score, None, 1),
     ]
     if only:
@@ -154,7 +155,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--only", choices=["extraction", "fire", "it", "legal"])
+    parser.add_argument("--only", choices=["extraction", "fire", "it", "cupping", "legal"])
     args = parser.parse_args()
     for key, count, total, path in generate(args.source_dir, args.output_dir, args.only):
         print(f"{key}: {count} 题，总分 {total:g}，输出 {path}")
