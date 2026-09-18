@@ -17,6 +17,7 @@ let questionBankNotice = { text: "", type: "" };
 let questionImageDraft = null;
 let questionImageUploadBusy = false;
 let questionOptionImageDraft = null;
+let questionEditDraft = null;
 let sessionHeartbeatId = 0;
 let sessionCheckInFlight = null;
 let adminAuthProviders = { dingtalk: true, feishu: false };
@@ -102,6 +103,7 @@ async function api(path, options = {}) {
       : `请求失败（HTTP ${res.status}）`;
     const error = new Error(data.error || fallback);
     error.status = res.status;
+    Object.assign(error, data);
     if (res.status === 401) lockAdminSession("登录状态已失效，请重新使用钉钉或飞书登录。");
     throw error;
   }
@@ -1703,6 +1705,7 @@ function answerEditor(question) {
 
 function questionOptionImage(question, label) {
   if (newQuestionDraft) return newQuestionDraft.options.find((option) => option.label === label)?.image || "";
+  if (questionEditDraft) return questionOptionImageDraft?.[label] ?? (questionEditDraft.options.find((option) => option.label === label)?.image || "");
   if (!questionOptionImageDraft) questionOptionImageDraft = Object.fromEntries((question.options || []).filter((option) => option.image).map((option) => [option.label, option.image]));
   return questionOptionImageDraft[label] || "";
 }
@@ -2062,7 +2065,8 @@ function removeNewQuestionOption(index) {
 
 function renderQuestionEditor() {
   if (newQuestionDraft) return renderNewQuestionEditor();
-  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  const sourceQuestion = adminQuestions.find((item) => item.id === currentQuestionId);
+  const question = questionEditDraft ? { ...sourceQuestion, ...questionEditDraft } : sourceQuestion;
   const editor = document.getElementById("questionEditor");
   if (!question) {
     editor.innerHTML = `<div class="empty-state">请选择一道题目</div>`;
@@ -2078,6 +2082,9 @@ function renderQuestionEditor() {
         <span class="badge pending">${typeLabel(question.type)}</span>
         <span class="brand-sub">版本 ${question.version}</span>
       </div>
+      <div class="field"><label for="questionType">题型</label><select id="questionType" ${questionImageUploadBusy ? "disabled" : ""}>
+        ${["single", "multi", "judge", "fill", "qa"].map((type) => `<option value="${type}" ${question.type === type ? "selected" : ""}>${typeLabel(type)}</option>`).join("")}
+      </select></div>
       <div class="brand-sub">引用考试：${esc(examNames)}</div>
       <div class="notice">保存会更新后续考生看到的题目版本；已提交答卷及其原有判分不会改变。重新阅卷时，管理员可在答卷中逐题选择是否采用本次修改。</div>
       <div class="field">
@@ -2088,12 +2095,14 @@ function renderQuestionEditor() {
       ${["single", "multi"].includes(question.type) && question.options.length ? `
         <div class="field">
           <label>选项</label>
+          <div class="question-option-toolbar"><span class="brand-sub">可增加或删除选项（2 至 10 个）</span><button class="btn secondary compact-btn" id="addExistingQuestionOptionBtn" type="button">增加选项</button></div>
           <div class="question-option-editor">
             ${question.options.map((option) => `
               <div class="question-option-row ${answerLabels.has(option.label) ? "current-answer" : ""}" data-option-label="${esc(option.label)}">
                 <label class="question-option-answer" title="设为参考答案"><input type="${question.type === "multi" ? "checkbox" : "radio"}" name="questionAnswerChoice" value="${esc(option.label)}" ${answerLabels.has(option.label) ? "checked" : ""}><span>${esc(option.label)}</span></label>
                 <textarea class="question-option-text" data-label="${esc(option.label)}" ${option.hasImage ? "" : "required"}>${esc(option.text)}</textarea>
                 ${renderQuestionOptionMedia(question, option)}
+                <button class="icon-action remove-existing-option-btn" type="button" data-label="${esc(option.label)}" title="删除选项" aria-label="删除选项">×</button>
               </div>
             `).join("")}
           </div>
@@ -2105,10 +2114,15 @@ function renderQuestionEditor() {
       </div>
       <div class="question-save-row">
         <button class="btn success" id="saveQuestionBtn" type="submit" ${questionImageUploadBusy ? "disabled" : ""}>保存题目</button>
+        <button class="btn danger" id="deleteQuestionBtn" type="button" ${questionImageUploadBusy ? "disabled" : ""}>从题库删除</button>
         <span class="brand-sub" id="questionSaveMsg"></span>
       </div>
     </form>`;
   document.getElementById("questionEditorForm").addEventListener("submit", saveQuestion);
+  document.getElementById("deleteQuestionBtn")?.addEventListener("click", deleteQuestion);
+  document.getElementById("questionType")?.addEventListener("change", changeExistingQuestionType);
+  document.getElementById("addExistingQuestionOptionBtn")?.addEventListener("click", addExistingQuestionOption);
+  for (const button of document.querySelectorAll(".remove-existing-option-btn")) button.addEventListener("click", () => removeExistingQuestionOption(button.dataset.label));
   bindQuestionImageEditor();
   bindQuestionOptionImages();
   bindInlineChoiceAnswers();
@@ -2130,8 +2144,86 @@ function selectQuestion(questionId) {
   newQuestionDraft = null;
   questionImageDraft = null;
   questionOptionImageDraft = null;
+  questionEditDraft = null;
   currentQuestionId = questionId;
   renderQuestionList();
+  renderQuestionEditor();
+}
+
+function editedQuestionState() {
+  const base = adminQuestions.find((item) => item.id === currentQuestionId);
+  return questionEditDraft ? { ...base, ...questionEditDraft } : base;
+}
+
+function readExistingQuestionDraft() {
+  const question = editedQuestionState();
+  if (!question || !document.getElementById("questionEditorForm")) return;
+  const type = document.getElementById("questionType")?.value || question.type;
+  const selectedAnswers = Array.from(document.querySelectorAll("input[name=questionAnswerChoice]:checked")).map((input) => input.value);
+  const answerText = document.getElementById("questionAnswerText")?.value || "";
+  const options = Array.from(document.querySelectorAll(".question-option-text")).map((input) => {
+    const previous = (question.options || []).find((option) => option.label === input.dataset.label);
+    const image = questionOptionImage(question, input.dataset.label);
+    return { label: input.dataset.label, text: input.value, ...(image || previous?.image ? { image: image || previous.image } : {}) };
+  });
+  const answer = ["single", "multi", "judge"].includes(type)
+    ? (type === "multi" ? selectedAnswers : (selectedAnswers[0] || "A"))
+    : type === "fill"
+      ? { ordered: document.getElementById("fillOrderedInput")?.checked !== false, blanks: answerText.split(/\r?\n/).map((line) => line.split("|").map((item) => item.trim()).filter(Boolean)).filter((blank) => blank.length) }
+      : answerText;
+  questionEditDraft = {
+    ...questionEditDraft,
+    type,
+    stem: document.getElementById("questionStem")?.value ?? question.stem,
+    images: questionImageDraft || question.images || [],
+    options,
+    answer,
+    explanation: document.getElementById("questionExplanation")?.value ?? (question.explanation || "")
+  };
+}
+
+function normalizeDraftOptions(options) {
+  return (options || []).map((option, index) => ({ ...option, label: String.fromCharCode(65 + index) }));
+}
+
+function changeExistingQuestionType(event) {
+  readExistingQuestionDraft();
+  const question = editedQuestionState();
+  if (!question) return;
+  const type = event.target.value;
+  let options = question.options || [];
+  let answer = question.answer;
+  if (["single", "multi"].includes(type)) {
+    options = options.length >= 2 ? normalizeDraftOptions(options) : [{ label: "A", text: "" }, { label: "B", text: "" }];
+    answer = type === "multi" ? (Array.isArray(answer) ? answer : [answer || "A"]) : (Array.isArray(answer) ? answer[0] || "A" : answer || "A");
+  } else if (type === "judge") {
+    options = [{ label: "A", text: "正确" }, { label: "B", text: "错误" }];
+    answer = ["A", "B"].includes(String(answer || "")) ? answer : "A";
+  } else {
+    options = [];
+    answer = type === "fill" ? (Array.isArray(answer) ? answer : []) : type === "qa" ? String(answer || "") : answer;
+  }
+  questionEditDraft = { ...questionEditDraft, type, options, answer };
+  questionOptionImageDraft = null;
+  renderQuestionEditor();
+}
+
+function addExistingQuestionOption() {
+  readExistingQuestionDraft();
+  const question = editedQuestionState();
+  if (!question || !["single", "multi"].includes(question.type) || question.options.length >= 10) return;
+  questionEditDraft = { ...questionEditDraft, options: [...question.options, { label: String.fromCharCode(65 + question.options.length), text: "" }] };
+  renderQuestionEditor();
+}
+
+function removeExistingQuestionOption(label) {
+  readExistingQuestionDraft();
+  const question = editedQuestionState();
+  if (!question || question.options.length <= 2) return;
+  const options = normalizeDraftOptions(question.options.filter((option) => option.label !== label));
+  const labels = new Set(options.map((option) => option.label));
+  const answer = question.type === "multi" ? (Array.isArray(question.answer) ? question.answer.filter((item) => labels.has(item)) : []) : (labels.has(question.answer) ? question.answer : options[0].label);
+  questionEditDraft = { ...questionEditDraft, options, answer };
   renderQuestionEditor();
 }
 
@@ -2206,13 +2298,14 @@ function collectQuestionAnswer(question) {
 
 async function saveQuestion(event) {
   event.preventDefault();
-  const question = adminQuestions.find((item) => item.id === currentQuestionId);
+  const question = editedQuestionState();
   if (!question) return;
   const button = document.getElementById("saveQuestionBtn");
   const message = document.getElementById("questionSaveMsg");
   button.disabled = true;
   message.textContent = "正在保存";
-  const options = question.type === "judge"
+  const type = document.getElementById("questionType")?.value || question.type;
+  const options = type === "judge"
     ? [{ label: "A", text: "正确" }, { label: "B", text: "错误" }]
     : Array.from(document.querySelectorAll(".question-option-text")).map((input) => ({
       label: input.dataset.label,
@@ -2224,22 +2317,63 @@ async function saveQuestion(event) {
       method: "PUT",
       body: JSON.stringify({
         version: question.version,
+        type,
         stem: document.getElementById("questionStem").value,
         images: questionImageDraft || question.images || [],
         options,
-        answer: collectQuestionAnswer(question),
+        answer: collectQuestionAnswer({ ...question, type }),
         explanation: document.getElementById("questionExplanation").value
       })
     });
     adminQuestions = adminQuestions.map((item) => item.id === data.question.id ? data.question : item);
     questionImageDraft = null;
     questionOptionImageDraft = null;
+    questionEditDraft = null;
     renderQuestionList();
     renderQuestionEditor();
     document.getElementById("questionSaveMsg").textContent = "已保存到题库，历史答卷不受影响。";
   } catch (error) {
     message.textContent = error.message || "题目保存失败";
     button.disabled = false;
+  }
+}
+
+async function deleteQuestion() {
+  const question = editedQuestionState();
+  if (!question || questionImageUploadBusy) return;
+  const referenced = Array.isArray(question.exams) ? question.exams.filter((exam) => ["scheduled", "published", "paused"].includes(exam.status)) : [];
+  let removeFromExams = false;
+  if (referenced.length) {
+    removeFromExams = window.confirm(`题目已被生效试卷引用：${referenced.map((exam) => exam.title).join("、")}。\n\n确认从这些试卷中移除题目，并为每张试卷生成新的草稿版本吗？原试卷和历史答卷会保留。`);
+    if (!removeFromExams) return;
+  } else if (!window.confirm("确认从题库删除这道题吗？删除后题目会归档，历史答卷不会被修改。")) return;
+  const button = document.getElementById("deleteQuestionBtn");
+  if (button) button.disabled = true;
+  const sendDelete = (remove) => api(`/api/admin/questions/${encodeURIComponent(question.id)}`, {
+      method: "DELETE",
+      body: JSON.stringify({ version: question.version, removeFromExams: remove })
+    });
+  try {
+    let response;
+    try {
+      response = await sendDelete(removeFromExams);
+    } catch (error) {
+      if (error.status === 409 && error.requiresConfirmation && window.confirm(`${error.message}\n\n确认继续删除，并为受影响试卷生成新的草稿版本吗？`)) {
+        response = await sendDelete(true);
+      } else throw error;
+    }
+    questionEditDraft = null;
+    questionImageDraft = null;
+    questionOptionImageDraft = null;
+    questionBankNotice = { text: response.generatedExams?.length ? `题目已删除，并生成 ${response.generatedExams.length} 张新的试卷草稿。` : "题目已从题库删除。", type: "success" };
+    await loadQuestions();
+  } catch (error) {
+    if (error.status === 409 && error.requiresConfirmation && !removeFromExams) {
+      questionBankNotice = { text: error.message || "题目仍被试卷引用", type: "error" };
+    } else questionBankNotice = { text: error.message || "题目删除失败", type: "error" };
+    renderQuestionEditor();
+  } finally {
+    renderQuestionBankManager();
   }
 }
 

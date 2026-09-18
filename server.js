@@ -10,7 +10,7 @@ const examAuthoringRepository = require("./src/db/exam-authoring-repository");
 const questionRepository = require("./src/db/question-repository");
 const { createQuestionResource, detectImageMimeType, getQuestionResource } = require("./src/db/question-resource-repository");
 const { fillAnswerMatches } = require("./src/answer-rules");
-const { createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
+const { archiveQuestion, createQuestion, listQuestionBanks, listQuestions, updateQuestion } = require("./src/db/question-repository");
 const { ensureBootstrapAdmin, getAdminAccess, getIdentityAccess, listAdminUsers, listExamAssignmentUsers, setAdminRole, upsertDingtalkUser, upsertFeishuUser } = require("./src/db/user-repository");
 const { listMergeCandidates, mergePlatformUsers } = require("./src/db/user-merge-repository");
 const { createAdminExamAuthoringHandler } = require("./src/http/admin-exam-authoring-handler");
@@ -953,6 +953,23 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { question });
     } catch (error) {
       return json(res, 400, { error: error.message || "题目保存失败" });
+    }
+  }
+
+  if (adminQuestionMatch && req.method === "DELETE") {
+    if (!adminAccess.canManageQuestions) return json(res, 403, { error: "当前账号没有题库维护权限" });
+    const pool = getPostgresPool();
+    if (!pool) return json(res, 503, { error: "题库数据库尚未配置" });
+    if (!isSameOriginJsonRequest(req)) return json(res, 403, { error: "题目删除请求来源无效" });
+    try {
+      const body = await readBody(req);
+      const result = await archiveQuestion(pool, decodeURIComponent(adminQuestionMatch[1]), body, adminAccess.userId);
+      return json(res, 200, result);
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode)) {
+        return json(res, error.statusCode, { error: error.message, ...(error.requiresConfirmation ? { requiresConfirmation: true, exams: error.exams || [] } : {}) });
+      }
+      return json(res, 400, { error: error.message || "题目删除失败" });
     }
   }
 

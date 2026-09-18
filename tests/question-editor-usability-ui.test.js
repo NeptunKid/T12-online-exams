@@ -29,5 +29,5 @@ test("判断题不渲染选项栏且只显示正确错误答案", () => {
   assert.match(script, /\["single", "multi"\]\.includes\(question\.type\) && question\.options\.length/);
   assert.match(script, /value="A"[^\n]+<span>正确<\/span>/);
   assert.match(script, /value="B"[^\n]+<span>错误<\/span>/);
-  assert.match(script, /question\.type === "judge"\s*\? \[\{ label: "A", text: "正确" \}, \{ label: "B", text: "错误" \}\]/);
+  assert.match(script, /type === "judge"\s*\? \[\{ label: "A", text: "正确" \}, \{ label: "B", text: "错误" \}\]/);
 });
