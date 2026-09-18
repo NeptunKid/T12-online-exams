@@ -9,6 +9,7 @@ const {
   normalizeEditedImages,
   normalizeQuestionCreate,
   normalizeQuestionEdit,
+  archiveQuestion,
   updateQuestion
 } = require("../src/db/question-repository");
 
@@ -59,6 +60,25 @@ test("题目编辑校验答案必须来自现有选项", () => {
   assert.throws(() => normalizeQuestionEdit(existing, {
     stem: "题干", options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }], answer: "C", explanation: ""
   }), /参考答案必须来自现有选项/);
+});
+
+test("题目编辑允许切换单选多选并增删选项", () => {
+  const edited = normalizeQuestionEdit({
+    type: "single",
+    options_json: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }]
+  }, {
+    type: "multi",
+    stem: "题干",
+    options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }, { label: "C", text: "丙" }],
+    answer: ["C", "A"],
+    explanation: ""
+  });
+  assert.equal(edited.type, "multi");
+  assert.deepEqual(edited.answer, ["A", "C"]);
+  const reduced = normalizeQuestionEdit({ type: "multi", options_json: edited.options }, {
+    type: "single", stem: "题干", options: [{ label: "A", text: "甲" }, { label: "B", text: "乙" }], answer: "B", explanation: ""
+  });
+  assert.equal(reduced.type, "single");
 });
 
 test("手动录题校验题库、题型、选项和答案且不接收题库分值", () => {
@@ -219,4 +239,59 @@ test("题目版本过期时拒绝覆盖其他管理员的修改", async () => {
     }, "admin-1"),
     /题目已被其他管理员修改/
   );
+});
+
+test("删除被生效试卷引用的题目必须先确认", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes("FROM questions q JOIN question_banks") && sql.includes("FOR UPDATE OF q")) {
+        return { rows: [{ id: "q-1", version: 2, status: "active" }] };
+      }
+      if (sql.includes("FROM exam_questions eq JOIN exams e") && sql.includes("FOR UPDATE OF e")) {
+        return { rows: [{ id: "exam-1", title: "已发布考试", status: "published" }] };
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  await assert.rejects(
+    archiveQuestion({ connect: async () => client }, "q-1", { version: 2 }, "admin-1"),
+    (error) => error.statusCode === 409 && error.requiresConfirmation === true
+      && error.exams[0].title === "已发布考试"
+  );
+  assert.equal(calls.includes("ROLLBACK"), true);
+  assert.equal(calls.some((sql) => sql.includes("UPDATE questions SET status = 'archived'")), false);
+});
+
+test("删除题目会归档原题、将生效试卷分值置零并生成排除该题的新草稿", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.includes("FROM questions q JOIN question_banks") && sql.includes("FOR UPDATE OF q")) {
+        return { rows: [{ id: "q-1", bank_id: "bank-1", external_id: "1", type: "single", stem: "旧题干", options_json: [], answer_json: "A", images_json: [], explanation: "", version: 2, status: "active", bank_name: "题库" }] };
+      }
+      if (sql.includes("FROM exam_questions eq JOIN exams e") && sql.includes("FOR UPDATE OF e")) {
+        return { rows: [{ id: "exam-1", title: "已发布考试", status: "published", duration_seconds: 600, pass_rate: "0.6", answer_rules_json: {}, question_bank_id: "bank-1", created_by: "admin-1" }] };
+      }
+      if (sql.includes("FROM exam_questions WHERE exam_id = $1 AND question_id <> $2")) return { rows: [{ total_score: "5" }] };
+      if (sql.includes("FROM questions q") && sql.includes("LEFT JOIN LATERAL")) {
+        return { rows: [{ id: "q-1", bank_id: "bank-1", bank_name: "题库", external_id: "1", type: "single", stem: "旧题干", options_json: [], answer_json: "A", images_json: [], explanation: "", version: 3, status: "archived", exam_refs: [] }] };
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const result = await archiveQuestion({ connect: async () => client }, "q-1", { version: 2, removeFromExams: true }, "admin-1");
+  assert.equal(result.generatedExams.length, 1);
+  assert.equal(result.question.status, "archived");
+  assert.equal(calls.some(({ sql }) => sql.includes("UPDATE questions SET status = 'archived'")), true);
+  assert.equal(calls.some(({ sql }) => sql.includes("UPDATE exam_questions SET score = 0")), true);
+  assert.equal(calls.some(({ sql }) => sql.includes("INSERT INTO exams") && sql.includes("'draft'")), true);
+  assert.equal(calls.some(({ sql }) => sql.includes("INSERT INTO exam_questions") && sql.includes("question_id <> $3")), true);
+  assert.equal(calls.some(({ sql }) => sql.includes("INSERT INTO exam_assignments") && sql.includes("FROM exam_assignments")), true);
+  assert.equal(calls.at(-1).sql, "COMMIT");
 });

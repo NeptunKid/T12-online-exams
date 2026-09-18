@@ -50,6 +50,22 @@ test("题库维护分类只显示题库而不显示试卷", () => {
   assert.doesNotMatch(script, /<optgroup label="按试卷">/);
 });
 
+test("题目编辑支持切换题型、增删选项和删除题目", () => {
+  assert.match(script, /id="questionType"/);
+  assert.match(script, /addExistingQuestionOption/);
+  assert.match(script, /removeExistingQuestionOption/);
+  assert.match(script, /id="deleteQuestionBtn"/);
+  assert.match(script, /method: "DELETE"/);
+  assert.match(script, /removeFromExams/);
+});
+
+test("题目编辑在切换题型或增删选项前保留未保存草稿", () => {
+  assert.match(script, /function readExistingQuestionDraft\(\)/);
+  assert.match(script, /function changeExistingQuestionType\(event\) \{\s*readExistingQuestionDraft\(\);/);
+  assert.match(script, /function addExistingQuestionOption\(\) \{\s*readExistingQuestionDraft\(\);/);
+  assert.match(script, /function removeExistingQuestionOption\(label\) \{\s*readExistingQuestionDraft\(\);/);
+});
+
 test("所有组卷写请求携带乐观锁版本", () => {
   assert.match(script, /method: "PATCH",\s*body: JSON\.stringify\(body\)/);
   assert.match(script, /version: exam\.version/);

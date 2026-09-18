@@ -488,15 +488,17 @@ function questionImageReferences(images, options) {
 }
 
 function normalizeQuestionEdit(existing, input) {
+  const type = String(input?.type ?? existing.type ?? "").trim();
+  if (!QUESTION_TYPES.has(type)) throw new Error("不支持的题型");
   const stem = String(input?.stem || "").trim();
   if (!stem) throw new Error("题干不能为空");
   if (stem.length > 20_000) throw new Error("题干内容过长");
   const explanation = String(input?.explanation || "").trim();
   if (explanation.length > 50_000) throw new Error("题目解析内容过长");
-  const options = normalizeEditedOptions(existing.type, input?.options, existing.options_json);
-  const answer = normalizeEditedAnswer(existing.type, input?.answer, options);
+  const options = normalizeEditedOptions(type, input?.options, existing.options_json);
+  const answer = normalizeEditedAnswer(type, input?.answer, options);
   const images = normalizeEditedImages(input?.images, existing.images_json);
-  return { stem, images, options, answer, explanation };
+  return { type, stem, images, options, answer, explanation };
 }
 
 function normalizeQuestionCreate(input) {
@@ -542,6 +544,7 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     const edited = normalizeQuestionEdit(existing, input);
     await assertUploadedImagesExist(client, questionImageReferences(edited.images, edited.options));
     const before = {
+      type: existing.type,
       stem: existing.stem,
       images: mapQuestionImages(existing.images_json || []),
       options: existing.options_json,
@@ -556,6 +559,7 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
           options_json = $4::jsonb,
           answer_json = $5::jsonb,
           explanation = $6,
+          type = $7,
           version = version + 1
       WHERE id = $1;`, [
       questionId,
@@ -563,7 +567,8 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
       JSON.stringify(edited.images),
       JSON.stringify(edited.options),
       JSON.stringify(edited.answer),
-      edited.explanation
+      edited.explanation,
+      edited.type
     ]);
     const affected = await client.query(`
       UPDATE exams
@@ -583,6 +588,90 @@ async function updateQuestion(pool, questionId, input, actorUserId) {
     const updated = await getQuestion(client, questionId);
     await client.query("COMMIT");
     return updated;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function archiveQuestion(pool, questionId, input, actorUserId) {
+  const expectedVersion = normalizeBankVersion(input?.version);
+  const removeFromExams = input?.removeFromExams === true;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query(`
+      SELECT q.id, q.bank_id, q.external_id, q.type, q.stem, q.options_json, q.answer_json,
+        q.images_json, q.explanation, q.version, q.status, qb.name AS bank_name
+      FROM questions q JOIN question_banks qb ON qb.id = q.bank_id
+      WHERE q.id = $1 AND q.status = 'active' AND qb.status = 'active'
+      FOR UPDATE OF q;`, [questionId]);
+    const existing = locked.rows[0];
+    if (!existing) throw new QuestionBankError("未找到可删除的题目，或题库已归档", 404);
+    if (Number(existing.version) !== expectedVersion) throw new QuestionBankError("题目已被其他管理员修改，请刷新后重试", 409);
+    const refs = await client.query(`
+      SELECT e.id, e.title, e.status, e.duration_seconds, e.pass_rate, e.answer_rules_json,
+        e.question_bank_id, e.created_by
+      FROM exam_questions eq JOIN exams e ON e.id = eq.exam_id
+      WHERE eq.question_id = $1 AND e.status IN ('scheduled', 'published', 'paused')
+      ORDER BY e.title, e.id
+      FOR UPDATE OF e;`, [questionId]);
+    if (refs.rows.length && !removeFromExams) {
+      const error = new QuestionBankError("题目已被生效试卷引用，请确认是否同时从这些试卷中移除", 409);
+      error.requiresConfirmation = true;
+      error.exams = refs.rows.map((row) => ({ id: row.id, title: row.title, status: row.status }));
+      throw error;
+    }
+
+    await client.query("UPDATE questions SET status = 'archived', version = version + 1 WHERE id = $1", [questionId]);
+    const generatedExams = [];
+    for (const exam of refs.rows) {
+      await client.query("UPDATE exam_questions SET score = 0 WHERE exam_id = $1 AND question_id = $2", [exam.id, questionId]);
+      await client.query(`
+        UPDATE exams e
+        SET total_score = totals.total_score,
+            pass_score = ROUND(totals.total_score * e.pass_rate, 2),
+            version = e.version + 1
+        FROM (SELECT COALESCE(SUM(score), 0)::numeric AS total_score FROM exam_questions WHERE exam_id = $1) totals
+        WHERE e.id = $1;`, [exam.id]);
+
+      const newExamId = `exam-${crypto.randomUUID()}`;
+      const title = `${exam.title}（删除题目后新版本）`;
+      const total = await client.query("SELECT COALESCE(SUM(score), 0)::numeric AS total_score FROM exam_questions WHERE exam_id = $1 AND question_id <> $2", [exam.id, questionId]);
+      const totalScore = total.rows[0]?.total_score || 0;
+      await client.query(`
+        INSERT INTO exams (id, title, status, duration_seconds, pass_score, total_score, pass_rate, version, answer_rules_json, question_bank_id, created_by)
+        VALUES ($1, $2, 'draft', $3, ROUND($4::numeric * $5::numeric, 2), $4, $5, 1, $6::jsonb, $7, $8);`, [
+        newExamId, title, exam.duration_seconds, totalScore, exam.pass_rate,
+        JSON.stringify(exam.answer_rules_json || {}), exam.question_bank_id, actorUserId || exam.created_by
+      ]);
+      await client.query(`
+        INSERT INTO exam_questions (exam_id, question_id, position, score, section)
+        SELECT $2, question_id, position, score, section
+        FROM exam_questions WHERE exam_id = $1 AND question_id <> $3 ORDER BY position;`, [exam.id, newExamId, questionId]);
+      await client.query(`
+        INSERT INTO exam_assignments (id, exam_id, subject_type, subject_id, starts_at, ends_at)
+        SELECT 'assignment-' || md5($2 || ':' || id), $2, subject_type, subject_id, starts_at, ends_at
+        FROM exam_assignments WHERE exam_id = $1;`, [exam.id, newExamId]);
+      await client.query(`
+        INSERT INTO audit_logs (id, actor_id, action, resource_type, resource_id, before_json, after_json)
+        VALUES ($1, $2, 'archive_question', 'question', $3, $4::jsonb, $5::jsonb);`, [
+        crypto.randomUUID(), actorUserId, questionId,
+        JSON.stringify({ examId: exam.id, examTitle: exam.title, status: exam.status }),
+        JSON.stringify({ generatedExamId: newExamId, generatedExamTitle: title, removed: true })
+      ]);
+      generatedExams.push({ id: newExamId, title, sourceExamId: exam.id, status: "draft" });
+    }
+    if (!refs.rows.length) {
+      await insertQuestionBankAudit(client, actorUserId, "archive_question", questionId, {
+        externalId: existing.external_id, type: existing.type, status: existing.status
+      }, { status: "archived", version: Number(existing.version) + 1 });
+    }
+    const question = await getQuestion(client, questionId);
+    await client.query("COMMIT");
+    return { question, generatedExams };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
@@ -740,6 +829,7 @@ module.exports = {
   restoreQuestionBank,
   updateQuestionBank,
   updateQuestion,
+  archiveQuestion,
   exportQuestionBankCsv,
   importQuestionBankCsv
 };
